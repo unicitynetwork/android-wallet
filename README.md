@@ -121,6 +121,14 @@ The app currently uses mock implementations for Unicity SDK functions. To integr
 - Bluetooth MAC address access may be restricted on newer Android versions
 - Token persistence is handled via SharedPreferences (consider using Room DB)
 
+## Testing in Android Studio
+
+See [TESTING_GUIDE.md](TESTING_GUIDE.md) for detailed instructions on:
+- Setting up Android Studio emulator
+- Testing the UI without physical devices
+- Understanding emulator limitations
+- Debugging and troubleshooting
+
 ## Troubleshooting
 
 ### NFC Not Working
