@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">NFC Wallet Demo</string>
+    <string name="my_wallet">My Wallet</string>
+    <string name="send_token">Send Token</string>
+    <string name="receive_token">Receive Token</string>
+    <string name="ready_to_send">Ready to Send %s. Tap the recipient\'s phone.</string>
+    <string name="ready_to_receive">Ready to receive. Ask the sender to tap your phone.</string>
+    <string name="connecting_to">Connecting to %s…</string>
+    <string name="waiting_for_address">Waiting for receiver address…</string>
+    <string name="finalizing_transfer">Finalizing transfer…</string>
+    <string name="success_sent">Success! %s sent.</string>
+    <string name="success_received">Success! %s received.</string>
+    <string name="connection_request_from">Connection request from %s…</string>
+    <string name="generating_address">Generating Unicity address…</string>
+    <string name="receiving_token">Receiving token…</string>
+    <string name="hce_service_desc">Unicity NFC Token Transfer Service</string>
+    <string name="card_title">Unicity Wallet</string>
+    <string name="error_nfc_not_available">NFC is not available on this device</string>
+    <string name="error_nfc_disabled">Please enable NFC in device settings</string>
+    <string name="error_bluetooth_disabled">Please enable Bluetooth in device settings</string>
+    <string name="error_connection_failed">Connection failed. Please try again.</string>
+    <string name="error_transfer_failed">Transfer failed. Please try again.</string>
+    <string name="token_name_placeholder">Community Coin</string>
+</resources>
