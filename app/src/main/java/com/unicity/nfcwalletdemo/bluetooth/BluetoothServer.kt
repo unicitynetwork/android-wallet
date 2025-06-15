@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.*
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ class BluetoothServer(
     
     private var isRunning = false
     
+    @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
     suspend fun start() = withContext(Dispatchers.IO) {
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
             onError("Bluetooth is not available or not enabled")

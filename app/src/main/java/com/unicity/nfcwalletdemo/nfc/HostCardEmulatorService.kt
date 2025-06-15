@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothAdapter
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import java.nio.charset.StandardCharsets
 
 class HostCardEmulatorService : HostApduService() {
@@ -61,6 +62,7 @@ class HostCardEmulatorService : HostApduService() {
         return true
     }
     
+    @RequiresPermission("android.permission.BLUETOOTH")
     private fun getBluetoothAddressResponse(): ByteArray {
         val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         val address = bluetoothAdapter?.address ?: "00:00:00:00:00:00"

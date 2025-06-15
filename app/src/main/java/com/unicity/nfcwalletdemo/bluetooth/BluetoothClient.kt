@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.*
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,7 @@ class BluetoothClient(
     private var socket: BluetoothSocket? = null
     private val gson = Gson()
     
+    @RequiresPermission("android.permission.BLUETOOTH_SCAN")
     suspend fun connect(address: String, token: Token) = withContext(Dispatchers.IO) {
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
             onError("Bluetooth is not available or not enabled")

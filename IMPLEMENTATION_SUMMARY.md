@@ -111,6 +111,12 @@ Successfully implemented a Proof-of-Concept Android application for NFC-based to
    - Tap devices together
    - Observe successful transfer
 
+## Build Status
+
+✅ **Project builds successfully**
+- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
+- Release APK: `app/build/outputs/apk/release/app-release-unsigned.apk`
+
 ## Next Steps for Production
 
 1. Integrate actual Unicity SDK
@@ -120,3 +126,12 @@ Successfully implemented a Proof-of-Concept Android application for NFC-based to
 5. Implement offline transaction support
 6. Add multi-token support
 7. Security audit and penetration testing
+
+## Installation Instructions
+
+To install on an Android device:
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+Or copy the APK to your device and install manually after enabling "Unknown sources" in settings.
