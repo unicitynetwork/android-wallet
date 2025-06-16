@@ -85,4 +85,9 @@ class WalletRepository(context: Context) {
         // In real implementation, this would call Unicity SDK
         return "unicity_addr_${UUID.randomUUID().toString().take(8)}"
     }
+    
+    fun refreshTokens() {
+        // Force reload from storage
+        loadWallet()
+    }
 }

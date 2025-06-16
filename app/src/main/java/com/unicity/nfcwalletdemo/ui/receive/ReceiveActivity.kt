@@ -1,5 +1,6 @@
 package com.unicity.nfcwalletdemo.ui.receive
 
+import android.content.Intent
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.util.Log
@@ -14,6 +15,7 @@ import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorService
+import com.unicity.nfcwalletdemo.ui.wallet.MainActivity
 import kotlinx.coroutines.launch
 
 class ReceiveActivity : AppCompatActivity() {
@@ -94,10 +96,10 @@ class ReceiveActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
                 binding.ivSuccess.visibility = View.VISIBLE
                 binding.btnCancel.text = "Done"
-                // Navigate back to wallet after delay
+                // Navigate back to MainActivity to show updated wallet
                 binding.root.postDelayed({
-                    finish()
-                }, 2000)
+                    navigateToMainActivity()
+                }, 1500)
             }
             ReceiveState.ERROR -> {
                 binding.ivNfcIcon.visibility = View.VISIBLE
@@ -134,6 +136,14 @@ class ReceiveActivity : AppCompatActivity() {
         Log.d("ReceiveActivity", "Ready to receive token via NFC")
     }
     
+    
+    private fun navigateToMainActivity() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(intent)
+        finish()
+    }
     
     override fun onDestroy() {
         super.onDestroy()

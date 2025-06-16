@@ -116,6 +116,10 @@ class SendActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
                 binding.ivSuccess.visibility = View.VISIBLE
                 binding.btnCancel.text = "Done"
+                // Navigate back to MainActivity after short delay
+                binding.root.postDelayed({
+                    finish()
+                }, 1500)
             }
             SendState.ERROR -> {
                 binding.ivNfcIcon.visibility = View.VISIBLE
