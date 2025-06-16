@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.0"
 }
 
 android {
@@ -65,6 +66,9 @@ dependencies {
     
     // JSON handling
     implementation("com.google.code.gson:gson:2.10.1")
+    
+    // Kotlin Serialization
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

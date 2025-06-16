@@ -11,9 +11,9 @@ import com.unicity.nfcwalletdemo.databinding.ActivityMainBinding
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import com.unicity.nfcwalletdemo.ui.send.SendActivity
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
-import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -29,13 +29,12 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupButtons()
         observeViewModel()
-        checkPermissions()
     }
     
     private fun setupRecyclerView() {
         tokenAdapter = TokenAdapter { token ->
             // Token clicked - start send flow
-            checkNfcAndBluetooth {
+            checkNfc {
                 viewModel.selectToken(token)
                 startActivity(Intent(this, SendActivity::class.java))
             }
@@ -49,7 +48,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun setupButtons() {
         binding.btnSend.setOnClickListener {
-            checkNfcAndBluetooth {
+            checkNfc {
                 // If no token is selected, show token selection
                 // For now, we'll use the first token if available
                 lifecycleScope.launch {
@@ -74,41 +73,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun checkPermissions() {
-        if (!PermissionUtils.hasBluetoothPermissions(this)) {
-            PermissionUtils.requestBluetoothPermissions(this)
-        }
-    }
     
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        
-        when (requestCode) {
-            PermissionUtils.BLUETOOTH_PERMISSION_REQUEST_CODE -> {
-                if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-                    Toast.makeText(this, "Bluetooth permissions granted", Toast.LENGTH_SHORT).show()
-                } else {
-                    showPermissionDeniedDialog()
-                }
-            }
-        }
-    }
     
-    private fun showPermissionDeniedDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Permissions Required")
-            .setMessage("Bluetooth permissions are required for transferring tokens. Please grant permissions in settings.")
-            .setPositiveButton("OK") { dialog, _ ->
-                dialog.dismiss()
-            }
-            .show()
-    }
-    
-    private fun checkNfcAndBluetooth(onSuccess: () -> Unit) {
+    private fun checkNfc(onSuccess: () -> Unit) {
         when {
             !PermissionUtils.isNfcEnabled(this) -> {
                 AlertDialog.Builder(this)
@@ -119,19 +86,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     .setNegativeButton("Cancel", null)
                     .show()
-            }
-            !PermissionUtils.isBluetoothEnabled() -> {
-                AlertDialog.Builder(this)
-                    .setTitle("Bluetooth Required")
-                    .setMessage("Please enable Bluetooth to transfer tokens")
-                    .setPositiveButton("Enable") { _, _ ->
-                        PermissionUtils.openBluetoothSettings(this)
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            }
-            !PermissionUtils.hasBluetoothPermissions(this) -> {
-                PermissionUtils.requestBluetoothPermissions(this)
             }
             else -> {
                 onSuccess()

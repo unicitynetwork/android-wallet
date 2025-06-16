@@ -43,18 +43,27 @@ class BluetoothClient(
         }
         
         try {
+            Log.d(TAG, "Starting Bluetooth client connection process")
+            Log.d(TAG, "Transfer UUID: $transferUUID")
+            
             // Try to connect to all paired devices that might be running the server
             val pairedDevices = bluetoothAdapter.bondedDevices
-            Log.d(TAG, "Found ${pairedDevices.size} paired devices")
+            Log.d(TAG, "Found ${pairedDevices.size} paired devices:")
+            pairedDevices.forEach { device ->
+                Log.d(TAG, "  - ${device.name} (${device.address})")
+            }
             
             var connected = false
             
             // First try already paired devices
             for (device in pairedDevices) {
-                Log.d(TAG, "Trying to connect to paired device: ${device.name}")
+                Log.d(TAG, "\nAttempting connection to: ${device.name} (${device.address})")
                 if (tryConnectToDevice(device, token)) {
                     connected = true
+                    Log.d(TAG, "✓ Successfully connected to ${device.name}")
                     break
+                } else {
+                    Log.d(TAG, "✗ Failed to connect to ${device.name}")
                 }
             }
             
@@ -101,12 +110,18 @@ class BluetoothClient(
     @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
     private suspend fun tryConnectToDevice(device: BluetoothDevice, token: Token): Boolean {
         return try {
+            Log.d(TAG, "Creating socket for ${device.name}...")
+            Log.d(TAG, "  - Using UUID: $SERVICE_UUID")
+            
             // Cancel discovery to improve connection speed
             bluetoothAdapter?.cancelDiscovery()
             
             // Create socket and connect using insecure RFCOMM
             socket = device.createInsecureRfcommSocketToServiceRecord(SERVICE_UUID)
+            Log.d(TAG, "Socket created, attempting to connect...")
+            
             socket?.connect()
+            Log.d(TAG, "Socket connected successfully!")
             
             Log.d(TAG, "Connected to ${device.name ?: device.address}")
             withContext(Dispatchers.Main) {
@@ -116,7 +131,16 @@ class BluetoothClient(
             handleTransfer(socket!!, token)
             true
         } catch (e: IOException) {
-            Log.e(TAG, "Failed to connect to ${device.name}: ${e.message}")
+            Log.e(TAG, "IOException connecting to ${device.name}: ${e.message}")
+            Log.e(TAG, "Exception type: ${e.javaClass.simpleName}")
+            if (e.message?.contains("read failed") == true) {
+                Log.e(TAG, "This usually means the server is not running on the target device")
+            }
+            socket?.close()
+            socket = null
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected exception: ${e.message}", e)
             socket?.close()
             socket = null
             false

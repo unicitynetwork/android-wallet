@@ -4,13 +4,21 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import android.util.Log
+import com.unicity.nfcwalletdemo.data.model.Token
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 
 class NfcReaderCallback(
-    private val onTransferUUIDReceived: (String) -> Unit,
-    private val onError: (String) -> Unit
+    private val onTokenSent: () -> Unit,
+    private val onError: (String) -> Unit,
+    private val tokenToSend: Token? = null
 ) : NfcAdapter.ReaderCallback {
+    
+    init {
+        Log.d(TAG, "NfcReaderCallback created")
+    }
     
     companion object {
         private const val TAG = "NfcReaderCallback"
@@ -23,27 +31,35 @@ class NfcReaderCallback(
             0x04.toByte(), 0x05.toByte(), 0x06.toByte()
         )
         
-        // Command to get transfer UUID
-        private val GET_BT_ADDRESS_COMMAND = byteArrayOf(
-            0x00.toByte(), 0x01.toByte(), 0x00.toByte(), 0x00.toByte()
+        // Command to send token
+        private val SEND_TOKEN_COMMAND = byteArrayOf(
+            0x00.toByte(), 0x02.toByte(), 0x00.toByte(), 0x00.toByte()
         )
         
         private const val TIMEOUT_MS = 5000
     }
     
     override fun onTagDiscovered(tag: Tag?) {
-        Log.d(TAG, "Tag discovered")
+        Log.d(TAG, "✅ NFC TAG DISCOVERED!")
+        Log.d(TAG, "Tag info: ${tag?.toString()}")
+        Log.d(TAG, "Tag ID: ${tag?.id?.contentToString()}")
+        Log.d(TAG, "Tag tech list: ${tag?.techList?.contentToString()}")
         
         val isoDep = IsoDep.get(tag)
         if (isoDep == null) {
-            Log.e(TAG, "IsoDep not supported")
+            Log.e(TAG, "IsoDep not supported by this tag")
+            Log.e(TAG, "Available techs: ${tag?.techList?.contentToString()}")
             onError("NFC tag does not support IsoDep")
             return
         }
         
+        Log.d(TAG, "IsoDep supported, proceeding with communication")
+        
         try {
+            Log.d(TAG, "Connecting to IsoDep...")
             isoDep.connect()
             isoDep.timeout = TIMEOUT_MS
+            Log.d(TAG, "IsoDep connected successfully")
             
             // Select our application by AID
             val selectResponse = isoDep.transceive(SELECT_AID_COMMAND)
@@ -55,19 +71,33 @@ class NfcReaderCallback(
                 return
             }
             
-            // Get transfer UUID
-            val uuidResponse = isoDep.transceive(GET_BT_ADDRESS_COMMAND)
-            Log.d(TAG, "UUID response: ${uuidResponse.toHexString()}")
-            
-            if (uuidResponse.size > 2) {
-                // Extract transfer UUID (response minus status bytes)
-                val uuidBytes = uuidResponse.sliceArray(0 until uuidResponse.size - 2)
-                val transferUUID = String(uuidBytes, StandardCharsets.UTF_8)
-                Log.d(TAG, "Received transfer UUID: $transferUUID")
-                onTransferUUIDReceived(transferUUID)
+            // Send token data to receiver
+            if (tokenToSend != null) {
+                try {
+                    val tokenJson = Json.encodeToString(Token.serializer(), tokenToSend)
+                    val tokenBytes = tokenJson.toByteArray(StandardCharsets.UTF_8)
+                    
+                    // Create command with token data
+                    val sendCommand = SEND_TOKEN_COMMAND + tokenBytes
+                    Log.d(TAG, "Sending token data: ${tokenJson.take(100)}...")
+                    
+                    val response = isoDep.transceive(sendCommand)
+                    Log.d(TAG, "Send token response: ${response.toHexString()}")
+                    
+                    if (isStatusOk(response)) {
+                        Log.d(TAG, "✅ SUCCESS: Token sent successfully")
+                        onTokenSent()
+                    } else {
+                        Log.e(TAG, "Failed to send token - receiver returned error")
+                        onError("Failed to send token to receiver")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error sending token data", e)
+                    onError("Failed to send token: ${e.message}")
+                }
             } else {
-                Log.e(TAG, "Invalid transfer UUID response")
-                onError("Failed to get transfer UUID")
+                Log.e(TAG, "No token to send")
+                onError("No token selected for transfer")
             }
             
         } catch (e: IOException) {

@@ -12,8 +12,8 @@ import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityReceiveBinding
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
-import com.unicity.nfcwalletdemo.bluetooth.BluetoothServer
-import com.unicity.nfcwalletdemo.utils.PermissionUtils
+import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorService
 import kotlinx.coroutines.launch
 
 class ReceiveActivity : AppCompatActivity() {
@@ -21,7 +21,6 @@ class ReceiveActivity : AppCompatActivity() {
     private val viewModel: ReceiveViewModel by viewModels()
     
     private var nfcAdapter: NfcAdapter? = null
-    private var bluetoothServer: BluetoothServer? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,12 +33,11 @@ class ReceiveActivity : AppCompatActivity() {
         
         // Check if this was auto-started from NFC tap
         val autoStarted = intent.getBooleanExtra("auto_started", false)
-        val transferUUID = intent.getStringExtra("transfer_uuid")
         if (autoStarted) {
-            Log.d("ReceiveActivity", "Auto-started from NFC tap with UUID: $transferUUID")
+            Log.d("ReceiveActivity", "Auto-started from NFC tap")
+            viewModel.onNfcDetected()
+            handleNfcTokenTransfer()
         }
-        
-        checkBluetoothPermissions()
     }
     
     private fun setupNfc() {
@@ -119,58 +117,27 @@ class ReceiveActivity : AppCompatActivity() {
         // HCE is automatically disabled when activity is paused
     }
     
-    private fun checkBluetoothPermissions() {
-        if (!PermissionUtils.hasBluetoothPermissions(this)) {
-            PermissionUtils.requestBluetoothPermissions(this)
-        } else {
-            startBluetoothServer()
-        }
-    }
-    
-    private fun startBluetoothServer() {
-        bluetoothServer = BluetoothServer(
-            context = this,
-            onConnectionRequest = { deviceName ->
-                viewModel.onConnectionRequest(deviceName)
-            },
-            onGenerateAddress = {
-                viewModel.generateAddress()
-            },
-            onTokenReceived = { token ->
+    private fun handleNfcTokenTransfer() {
+        Log.d("ReceiveActivity", "Setting up NFC token reception...")
+        
+        // Set up callback for when token is received via HCE
+        HostCardEmulatorService.onTokenReceived = { token ->
+            Log.d("ReceiveActivity", "Token received via NFC: ${token.name}")
+            runOnUiThread {
                 viewModel.onTokenReceived(token)
-            },
-            onError = { error ->
-                viewModel.onError(error)
+                Toast.makeText(this, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
             }
-        )
-        
-        lifecycleScope.launch {
-            bluetoothServer?.start()
         }
+        
+        // Set ready state
+        viewModel.setReadyToReceive()
+        Log.d("ReceiveActivity", "Ready to receive token via NFC")
     }
     
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        
-        when (requestCode) {
-            PermissionUtils.BLUETOOTH_PERMISSION_REQUEST_CODE -> {
-                if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-                    Toast.makeText(this, "Bluetooth permissions granted", Toast.LENGTH_SHORT).show()
-                    startBluetoothServer()
-                } else {
-                    Toast.makeText(this, "Bluetooth permissions are required for receiving tokens", Toast.LENGTH_LONG).show()
-                    finish()
-                }
-            }
-        }
-    }
     
     override fun onDestroy() {
         super.onDestroy()
-        bluetoothServer?.stop()
+        // Clear the callback
+        HostCardEmulatorService.onTokenReceived = null
     }
 }

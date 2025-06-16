@@ -56,6 +56,11 @@ class BluetoothServer(
             }
             
             try {
+                Log.d(TAG, "Starting Bluetooth server with:")
+                Log.d(TAG, "  - Adapter: ${bluetoothAdapter.name} (${bluetoothAdapter.address})")
+                Log.d(TAG, "  - Service Name: $SERVICE_NAME")
+                Log.d(TAG, "  - Service UUID: $SERVICE_UUID")
+                
                 // Use insecure RFCOMM to avoid pairing issues
                 serverSocket = bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(
                     SERVICE_NAME,
@@ -63,33 +68,39 @@ class BluetoothServer(
                 )
                 
                 isRunning = true
-                Log.d(TAG, "Bluetooth server started, waiting for connections...")
+                Log.d(TAG, "Bluetooth server socket created successfully")
+                Log.d(TAG, "Waiting for incoming connections...")
                 
                 // Accept connection
                 while (isRunning && isActive) {
                     try {
+                        Log.d(TAG, "Calling accept() on server socket...")
                         val socket = serverSocket?.accept()
                         if (socket != null) {
-                            Log.d(TAG, "Connection accepted from ${socket.remoteDevice.address}")
+                            Log.d(TAG, "✓ Connection accepted from:")
+                            Log.d(TAG, "  - Address: ${socket.remoteDevice.address}")
+                            Log.d(TAG, "  - Name: ${socket.remoteDevice.name}")
                             connectedSocket = socket
                             handleConnection(socket)
                             break // Exit after handling one connection
+                        } else {
+                            Log.e(TAG, "Accept returned null socket")
                         }
                     } catch (e: IOException) {
                         if (isRunning) {
-                            Log.e(TAG, "Error accepting connection", e)
+                            Log.e(TAG, "Error accepting connection: ${e.message}", e)
                         }
                         break
                     }
                 }
                 
             } catch (e: SecurityException) {
-                Log.e(TAG, "Security exception - missing Bluetooth permission", e)
+                Log.e(TAG, "Security exception - missing Bluetooth permission: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     onError("Missing Bluetooth permission")
                 }
             } catch (e: IOException) {
-                Log.e(TAG, "Error starting Bluetooth server", e)
+                Log.e(TAG, "IOException starting Bluetooth server: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     onError("Failed to start Bluetooth server: ${e.message}")
                 }

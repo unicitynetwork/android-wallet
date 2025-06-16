@@ -57,6 +57,14 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         _statusMessage.value = message
     }
     
+    fun onNfcDetected() {
+        updateStatus(ReceiveState.RECEIVING_TOKEN, "NFC detected. Receiving token...")
+    }
+    
+    fun setReadyToReceive() {
+        updateStatus(ReceiveState.READY_TO_RECEIVE, "Ready to receive. Ask the sender to tap your phone.")
+    }
+    
     fun reset() {
         _state.value = ReceiveState.READY_TO_RECEIVE
         _statusMessage.value = "Ready to receive. Ask the sender to tap your phone."

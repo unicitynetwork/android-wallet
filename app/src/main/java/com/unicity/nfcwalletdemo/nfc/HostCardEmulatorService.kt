@@ -1,14 +1,14 @@
 package com.unicity.nfcwalletdemo.nfc
 
-import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
-import androidx.annotation.RequiresPermission
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
+import com.unicity.nfcwalletdemo.data.model.Token
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.nio.charset.StandardCharsets
-import java.util.UUID
 
 class HostCardEmulatorService : HostApduService() {
     
@@ -27,10 +27,10 @@ class HostCardEmulatorService : HostApduService() {
         private val SW_ERROR = byteArrayOf(0x6F.toByte(), 0x00.toByte())
         
         // Commands
-        private const val CMD_GET_BT_ADDRESS: Byte = 0x01
+        private const val CMD_SEND_TOKEN: Byte = 0x02
         
-        // Shared transfer UUID for this session
-        var currentTransferUUID: String? = null
+        // Callback to notify when token is received
+        var onTokenReceived: ((Token) -> Unit)? = null
     }
     
     override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray {
@@ -43,17 +43,15 @@ class HostCardEmulatorService : HostApduService() {
         // Check if this is a SELECT AID command
         if (isSelectAidCommand(commandApdu)) {
             Log.d(TAG, "SELECT AID command received")
-            // Generate a unique transfer UUID for this session
-            currentTransferUUID = UUID.randomUUID().toString()
             // Start ReceiveActivity when sender taps
             startReceiveActivity()
             return SW_OK
         }
         
-        // Check if this is a GET_BT_ADDRESS command
-        if (commandApdu[1] == CMD_GET_BT_ADDRESS) {
-            Log.d(TAG, "GET_BT_ADDRESS command received")
-            return getTransferUUIDResponse()
+        // Check if this is a SEND_TOKEN command
+        if (commandApdu[1] == CMD_SEND_TOKEN) {
+            Log.d(TAG, "SEND_TOKEN command received")
+            return handleTokenReceived(commandApdu)
         }
         
         return SW_ERROR
@@ -72,14 +70,29 @@ class HostCardEmulatorService : HostApduService() {
         return true
     }
     
-    @RequiresPermission("android.permission.BLUETOOTH")
-    private fun getTransferUUIDResponse(): ByteArray {
-        val transferUUID = currentTransferUUID ?: UUID.randomUUID().toString()
-        
-        Log.d(TAG, "Sending transfer UUID: $transferUUID")
-        
-        val uuidBytes = transferUUID.toByteArray(StandardCharsets.UTF_8)
-        return uuidBytes + SW_OK
+    private fun handleTokenReceived(commandApdu: ByteArray): ByteArray {
+        try {
+            // Extract token data from command (skip the first 4 command bytes)
+            if (commandApdu.size <= 4) {
+                Log.e(TAG, "No token data in command")
+                return SW_ERROR
+            }
+            
+            val tokenBytes = commandApdu.sliceArray(4 until commandApdu.size)
+            val tokenJson = String(tokenBytes, StandardCharsets.UTF_8)
+            Log.d(TAG, "Received token JSON: ${tokenJson.take(100)}...")
+            
+            val token = Json.decodeFromString(Token.serializer(), tokenJson)
+            Log.d(TAG, "Successfully parsed token: ${token.name}")
+            
+            // Notify the receiver activity
+            onTokenReceived?.invoke(token)
+            
+            return SW_OK
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling received token", e)
+            return SW_ERROR
+        }
     }
     
     private fun ByteArray.toHexString(): String {
@@ -91,11 +104,11 @@ class HostCardEmulatorService : HostApduService() {
             val intent = Intent(this, ReceiveActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra("auto_started", true)
-                putExtra("transfer_uuid", currentTransferUUID)
             }
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Error starting ReceiveActivity", e)
         }
     }
+    
 }
