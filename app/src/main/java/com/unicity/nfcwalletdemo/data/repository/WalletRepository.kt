@@ -9,6 +9,7 @@ import com.unicity.nfcwalletdemo.data.model.Wallet
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import java.util.UUID
 
 class WalletRepository(context: Context) {
@@ -86,7 +87,9 @@ class WalletRepository(context: Context) {
         return "unicity_addr_${UUID.randomUUID().toString().take(8)}"
     }
     
-    fun refreshTokens() {
+    suspend fun refreshTokens() {
+        // Add a small delay to show refresh animation
+        delay(300)
         // Force reload from storage
         loadWallet()
     }

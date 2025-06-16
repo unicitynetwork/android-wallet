@@ -80,6 +80,7 @@ class TokenAdapter(
             // Basic token info
             binding.tvTokenName.text = token.name
             binding.tvTokenType.text = token.type
+            binding.tvTokenIdShort.text = "ID: ${token.id.take(8)}..."
             
             // Expanded details
             binding.tvTokenId.text = "ID: ${token.id.take(12)}..."

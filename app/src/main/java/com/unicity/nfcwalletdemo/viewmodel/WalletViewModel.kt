@@ -34,9 +34,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
     
-    fun refreshTokens() {
-        viewModelScope.launch {
-            repository.refreshTokens()
-        }
+    suspend fun refreshTokens() {
+        repository.refreshTokens()
     }
 }

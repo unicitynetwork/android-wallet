@@ -67,7 +67,6 @@ class MainActivity : AppCompatActivity() {
                 tokenAdapter.submitList(tokens)
                 binding.tvEmptyState.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
                 binding.rvTokens.visibility = if (tokens.isEmpty()) View.GONE else View.VISIBLE
-                binding.swipeRefresh.isRefreshing = false
             }
         }
     }
@@ -75,7 +74,12 @@ class MainActivity : AppCompatActivity() {
     private fun refreshWallet() {
         // Refresh the tokens from repository
         lifecycleScope.launch {
-            viewModel.refreshTokens()
+            try {
+                viewModel.refreshTokens()
+            } finally {
+                // Always stop the refresh spinner
+                binding.swipeRefresh.isRefreshing = false
+            }
         }
     }
     
