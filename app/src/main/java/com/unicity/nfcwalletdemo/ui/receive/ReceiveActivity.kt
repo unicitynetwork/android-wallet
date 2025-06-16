@@ -2,6 +2,7 @@ package com.unicity.nfcwalletdemo.ui.receive
 
 import android.nfc.NfcAdapter
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -30,6 +31,14 @@ class ReceiveActivity : AppCompatActivity() {
         setupNfc()
         setupViews()
         observeViewModel()
+        
+        // Check if this was auto-started from NFC tap
+        val autoStarted = intent.getBooleanExtra("auto_started", false)
+        val transferUUID = intent.getStringExtra("transfer_uuid")
+        if (autoStarted) {
+            Log.d("ReceiveActivity", "Auto-started from NFC tap with UUID: $transferUUID")
+        }
+        
         checkBluetoothPermissions()
     }
     

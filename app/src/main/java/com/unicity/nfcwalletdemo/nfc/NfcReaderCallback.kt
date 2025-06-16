@@ -8,7 +8,7 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 
 class NfcReaderCallback(
-    private val onBluetoothDeviceNameReceived: (String) -> Unit,
+    private val onTransferUUIDReceived: (String) -> Unit,
     private val onError: (String) -> Unit
 ) : NfcAdapter.ReaderCallback {
     
@@ -23,7 +23,7 @@ class NfcReaderCallback(
             0x04.toByte(), 0x05.toByte(), 0x06.toByte()
         )
         
-        // Command to get Bluetooth address
+        // Command to get transfer UUID
         private val GET_BT_ADDRESS_COMMAND = byteArrayOf(
             0x00.toByte(), 0x01.toByte(), 0x00.toByte(), 0x00.toByte()
         )
@@ -55,19 +55,19 @@ class NfcReaderCallback(
                 return
             }
             
-            // Get Bluetooth address
-            val btAddressResponse = isoDep.transceive(GET_BT_ADDRESS_COMMAND)
-            Log.d(TAG, "BT address response: ${btAddressResponse.toHexString()}")
+            // Get transfer UUID
+            val uuidResponse = isoDep.transceive(GET_BT_ADDRESS_COMMAND)
+            Log.d(TAG, "UUID response: ${uuidResponse.toHexString()}")
             
-            if (btAddressResponse.size > 2) {
-                // Extract Bluetooth device name (response minus status bytes)
-                val nameBytes = btAddressResponse.sliceArray(0 until btAddressResponse.size - 2)
-                val bluetoothDeviceName = String(nameBytes, StandardCharsets.UTF_8)
-                Log.d(TAG, "Received Bluetooth device name: $bluetoothDeviceName")
-                onBluetoothDeviceNameReceived(bluetoothDeviceName)
+            if (uuidResponse.size > 2) {
+                // Extract transfer UUID (response minus status bytes)
+                val uuidBytes = uuidResponse.sliceArray(0 until uuidResponse.size - 2)
+                val transferUUID = String(uuidBytes, StandardCharsets.UTF_8)
+                Log.d(TAG, "Received transfer UUID: $transferUUID")
+                onTransferUUIDReceived(transferUUID)
             } else {
-                Log.e(TAG, "Invalid Bluetooth device name response")
-                onError("Failed to get Bluetooth device name")
+                Log.e(TAG, "Invalid transfer UUID response")
+                onError("Failed to get transfer UUID")
             }
             
         } catch (e: IOException) {

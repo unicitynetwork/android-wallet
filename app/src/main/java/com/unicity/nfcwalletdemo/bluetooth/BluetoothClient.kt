@@ -3,22 +3,18 @@ package com.unicity.nfcwalletdemo.bluetooth
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.delay
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.*
-import kotlin.coroutines.resume
 
 class BluetoothClient(
     private val context: Context,
@@ -36,10 +32,9 @@ class BluetoothClient(
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var socket: BluetoothSocket? = null
     private val gson = Gson()
-    private var discoveryReceiver: BroadcastReceiver? = null
     
     @RequiresPermission(allOf = ["android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT"])
-    suspend fun connectByDeviceName(targetDeviceName: String, token: Token) = withContext(Dispatchers.IO) {
+    suspend fun connectViaUUID(transferUUID: String, token: Token) = withContext(Dispatchers.IO) {
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
             withContext(Dispatchers.Main) {
                 onError("Bluetooth is not available or not enabled")
@@ -48,93 +43,68 @@ class BluetoothClient(
         }
         
         try {
-            // First, check if the device is already paired
-            val pairedDevice = bluetoothAdapter.bondedDevices.find { device ->
-                device.name == targetDeviceName
-            }
+            // Try to connect to all paired devices that might be running the server
+            val pairedDevices = bluetoothAdapter.bondedDevices
+            Log.d(TAG, "Found ${pairedDevices.size} paired devices")
             
-            if (pairedDevice != null) {
-                Log.d(TAG, "Found paired device: ${pairedDevice.name}")
-                connectToDevice(pairedDevice, token)
-            } else {
-                // Device not paired, need to discover it
-                Log.d(TAG, "Device not paired, starting discovery for: $targetDeviceName")
-                val device = discoverDevice(targetDeviceName)
-                if (device != null) {
-                    connectToDevice(device, token)
-                } else {
-                    withContext(Dispatchers.Main) {
-                        onError("Could not find device: $targetDeviceName")
-                    }
+            var connected = false
+            
+            // First try already paired devices
+            for (device in pairedDevices) {
+                Log.d(TAG, "Trying to connect to paired device: ${device.name}")
+                if (tryConnectToDevice(device, token)) {
+                    connected = true
+                    break
                 }
             }
+            
+            if (!connected) {
+                // If no paired device worked, try to discover new devices
+                Log.d(TAG, "No paired device worked, starting discovery")
+                withContext(Dispatchers.Main) {
+                    onError("Connecting to receiver... Make sure devices are paired.")
+                }
+                
+                // Try connecting with exponential backoff
+                for (attempt in 1..5) {
+                    Log.d(TAG, "Connection attempt $attempt")
+                    
+                    for (device in bluetoothAdapter.bondedDevices) {
+                        if (tryConnectToDevice(device, token)) {
+                            connected = true
+                            break
+                        }
+                    }
+                    
+                    if (connected) break
+                    
+                    // Wait before retry with exponential backoff
+                    val delayMs = (500 * Math.pow(2.0, (attempt - 1).toDouble())).toLong()
+                    delay(delayMs)
+                }
+            }
+            
+            if (!connected) {
+                withContext(Dispatchers.Main) {
+                    onError("Could not connect to receiver. Please pair devices first.")
+                }
+            }
+            
         } catch (e: Exception) {
-            Log.e(TAG, "Error in connectByDeviceName", e)
+            Log.e(TAG, "Error in connectViaUUID", e)
             withContext(Dispatchers.Main) {
                 onError("Connection failed: ${e.message}")
             }
         }
     }
     
-    @RequiresPermission("android.permission.BLUETOOTH_SCAN")
-    private suspend fun discoverDevice(targetDeviceName: String): BluetoothDevice? = suspendCancellableCoroutine { cont ->
-        
-        discoveryReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                when (intent.action) {
-                    BluetoothDevice.ACTION_FOUND -> {
-                        val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                        Log.d(TAG, "Found device: ${device?.name ?: "Unknown"} - ${device?.address}")
-                        
-                        if (device?.name == targetDeviceName) {
-                            Log.d(TAG, "Target device found!")
-                            bluetoothAdapter?.cancelDiscovery()
-                            context.unregisterReceiver(this)
-                            discoveryReceiver = null
-                            cont.resume(device)
-                        }
-                    }
-                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
-                        Log.d(TAG, "Discovery finished, device not found")
-                        context.unregisterReceiver(this)
-                        discoveryReceiver = null
-                        cont.resume(null)
-                    }
-                }
-            }
-        }
-        
-        val filter = IntentFilter().apply {
-            addAction(BluetoothDevice.ACTION_FOUND)
-            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
-        }
-        
-        context.registerReceiver(discoveryReceiver, filter)
-        
-        if (bluetoothAdapter?.startDiscovery() != true) {
-            context.unregisterReceiver(discoveryReceiver)
-            discoveryReceiver = null
-            cont.resume(null)
-        }
-        
-        cont.invokeOnCancellation {
-            bluetoothAdapter?.cancelDiscovery()
-            try {
-                context.unregisterReceiver(discoveryReceiver)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error unregistering receiver", e)
-            }
-            discoveryReceiver = null
-        }
-    }
-    
     @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
-    private suspend fun connectToDevice(device: BluetoothDevice, token: Token) = withContext(Dispatchers.IO) {
-        try {
+    private suspend fun tryConnectToDevice(device: BluetoothDevice, token: Token): Boolean {
+        return try {
             // Cancel discovery to improve connection speed
             bluetoothAdapter?.cancelDiscovery()
             
-            // Create socket and connect using insecure RFCOMM to match server
+            // Create socket and connect using insecure RFCOMM
             socket = device.createInsecureRfcommSocketToServiceRecord(SERVICE_UUID)
             socket?.connect()
             
@@ -144,12 +114,12 @@ class BluetoothClient(
             }
             
             handleTransfer(socket!!, token)
+            true
         } catch (e: IOException) {
-            Log.e(TAG, "Error connecting to device", e)
-            withContext(Dispatchers.Main) {
-                onError("Failed to connect: ${e.message}")
-            }
-            cleanup()
+            Log.e(TAG, "Failed to connect to ${device.name}: ${e.message}")
+            socket?.close()
+            socket = null
+            false
         }
     }
     

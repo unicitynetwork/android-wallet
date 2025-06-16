@@ -1,10 +1,12 @@
 package com.unicity.nfcwalletdemo.nfc
 
 import android.bluetooth.BluetoothAdapter
+import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
@@ -26,6 +28,9 @@ class HostCardEmulatorService : HostApduService() {
         
         // Commands
         private const val CMD_GET_BT_ADDRESS: Byte = 0x01
+        
+        // Shared transfer UUID for this session
+        var currentTransferUUID: String? = null
     }
     
     override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray {
@@ -38,13 +43,17 @@ class HostCardEmulatorService : HostApduService() {
         // Check if this is a SELECT AID command
         if (isSelectAidCommand(commandApdu)) {
             Log.d(TAG, "SELECT AID command received")
+            // Generate a unique transfer UUID for this session
+            currentTransferUUID = UUID.randomUUID().toString()
+            // Start ReceiveActivity when sender taps
+            startReceiveActivity()
             return SW_OK
         }
         
         // Check if this is a GET_BT_ADDRESS command
         if (commandApdu[1] == CMD_GET_BT_ADDRESS) {
             Log.d(TAG, "GET_BT_ADDRESS command received")
-            return getBluetoothAddressResponse()
+            return getTransferUUIDResponse()
         }
         
         return SW_ERROR
@@ -64,21 +73,29 @@ class HostCardEmulatorService : HostApduService() {
     }
     
     @RequiresPermission("android.permission.BLUETOOTH")
-    private fun getBluetoothAddressResponse(): ByteArray {
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+    private fun getTransferUUIDResponse(): ByteArray {
+        val transferUUID = currentTransferUUID ?: UUID.randomUUID().toString()
         
-        // On newer Android versions, we can't get the MAC address directly
-        // Instead, we'll use the Bluetooth name which the sender will use to find the device
-        val bluetoothName = bluetoothAdapter?.name ?: "Unknown_Device_${UUID.randomUUID().toString().take(8)}"
+        Log.d(TAG, "Sending transfer UUID: $transferUUID")
         
-        Log.d(TAG, "Sending Bluetooth device name: $bluetoothName")
-        
-        // Send the Bluetooth name instead of MAC address
-        val nameBytes = bluetoothName.toByteArray(StandardCharsets.UTF_8)
-        return nameBytes + SW_OK
+        val uuidBytes = transferUUID.toByteArray(StandardCharsets.UTF_8)
+        return uuidBytes + SW_OK
     }
     
     private fun ByteArray.toHexString(): String {
         return joinToString("") { "%02x".format(it) }
+    }
+    
+    private fun startReceiveActivity() {
+        try {
+            val intent = Intent(this, ReceiveActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("auto_started", true)
+                putExtra("transfer_uuid", currentTransferUUID)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting ReceiveActivity", e)
+        }
     }
 }

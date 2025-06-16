@@ -4,7 +4,6 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.Context
-import android.content.Intent
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import com.google.gson.Gson
@@ -57,9 +56,6 @@ class BluetoothServer(
             }
             
             try {
-                // Make device discoverable
-                makeDeviceDiscoverable()
-                
                 // Use insecure RFCOMM to avoid pairing issues
                 serverSocket = bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(
                     SERVICE_NAME,
@@ -67,11 +63,11 @@ class BluetoothServer(
                 )
                 
                 isRunning = true
-                Log.d(TAG, "Bluetooth server started on ${bluetoothAdapter.name}, waiting for connections...")
+                Log.d(TAG, "Bluetooth server started, waiting for connections...")
                 
+                // Accept connection
                 while (isRunning && isActive) {
                     try {
-                        // Accept connection with a timeout
                         val socket = serverSocket?.accept()
                         if (socket != null) {
                             Log.d(TAG, "Connection accepted from ${socket.remoteDevice.address}")
@@ -185,17 +181,5 @@ class BluetoothServer(
         }
         connectedSocket = null
         serverSocket = null
-    }
-    
-    private fun makeDeviceDiscoverable() {
-        try {
-            val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
-                putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300) // 5 minutes
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            context.startActivity(discoverableIntent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error making device discoverable", e)
-        }
     }
 }

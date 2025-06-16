@@ -61,11 +61,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        binding.btnReceive.setOnClickListener {
-            checkNfcAndBluetooth {
-                startActivity(Intent(this, ReceiveActivity::class.java))
-            }
-        }
+        // Receive button removed - receiving is automatic when NFC is detected
     }
     
     private fun observeViewModel() {

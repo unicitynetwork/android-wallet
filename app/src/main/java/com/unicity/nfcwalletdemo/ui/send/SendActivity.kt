@@ -122,10 +122,10 @@ class SendActivity : AppCompatActivity() {
     private fun enableNfcReaderMode() {
         nfcAdapter?.let { adapter ->
             val nfcReaderCallback = com.unicity.nfcwalletdemo.nfc.NfcReaderCallback(
-                onBluetoothDeviceNameReceived = { deviceName ->
+                onTransferUUIDReceived = { transferUUID ->
                     runOnUiThread {
-                        sendViewModel.onNfcDetected(deviceName)
-                        findAndConnectToDevice(deviceName)
+                        sendViewModel.onNfcDetected("Receiver Device")
+                        connectViaTransferUUID(transferUUID)
                     }
                 },
                 onError = { error ->
@@ -147,7 +147,7 @@ class SendActivity : AppCompatActivity() {
         nfcAdapter?.disableReaderMode(this)
     }
     
-    private fun findAndConnectToDevice(targetDeviceName: String) {
+    private fun connectViaTransferUUID(transferUUID: String) {
         // Check Bluetooth permissions first
         if (!PermissionUtils.hasBluetoothPermissions(this)) {
             PermissionUtils.requestBluetoothPermissions(this)
@@ -174,7 +174,7 @@ class SendActivity : AppCompatActivity() {
         )
         
         lifecycleScope.launch {
-            bluetoothClient?.connectByDeviceName(targetDeviceName, token)
+            bluetoothClient?.connectViaUUID(transferUUID, token)
         }
     }
     
