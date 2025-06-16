@@ -1,6 +1,7 @@
 package com.unicity.nfcwalletdemo.ui.wallet
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.util.Log
@@ -163,10 +164,19 @@ class MainActivity : AppCompatActivity() {
     
     override fun onPause() {
         super.onPause()
-        // Disable NFC if we're transferring
-        currentTransferringToken?.let { token ->
-            cancelTokenTransfer(token)
+        // Only disable NFC if we're actually pausing (not just configuration change)
+        if (isFinishing || isChangingConfigurations.not()) {
+            currentTransferringToken?.let { token ->
+                cancelTokenTransfer(token)
+            }
         }
+    }
+    
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d("MainActivity", "Configuration changed - maintaining transfer state")
+        // The activity is not recreated, so NFC transfer continues
+        // Just log that we handled the configuration change
     }
     
     

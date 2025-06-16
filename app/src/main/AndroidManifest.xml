@@ -31,6 +31,7 @@
         <activity
             android:name=".ui.wallet.MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.NFCWalletDemo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -44,7 +45,8 @@
             
         <activity 
             android:name=".ui.receive.ReceiveActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
         
         <!-- NFC Host Card Emulation Service -->
         <service

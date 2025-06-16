@@ -1,6 +1,7 @@
 package com.unicity.nfcwalletdemo.ui.receive
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.util.Log
@@ -143,6 +144,12 @@ class ReceiveActivity : AppCompatActivity() {
         }
         startActivity(intent)
         finish()
+    }
+    
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d("ReceiveActivity", "Configuration changed - maintaining HCE state")
+        // The activity is not recreated, so HCE continues
     }
     
     override fun onDestroy() {
