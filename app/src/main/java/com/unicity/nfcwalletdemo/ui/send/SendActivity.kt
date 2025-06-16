@@ -14,6 +14,7 @@ import com.unicity.nfcwalletdemo.viewmodel.SendViewModel
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
 import com.unicity.nfcwalletdemo.bluetooth.BluetoothClient
 import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import kotlinx.coroutines.launch
 
 class SendActivity : AppCompatActivity() {
@@ -121,10 +122,10 @@ class SendActivity : AppCompatActivity() {
     private fun enableNfcReaderMode() {
         nfcAdapter?.let { adapter ->
             val nfcReaderCallback = com.unicity.nfcwalletdemo.nfc.NfcReaderCallback(
-                onBluetoothAddressReceived = { bluetoothAddress ->
+                onBluetoothDeviceNameReceived = { deviceName ->
                     runOnUiThread {
-                        sendViewModel.onNfcDetected("Device")
-                        startBluetoothTransfer(bluetoothAddress)
+                        sendViewModel.onNfcDetected(deviceName)
+                        findAndConnectToDevice(deviceName)
                     }
                 },
                 onError = { error ->
@@ -146,10 +147,18 @@ class SendActivity : AppCompatActivity() {
         nfcAdapter?.disableReaderMode(this)
     }
     
-    private fun startBluetoothTransfer(bluetoothAddress: String) {
+    private fun findAndConnectToDevice(targetDeviceName: String) {
+        // Check Bluetooth permissions first
+        if (!PermissionUtils.hasBluetoothPermissions(this)) {
+            PermissionUtils.requestBluetoothPermissions(this)
+            sendViewModel.onError("Bluetooth permissions required")
+            return
+        }
+        
         val token = currentToken ?: return
         
         bluetoothClient = BluetoothClient(
+            context = this,
             onConnected = {
                 sendViewModel.onBluetoothConnected()
             },
@@ -165,7 +174,26 @@ class SendActivity : AppCompatActivity() {
         )
         
         lifecycleScope.launch {
-            bluetoothClient?.connect(bluetoothAddress, token)
+            bluetoothClient?.connectByDeviceName(targetDeviceName, token)
+        }
+    }
+    
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        when (requestCode) {
+            PermissionUtils.BLUETOOTH_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                    Toast.makeText(this, "Bluetooth permissions granted. Please tap the device again.", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Bluetooth permissions are required for transferring tokens", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            }
         }
     }
     

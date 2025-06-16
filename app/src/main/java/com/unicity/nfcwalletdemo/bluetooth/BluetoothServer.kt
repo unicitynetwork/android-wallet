@@ -3,18 +3,23 @@ package com.unicity.nfcwalletdemo.bluetooth
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
+import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.coroutineScope
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.*
 
 class BluetoothServer(
+    private val context: Context,
     private val onConnectionRequest: (String) -> Unit,
     private val onGenerateAddress: () -> String,
     private val onTokenReceived: (Token) -> Unit,
@@ -35,31 +40,68 @@ class BluetoothServer(
     private var isRunning = false
     
     @RequiresPermission("android.permission.BLUETOOTH_CONNECT")
-    suspend fun start() = withContext(Dispatchers.IO) {
-        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            onError("Bluetooth is not available or not enabled")
-            return@withContext
-        }
-        
-        try {
-            serverSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord(
-                SERVICE_NAME,
-                SERVICE_UUID
-            )
-            
-            isRunning = true
-            Log.d(TAG, "Bluetooth server started, waiting for connections...")
-            
-            // Accept connection
-            val socket = serverSocket?.accept()
-            if (socket != null) {
-                connectedSocket = socket
-                handleConnection(socket)
+    suspend fun start() = coroutineScope {
+        withContext(Dispatchers.IO) {
+            if (bluetoothAdapter == null) {
+                withContext(Dispatchers.Main) {
+                    onError("Bluetooth is not available")
+                }
+                return@withContext
             }
             
-        } catch (e: IOException) {
-            Log.e(TAG, "Error starting Bluetooth server", e)
-            onError("Failed to start Bluetooth server: ${e.message}")
+            if (!bluetoothAdapter.isEnabled) {
+                withContext(Dispatchers.Main) {
+                    onError("Bluetooth is not enabled")
+                }
+                return@withContext
+            }
+            
+            try {
+                // Make device discoverable
+                makeDeviceDiscoverable()
+                
+                // Use insecure RFCOMM to avoid pairing issues
+                serverSocket = bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(
+                    SERVICE_NAME,
+                    SERVICE_UUID
+                )
+                
+                isRunning = true
+                Log.d(TAG, "Bluetooth server started on ${bluetoothAdapter.name}, waiting for connections...")
+                
+                while (isRunning && isActive) {
+                    try {
+                        // Accept connection with a timeout
+                        val socket = serverSocket?.accept()
+                        if (socket != null) {
+                            Log.d(TAG, "Connection accepted from ${socket.remoteDevice.address}")
+                            connectedSocket = socket
+                            handleConnection(socket)
+                            break // Exit after handling one connection
+                        }
+                    } catch (e: IOException) {
+                        if (isRunning) {
+                            Log.e(TAG, "Error accepting connection", e)
+                        }
+                        break
+                    }
+                }
+                
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Security exception - missing Bluetooth permission", e)
+                withContext(Dispatchers.Main) {
+                    onError("Missing Bluetooth permission")
+                }
+            } catch (e: IOException) {
+                Log.e(TAG, "Error starting Bluetooth server", e)
+                withContext(Dispatchers.Main) {
+                    onError("Failed to start Bluetooth server: ${e.message}")
+                }
+            } finally {
+                if (!isRunning) {
+                    cleanup()
+                }
+            }
         }
     }
     
@@ -118,6 +160,9 @@ class BluetoothServer(
     private fun readMessage(inputStream: InputStream): String {
         val buffer = ByteArray(BUFFER_SIZE)
         val bytesRead = inputStream.read(buffer)
+        if (bytesRead == -1) {
+            throw IOException("Connection closed by remote device")
+        }
         return String(buffer, 0, bytesRead)
     }
     
@@ -140,5 +185,17 @@ class BluetoothServer(
         }
         connectedSocket = null
         serverSocket = null
+    }
+    
+    private fun makeDeviceDiscoverable() {
+        try {
+            val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+                putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300) // 5 minutes
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(discoverableIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error making device discoverable", e)
+        }
     }
 }

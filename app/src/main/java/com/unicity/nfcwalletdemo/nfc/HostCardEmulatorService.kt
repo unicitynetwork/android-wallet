@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import java.nio.charset.StandardCharsets
+import java.util.UUID
 
 class HostCardEmulatorService : HostApduService() {
     
@@ -65,12 +66,16 @@ class HostCardEmulatorService : HostApduService() {
     @RequiresPermission("android.permission.BLUETOOTH")
     private fun getBluetoothAddressResponse(): ByteArray {
         val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-        val address = bluetoothAdapter?.address ?: "00:00:00:00:00:00"
         
-        Log.d(TAG, "Sending Bluetooth address: $address")
+        // On newer Android versions, we can't get the MAC address directly
+        // Instead, we'll use the Bluetooth name which the sender will use to find the device
+        val bluetoothName = bluetoothAdapter?.name ?: "Unknown_Device_${UUID.randomUUID().toString().take(8)}"
         
-        val addressBytes = address.toByteArray(StandardCharsets.UTF_8)
-        return addressBytes + SW_OK
+        Log.d(TAG, "Sending Bluetooth device name: $bluetoothName")
+        
+        // Send the Bluetooth name instead of MAC address
+        val nameBytes = bluetoothName.toByteArray(StandardCharsets.UTF_8)
+        return nameBytes + SW_OK
     }
     
     private fun ByteArray.toHexString(): String {

@@ -8,7 +8,7 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 
 class NfcReaderCallback(
-    private val onBluetoothAddressReceived: (String) -> Unit,
+    private val onBluetoothDeviceNameReceived: (String) -> Unit,
     private val onError: (String) -> Unit
 ) : NfcAdapter.ReaderCallback {
     
@@ -60,14 +60,14 @@ class NfcReaderCallback(
             Log.d(TAG, "BT address response: ${btAddressResponse.toHexString()}")
             
             if (btAddressResponse.size > 2) {
-                // Extract Bluetooth address (response minus status bytes)
-                val addressBytes = btAddressResponse.sliceArray(0 until btAddressResponse.size - 2)
-                val bluetoothAddress = String(addressBytes, StandardCharsets.UTF_8)
-                Log.d(TAG, "Received Bluetooth address: $bluetoothAddress")
-                onBluetoothAddressReceived(bluetoothAddress)
+                // Extract Bluetooth device name (response minus status bytes)
+                val nameBytes = btAddressResponse.sliceArray(0 until btAddressResponse.size - 2)
+                val bluetoothDeviceName = String(nameBytes, StandardCharsets.UTF_8)
+                Log.d(TAG, "Received Bluetooth device name: $bluetoothDeviceName")
+                onBluetoothDeviceNameReceived(bluetoothDeviceName)
             } else {
-                Log.e(TAG, "Invalid Bluetooth address response")
-                onError("Failed to get Bluetooth address")
+                Log.e(TAG, "Invalid Bluetooth device name response")
+                onError("Failed to get Bluetooth device name")
             }
             
         } catch (e: IOException) {

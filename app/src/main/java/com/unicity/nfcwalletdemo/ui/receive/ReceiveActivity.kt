@@ -12,6 +12,7 @@ import com.unicity.nfcwalletdemo.databinding.ActivityReceiveBinding
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import com.unicity.nfcwalletdemo.bluetooth.BluetoothServer
+import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import kotlinx.coroutines.launch
 
 class ReceiveActivity : AppCompatActivity() {
@@ -29,7 +30,7 @@ class ReceiveActivity : AppCompatActivity() {
         setupNfc()
         setupViews()
         observeViewModel()
-        startBluetoothServer()
+        checkBluetoothPermissions()
     }
     
     private fun setupNfc() {
@@ -109,8 +110,17 @@ class ReceiveActivity : AppCompatActivity() {
         // HCE is automatically disabled when activity is paused
     }
     
+    private fun checkBluetoothPermissions() {
+        if (!PermissionUtils.hasBluetoothPermissions(this)) {
+            PermissionUtils.requestBluetoothPermissions(this)
+        } else {
+            startBluetoothServer()
+        }
+    }
+    
     private fun startBluetoothServer() {
         bluetoothServer = BluetoothServer(
+            context = this,
             onConnectionRequest = { deviceName ->
                 viewModel.onConnectionRequest(deviceName)
             },
@@ -127,6 +137,26 @@ class ReceiveActivity : AppCompatActivity() {
         
         lifecycleScope.launch {
             bluetoothServer?.start()
+        }
+    }
+    
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        when (requestCode) {
+            PermissionUtils.BLUETOOTH_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                    Toast.makeText(this, "Bluetooth permissions granted", Toast.LENGTH_SHORT).show()
+                    startBluetoothServer()
+                } else {
+                    Toast.makeText(this, "Bluetooth permissions are required for receiving tokens", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            }
         }
     }
     
