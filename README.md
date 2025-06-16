@@ -121,13 +121,20 @@ The app currently uses mock implementations for Unicity SDK functions. To integr
 - Bluetooth MAC address access may be restricted on newer Android versions
 - Token persistence is handled via SharedPreferences (consider using Room DB)
 
-## Testing in Android Studio
+## Testing
 
-See [TESTING_GUIDE.md](TESTING_GUIDE.md) for detailed instructions on:
+### Emulator Testing
+See [TESTING_GUIDE.md](TESTING_GUIDE.md) for:
 - Setting up Android Studio emulator
 - Testing the UI without physical devices
 - Understanding emulator limitations
+
+### Real Device Testing
+See [DEVICE_TESTING_GUIDE.md](DEVICE_TESTING_GUIDE.md) for:
+- Detailed device setup instructions
+- Step-by-step testing procedures
 - Debugging and troubleshooting
+- Performance testing guidelines
 
 ## Troubleshooting
 
@@ -146,14 +153,22 @@ See [TESTING_GUIDE.md](TESTING_GUIDE.md) for detailed instructions on:
 - Ensure stable Bluetooth connection
 - Review logcat for detailed error messages
 
+## Quick Start
+
+See [QUICK_START.md](QUICK_START.md) for a 5-minute guide to get the app running on your phones.
+
+## Production Readiness
+
+This is a proof-of-concept. See [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) for detailed requirements before production deployment.
+
 ## Contributing
 
-This is a proof-of-concept demonstration. For production use:
-1. Integrate actual Unicity SDK
-2. Implement proper error handling
-3. Add comprehensive testing
-4. Enhance security measures
-5. Optimize for battery usage
+We welcome contributions! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
 ## License
 
