@@ -4,16 +4,12 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import android.util.Log
-import com.unicity.nfcwalletdemo.data.model.Token
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 
 class NfcReaderCallback(
-    private val onTokenSent: () -> Unit,
-    private val onError: (String) -> Unit,
-    private val tokenToSend: Token? = null
+    private val onBluetoothAddressReceived: (String) -> Unit,
+    private val onError: (String) -> Unit
 ) : NfcAdapter.ReaderCallback {
     
     init {
@@ -31,9 +27,9 @@ class NfcReaderCallback(
             0x04.toByte(), 0x05.toByte(), 0x06.toByte()
         )
         
-        // Command to send token
-        private val SEND_TOKEN_COMMAND = byteArrayOf(
-            0x00.toByte(), 0x02.toByte(), 0x00.toByte(), 0x00.toByte()
+        // Command to get Bluetooth address
+        private val GET_BT_ADDRESS_COMMAND = byteArrayOf(
+            0x00.toByte(), 0x01.toByte(), 0x00.toByte(), 0x00.toByte()
         )
         
         private const val TIMEOUT_MS = 5000
@@ -71,33 +67,25 @@ class NfcReaderCallback(
                 return
             }
             
-            // Send token data to receiver
-            if (tokenToSend != null) {
+            // Get Bluetooth address from receiver
+            val addressResponse = isoDep.transceive(GET_BT_ADDRESS_COMMAND)
+            Log.d(TAG, "Bluetooth address response: ${addressResponse.toHexString()}")
+            
+            if (addressResponse.size > 2) {
                 try {
-                    val tokenJson = Json.encodeToString(Token.serializer(), tokenToSend)
-                    val tokenBytes = tokenJson.toByteArray(StandardCharsets.UTF_8)
-                    
-                    // Create command with token data
-                    val sendCommand = SEND_TOKEN_COMMAND + tokenBytes
-                    Log.d(TAG, "Sending token data: ${tokenJson.take(100)}...")
-                    
-                    val response = isoDep.transceive(sendCommand)
-                    Log.d(TAG, "Send token response: ${response.toHexString()}")
-                    
-                    if (isStatusOk(response)) {
-                        Log.d(TAG, "✅ SUCCESS: Token sent successfully")
-                        onTokenSent()
-                    } else {
-                        Log.e(TAG, "Failed to send token - receiver returned error")
-                        onError("Failed to send token to receiver")
-                    }
+                    // Extract Bluetooth address (response minus status bytes)
+                    val addressBytes = addressResponse.sliceArray(0 until addressResponse.size - 2)
+                    val bluetoothAddress = String(addressBytes, StandardCharsets.UTF_8)
+                    Log.d(TAG, "✅ SUCCESS: Received Bluetooth address: $bluetoothAddress")
+                    Log.d(TAG, "Calling onBluetoothAddressReceived callback...")
+                    onBluetoothAddressReceived(bluetoothAddress)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error sending token data", e)
-                    onError("Failed to send token: ${e.message}")
+                    Log.e(TAG, "Error parsing Bluetooth address", e)
+                    onError("Failed to parse Bluetooth address: ${e.message}")
                 }
             } else {
-                Log.e(TAG, "No token to send")
-                onError("No token selected for transfer")
+                Log.e(TAG, "Invalid Bluetooth address response - too short: ${addressResponse.size} bytes")
+                onError("Failed to get Bluetooth address")
             }
             
         } catch (e: IOException) {

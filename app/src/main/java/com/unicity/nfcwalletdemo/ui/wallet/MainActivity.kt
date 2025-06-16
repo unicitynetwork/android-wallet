@@ -17,6 +17,7 @@ import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.nfc.NfcReaderCallback
+import com.unicity.nfcwalletdemo.bluetooth.BluetoothClient
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import kotlinx.coroutines.launch
 
@@ -114,27 +115,22 @@ class MainActivity : AppCompatActivity() {
         }
         
         val nfcCallback = NfcReaderCallback(
-            onTokenSent = {
-                Log.d("MainActivity", "Token sent successfully")
+            onBluetoothAddressReceived = { readySignal ->
+                Log.d("MainActivity", "Received ready signal: $readySignal")
                 runOnUiThread {
-                    tokenAdapter.setTransferring(token, false)
-                    currentTransferringToken = null
-                    // Remove token from wallet
-                    viewModel.removeToken(token.id)
                     disableNfcTransfer()
-                    Toast.makeText(this, "Token sent successfully!", Toast.LENGTH_SHORT).show()
+                    startBluetoothDiscovery(readySignal, token)
                 }
             },
             onError = { error ->
-                Log.e("MainActivity", "NFC transfer error: $error")
+                Log.e("MainActivity", "NFC error: $error")
                 runOnUiThread {
                     tokenAdapter.setTransferring(token, false)
                     currentTransferringToken = null
                     disableNfcTransfer()
-                    Toast.makeText(this, "Transfer failed: $error", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "NFC failed: $error", Toast.LENGTH_SHORT).show()
                 }
-            },
-            tokenToSend = token
+            }
         )
         
         val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
@@ -144,6 +140,73 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to enable NFC reader mode", e)
             cancelTokenTransfer(token)
+        }
+    }
+    
+    private fun startBluetoothDiscovery(readySignal: String, token: Token) {
+        Log.d("MainActivity", "Starting Bluetooth discovery with signal: $readySignal")
+        
+        // Check Bluetooth permissions first
+        if (!PermissionUtils.hasBluetoothPermissions(this)) {
+            Log.e("MainActivity", "Missing Bluetooth permissions")
+            PermissionUtils.requestBluetoothPermissions(this)
+            tokenAdapter.setTransferring(token, false)
+            currentTransferringToken = null
+            Toast.makeText(this, "Bluetooth permissions required", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Check if Bluetooth is enabled
+        if (!PermissionUtils.isBluetoothEnabled()) {
+            Log.e("MainActivity", "Bluetooth is not enabled")
+            PermissionUtils.openBluetoothSettings(this)
+            tokenAdapter.setTransferring(token, false)
+            currentTransferringToken = null
+            Toast.makeText(this, "Please enable Bluetooth", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val bluetoothClient = BluetoothClient(
+            context = this,
+            onConnected = {
+                Log.d("MainActivity", "Bluetooth connected")
+                // UI already shows transferring state
+            },
+            onAddressReceived = { address ->
+                Log.d("MainActivity", "Address received: $address")
+                // Continue with transfer process
+            },
+            onTransferComplete = {
+                Log.d("MainActivity", "Bluetooth transfer completed")
+                runOnUiThread {
+                    tokenAdapter.setTransferring(token, false)
+                    currentTransferringToken = null
+                    // Remove token from wallet
+                    viewModel.removeToken(token.id)
+                    Toast.makeText(this@MainActivity, "Token sent successfully!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onError = { error ->
+                Log.e("MainActivity", "Bluetooth transfer error: $error")
+                runOnUiThread {
+                    tokenAdapter.setTransferring(token, false)
+                    currentTransferringToken = null
+                    Toast.makeText(this@MainActivity, "Transfer failed: $error", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+        
+        lifecycleScope.launch {
+            try {
+                bluetoothClient.discoverAndConnect(readySignal, token)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Exception in Bluetooth discovery", e)
+                runOnUiThread {
+                    tokenAdapter.setTransferring(token, false)
+                    currentTransferringToken = null
+                    Toast.makeText(this@MainActivity, "Discovery failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
     
@@ -195,6 +258,24 @@ class MainActivity : AppCompatActivity() {
             }
             else -> {
                 onSuccess()
+            }
+        }
+    }
+    
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        when (requestCode) {
+            PermissionUtils.BLUETOOTH_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                    Toast.makeText(this, "Bluetooth permissions granted. Please try again.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Bluetooth permissions are required for token transfer", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

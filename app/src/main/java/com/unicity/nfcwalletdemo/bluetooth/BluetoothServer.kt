@@ -15,7 +15,6 @@ import kotlinx.coroutines.coroutineScope
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.*
 
 class BluetoothServer(
     private val context: Context,
@@ -26,9 +25,6 @@ class BluetoothServer(
 ) {
     companion object {
         private const val TAG = "BluetoothServer"
-        private const val SERVICE_NAME = "UnicityWalletService"
-        private val SERVICE_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") // SPP UUID
-        private const val BUFFER_SIZE = 1024 * 8
     }
     
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
@@ -58,13 +54,13 @@ class BluetoothServer(
             try {
                 Log.d(TAG, "Starting Bluetooth server with:")
                 Log.d(TAG, "  - Adapter: ${bluetoothAdapter.name} (${bluetoothAdapter.address})")
-                Log.d(TAG, "  - Service Name: $SERVICE_NAME")
-                Log.d(TAG, "  - Service UUID: $SERVICE_UUID")
+                Log.d(TAG, "  - Service Name: ${BluetoothConstants.SERVICE_NAME}")
+                Log.d(TAG, "  - Service UUID: ${BluetoothConstants.SERVICE_UUID}")
                 
                 // Use insecure RFCOMM to avoid pairing issues
                 serverSocket = bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(
-                    SERVICE_NAME,
-                    SERVICE_UUID
+                    BluetoothConstants.SERVICE_NAME,
+                    BluetoothConstants.SERVICE_UUID
                 )
                 
                 isRunning = true
@@ -165,7 +161,7 @@ class BluetoothServer(
     }
     
     private fun readMessage(inputStream: InputStream): String {
-        val buffer = ByteArray(BUFFER_SIZE)
+        val buffer = ByteArray(BluetoothConstants.BUFFER_SIZE)
         val bytesRead = inputStream.read(buffer)
         if (bytesRead == -1) {
             throw IOException("Connection closed by remote device")

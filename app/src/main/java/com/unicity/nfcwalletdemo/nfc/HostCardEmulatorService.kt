@@ -1,13 +1,12 @@
 package com.unicity.nfcwalletdemo.nfc
 
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
-import com.unicity.nfcwalletdemo.data.model.Token
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.nio.charset.StandardCharsets
 
 class HostCardEmulatorService : HostApduService() {
@@ -27,10 +26,7 @@ class HostCardEmulatorService : HostApduService() {
         private val SW_ERROR = byteArrayOf(0x6F.toByte(), 0x00.toByte())
         
         // Commands
-        private const val CMD_SEND_TOKEN: Byte = 0x02
-        
-        // Callback to notify when token is received
-        var onTokenReceived: ((Token) -> Unit)? = null
+        private const val CMD_GET_BT_ADDRESS: Byte = 0x01
     }
     
     override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray {
@@ -48,10 +44,10 @@ class HostCardEmulatorService : HostApduService() {
             return SW_OK
         }
         
-        // Check if this is a SEND_TOKEN command
-        if (commandApdu[1] == CMD_SEND_TOKEN) {
-            Log.d(TAG, "SEND_TOKEN command received")
-            return handleTokenReceived(commandApdu)
+        // Check if this is a GET_BT_ADDRESS command
+        if (commandApdu[1] == CMD_GET_BT_ADDRESS) {
+            Log.d(TAG, "GET_BT_ADDRESS command received")
+            return getBluetoothAddressResponse()
         }
         
         return SW_ERROR
@@ -70,27 +66,27 @@ class HostCardEmulatorService : HostApduService() {
         return true
     }
     
-    private fun handleTokenReceived(commandApdu: ByteArray): ByteArray {
+    @RequiresPermission("android.permission.BLUETOOTH")
+    private fun getBluetoothAddressResponse(): ByteArray {
         try {
-            // Extract token data from command (skip the first 4 command bytes)
-            if (commandApdu.size <= 4) {
-                Log.e(TAG, "No token data in command")
+            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+            if (bluetoothAdapter == null) {
+                Log.e(TAG, "Bluetooth adapter not available")
                 return SW_ERROR
             }
             
-            val tokenBytes = commandApdu.sliceArray(4 until commandApdu.size)
-            val tokenJson = String(tokenBytes, StandardCharsets.UTF_8)
-            Log.d(TAG, "Received token JSON: ${tokenJson.take(100)}...")
+            // Send a simple ready signal since we can't get real MAC addresses on modern Android
+            // The sender will discover this device by name when it becomes discoverable
+            val adapterName = bluetoothAdapter.name ?: "Unknown"
+            val readySignal = "READY:$adapterName"
             
-            val token = Json.decodeFromString(Token.serializer(), tokenJson)
-            Log.d(TAG, "Successfully parsed token: ${token.name}")
+            Log.d(TAG, "Sending ready signal: $readySignal")
+            Log.d(TAG, "Bluetooth adapter name: $adapterName")
             
-            // Notify the receiver activity
-            onTokenReceived?.invoke(token)
-            
-            return SW_OK
+            val addressBytes = readySignal.toByteArray(StandardCharsets.UTF_8)
+            return addressBytes + SW_OK
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling received token", e)
+            Log.e(TAG, "Error getting ready signal", e)
             return SW_ERROR
         }
     }
