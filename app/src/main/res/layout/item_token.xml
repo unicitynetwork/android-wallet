@@ -47,23 +47,14 @@
                     android:ellipsize="end" />
 
                 <TextView
-                    android:id="@+id/tvTokenType"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/margin_xs"
-                    android:text="Loyalty Token"
-                    android:textAppearance="@style/TextAppearance.Unicity.Caption"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-                <TextView
                     android:id="@+id/tvTokenIdShort"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/margin_xs"
-                    android:text="ID: abc123..."
+                    android:text="abc123..."
                     android:textAppearance="@style/TextAppearance.Unicity.Caption"
                     android:fontFamily="monospace"
+                    android:textSize="10sp"
                     android:maxLines="1"
                     android:ellipsize="end" />
 

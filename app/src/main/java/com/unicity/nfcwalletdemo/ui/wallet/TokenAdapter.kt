@@ -89,8 +89,7 @@ class TokenAdapter(
         fun bind(token: Token, isExpanded: Boolean, isTransferring: Boolean) {
             // Basic token info
             binding.tvTokenName.text = token.name
-            binding.tvTokenType.text = token.type
-            binding.tvTokenIdShort.text = "ID: ${token.id.take(8)}..."
+            binding.tvTokenIdShort.text = token.id.take(8)
             
             // Expanded details
             binding.tvTokenId.text = "ID: ${token.id.take(12)}..."
