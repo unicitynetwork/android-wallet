@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    
+    <!-- Brushstroke circle background -->
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M60,10 C30,10 10,30 10,60 C10,90 30,110 60,110 C90,110 110,90 110,60 C110,30 90,10 60,10 Z M60,15 C87,15 105,33 105,60 C105,87 87,105 60,105 C33,105 15,87 15,60 C15,33 33,15 60,15 Z"/>
+    
+    <!-- Brushstroke texture effect -->
+    <path
+        android:fillColor="@color/text_primary"
+        android:fillAlpha="0.8"
+        android:pathData="M20,40 Q30,35 40,38 Q50,32 60,35 Q70,30 80,33 Q90,28 100,35 L98,42 Q88,38 78,40 Q68,35 58,38 Q48,40 38,43 Q28,45 22,47 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:fillAlpha="0.6"
+        android:pathData="M25,70 Q35,68 45,72 Q55,67 65,70 Q75,65 85,68 Q95,63 102,70 L100,77 Q90,73 80,75 Q70,70 60,73 Q50,75 40,78 Q30,80 28,82 Z"/>
+    
+    <!-- Unicity text -->
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M35,85 L35,75 L37,75 L37,83 L40,83 L40,75 L42,75 L42,85 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M44,85 L44,75 L46,75 L46,80 L48,80 L48,75 L50,75 L50,85 L48,85 L48,82 L46,82 L46,85 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M52,85 L52,75 L54,75 L54,85 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M56,85 L56,83 L60,83 L60,77 L56,77 L56,75 L62,75 L62,85 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M64,85 L64,75 L66,75 L66,85 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M68,85 L68,75 L70,75 L70,81 L72,81 L72,75 L74,75 L74,83 L72,83 L72,83 L70,83 L70,85 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M76,85 L76,75 L78,75 L78,82 L80,77 L82,82 L82,75 L84,75 L84,85 L82,85 L80,80 L78,85 Z"/>
+</vector>

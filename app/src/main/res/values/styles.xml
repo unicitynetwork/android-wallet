@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    
+    <!-- Text Styles -->
+    <style name="TextAppearance.Unicity.Headline1" parent="TextAppearance.MaterialComponents.Headline1">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">32sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">-0.01</item>
+    </style>
+    
+    <style name="TextAppearance.Unicity.Headline2" parent="TextAppearance.MaterialComponents.Headline2">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    
+    <style name="TextAppearance.Unicity.Headline3" parent="TextAppearance.MaterialComponents.Headline3">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    
+    <style name="TextAppearance.Unicity.Title" parent="TextAppearance.MaterialComponents.Headline4">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    
+    <style name="TextAppearance.Unicity.Subtitle" parent="TextAppearance.MaterialComponents.Subtitle1">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    
+    <style name="TextAppearance.Unicity.Body" parent="TextAppearance.MaterialComponents.Body1">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    
+    <style name="TextAppearance.Unicity.BodySmall" parent="TextAppearance.MaterialComponents.Body2">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    
+    <style name="TextAppearance.Unicity.Caption" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textColor">@color/text_tertiary</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    
+    <!-- Button Styles -->
+    <style name="Button.Unicity" parent="Widget.MaterialComponents.Button">
+        <item name="android:textColor">@color/text_on_dark</item>
+        <item name="android:backgroundTint">@color/button_primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:paddingStart">@dimen/button_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/button_padding_horizontal</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="cornerRadius">@dimen/button_corner_radius</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:elevation">@dimen/elevation_sm</item>
+    </style>
+    
+    <style name="Button.Unicity.Large" parent="Button.Unicity">
+        <item name="android:minHeight">@dimen/button_height_large</item>
+        <item name="android:textSize">18sp</item>
+    </style>
+    
+    <style name="Button.Unicity.Secondary" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:backgroundTint">@color/button_secondary</item>
+        <item name="strokeColor">@color/card_stroke</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:paddingStart">@dimen/button_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/button_padding_horizontal</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="cornerRadius">@dimen/button_corner_radius</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+    
+    <style name="Button.Unicity.Text" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">@color/primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+    
+    <!-- Card Styles -->
+    <style name="Card.Unicity" parent="Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/card_background</item>
+        <item name="cardCornerRadius">@dimen/card_corner_radius</item>
+        <item name="cardElevation">@dimen/card_elevation</item>
+        <item name="strokeColor">@color/card_stroke</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="android:layout_margin">@dimen/card_margin</item>
+    </style>
+    
+    <style name="Card.Unicity.Outlined" parent="Card.Unicity">
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">1dp</item>
+    </style>
+    
+    <!-- Token Item Styles -->
+    
+    <!-- Status Indicator Styles -->
+    <style name="StatusIndicator">
+        <item name="android:layout_width">8dp</item>
+        <item name="android:layout_height">8dp</item>
+        <item name="android:background">@drawable/status_indicator</item>
+    </style>
+    
+    <!-- Progress Styles -->
+    <style name="ProgressBar.Unicity" parent="Widget.MaterialComponents.CircularProgressIndicator">
+        <item name="indicatorColor">@color/primary</item>
+        <item name="trackColor">@color/secondary</item>
+        <item name="indicatorSize">48dp</item>
+        <item name="trackThickness">4dp</item>
+    </style>
+    
+    <!-- NFC Icon Styles -->
+    <style name="NfcIcon">
+        <item name="android:layout_width">@dimen/nfc_icon_size</item>
+        <item name="android:layout_height">@dimen/nfc_icon_size</item>
+        <item name="android:scaleType">centerInside</item>
+        <item name="android:tint">@color/accent</item>
+    </style>
+    
+    <style name="NfcIcon.Large">
+        <item name="android:layout_width">@dimen/nfc_icon_size_large</item>
+        <item name="android:layout_height">@dimen/nfc_icon_size_large</item>
+    </style>
+    
+</resources>

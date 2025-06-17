@@ -64,6 +64,7 @@ class ReceiveActivity : AppCompatActivity() {
         binding = ActivityReceiveBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
+        setupActionBar()
         setupNfc()
         setupViews()
         observeViewModel()
@@ -77,6 +78,14 @@ class ReceiveActivity : AppCompatActivity() {
             // Set to direct NFC mode
             HostCardEmulatorService.currentTransferMode = HostCardEmulatorService.TRANSFER_MODE_DIRECT
             Toast.makeText(this, "Ready to receive token", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun setupActionBar() {
+        supportActionBar?.apply {
+            setDisplayShowCustomEnabled(true)
+            setDisplayShowTitleEnabled(false)
+            setCustomView(R.layout.actionbar_receive_layout)
         }
     }
     

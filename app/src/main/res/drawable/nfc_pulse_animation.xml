@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    
+    <path
+        android:fillColor="@color/nfc_ready"
+        android:fillAlpha="0.2"
+        android:pathData="M60,60 m-50,0 a50,50 0,1,1 100,0 a50,50 0,1,1 -100,0"/>
+        
+    <path
+        android:fillColor="@color/nfc_ready"
+        android:fillAlpha="0.4"
+        android:pathData="M60,60 m-35,0 a35,35 0,1,1 70,0 a35,35 0,1,1 -70,0"/>
+        
+    <path
+        android:fillColor="@color/nfc_ready"
+        android:pathData="M60,25 L60,30 L55,30 L55,40 L50,40 L50,80 L55,80 L55,90 L60,90 L60,95 L65,95 L65,90 L70,90 L70,80 L75,80 L75,40 L70,40 L70,30 L65,30 L65,25 Z"/>
+</vector>

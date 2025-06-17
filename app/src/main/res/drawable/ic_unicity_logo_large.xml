@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="60dp"
+    android:viewportWidth="200"
+    android:viewportHeight="60">
+    
+    <!-- Unicity Logo - Large version for splash/header -->
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M10,12 L10,48 L18,48 L18,20 L30,20 L30,48 L38,48 L38,12 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M42,12 L42,48 L50,48 L50,30 L55,36 L60,30 L60,48 L68,48 L68,12 L60,12 L52,22 L50,20 L50,12 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M72,12 L72,48 L80,48 L80,12 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M84,12 L84,48 L108,48 L108,40 L92,40 L92,32 L104,32 L104,24 L92,24 L92,20 L108,20 L108,12 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M112,12 L112,48 L120,48 L120,32 L132,32 L132,24 L120,24 L120,20 L132,20 L132,12 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M136,12 L136,48 L144,48 L144,32 L150,32 L156,48 L164,48 L155,28 L162,12 L154,12 L150,24 L144,12 Z"/>
+    
+    <path
+        android:fillColor="@color/text_primary"
+        android:pathData="M168,12 L168,20 L176,20 L176,40 L168,40 L168,48 L184,48 L184,12 Z"/>
+    
+</vector>

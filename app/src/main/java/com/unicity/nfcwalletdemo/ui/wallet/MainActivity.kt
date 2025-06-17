@@ -14,6 +14,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityMainBinding
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
@@ -34,10 +35,19 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
+        setupActionBar()
         setupNfc()
         setupRecyclerView()
         setupSwipeRefresh()
         observeViewModel()
+    }
+    
+    private fun setupActionBar() {
+        supportActionBar?.apply {
+            setDisplayShowCustomEnabled(true)
+            setDisplayShowTitleEnabled(false)
+            setCustomView(R.layout.actionbar_layout)
+        }
     }
     
     private fun setupRecyclerView() {
@@ -68,7 +78,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             viewModel.tokens.collect { tokens ->
                 tokenAdapter.submitList(tokens)
-                binding.tvEmptyState.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
+                binding.emptyStateContainer.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
                 binding.rvTokens.visibility = if (tokens.isEmpty()) View.GONE else View.VISIBLE
             }
         }

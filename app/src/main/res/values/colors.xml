@@ -1,5 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Unicity Brand Colors -->
+    <color name="unicity_black">#000000</color>
+    <color name="unicity_dark_gray">#1A1A1A</color>
+    <color name="unicity_medium_gray">#2D2D2D</color>
+    <color name="unicity_light_gray">#4A4A4A</color>
+    <color name="unicity_accent">#E0E0E0</color>
+    <color name="unicity_white">#FFFFFF</color>
+    
+    <!-- Primary Colors -->
+    <color name="primary">#000000</color>
+    <color name="primary_dark">#1A1A1A</color>
+    <color name="primary_variant">#2D2D2D</color>
+    
+    <!-- Secondary Colors -->
+    <color name="secondary">#E0E0E0</color>
+    <color name="secondary_dark">#BDBDBD</color>
+    <color name="secondary_variant">#9E9E9E</color>
+    
+    <!-- Accent Colors -->
+    <color name="accent">#00BCD4</color>
+    <color name="accent_light">#26C6DA</color>
+    
+    <!-- Status Colors -->
+    <color name="success">#4CAF50</color>
+    <color name="success_light">#66BB6A</color>
+    <color name="error">#F44336</color>
+    <color name="error_light">#EF5350</color>
+    <color name="warning">#FF9800</color>
+    <color name="warning_light">#FFA726</color>
+    
+    <!-- Surface Colors -->
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#F8F9FA</color>
+    <color name="background">#F5F5F5</color>
+    <color name="background_dark">#FAFAFA</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#000000</color>
+    <color name="text_secondary">#4A4A4A</color>
+    <color name="text_tertiary">#9E9E9E</color>
+    <color name="text_on_dark">#FFFFFF</color>
+    <color name="text_on_accent">#FFFFFF</color>
+    
+    <!-- Card Colors -->
+    <color name="card_background">#FFFFFF</color>
+    <color name="card_elevated">#FFFFFF</color>
+    <color name="card_stroke">#E0E0E0</color>
+    
+    <!-- Button Colors -->
+    <color name="button_primary">#000000</color>
+    <color name="button_primary_pressed">#1A1A1A</color>
+    <color name="button_secondary">#E0E0E0</color>
+    <color name="button_secondary_pressed">#BDBDBD</color>
+    
+    <!-- NFC Transfer Colors -->
+    <color name="nfc_ready">#00BCD4</color>
+    <color name="nfc_transferring">#FF9800</color>
+    <color name="nfc_success">#4CAF50</color>
+    <color name="nfc_error">#F44336</color>
+    
+    <!-- Legacy Android Colors (for compatibility) -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -7,13 +68,4 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="primary">#2196F3</color>
-    <color name="primary_dark">#1976D2</color>
-    <color name="accent">#03DAC5</color>
-    <color name="success">#4CAF50</color>
-    <color name="error">#F44336</color>
-    <color name="background">#F5F5F5</color>
-    <color name="card_background">#FFFFFF</color>
-    <color name="text_primary">#212121</color>
-    <color name="text_secondary">#757575</color>
 </resources>
