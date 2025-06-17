@@ -29,12 +29,11 @@ class DirectNfcClient(
         )
         
         // Commands
-        private const val CMD_GET_BT_ADDRESS: Byte = 0x01
         private const val CMD_START_DIRECT_TRANSFER: Byte = 0x02
         private const val CMD_GET_CHUNK: Byte = 0x03
         private const val CMD_TRANSFER_COMPLETE: Byte = 0x04
         
-        // Maximum APDU command size (minus header)
+        // Maximum APDU command size (minus header and Lc)
         private const val MAX_COMMAND_DATA_SIZE = 240
     }
     
@@ -43,11 +42,11 @@ class DirectNfcClient(
     
     fun setTokenToSend(token: Token) {
         tokenToSend = token
-        Log.d(TAG, "Token set for direct NFC transfer: ${token.name}")
+        Log.d(TAG, "Token set for NFC transfer: ${token.name}")
     }
     
     override fun onTagDiscovered(tag: Tag?) {
-        Log.d(TAG, "✅ NFC TAG DISCOVERED for direct transfer!")
+        Log.d(TAG, "✅ NFC TAG DISCOVERED for transfer!")
         tag?.let { processDirectTransfer(it) }
     }
     
@@ -75,8 +74,8 @@ class DirectNfcClient(
                 Log.d(TAG, "Connecting to IsoDep...")
                 isoDep.connect()
                 
-                // Set a longer timeout for the connection (default is often too short)
-                isoDep.timeout = 5000 // 5 seconds
+                // Set a longer timeout for the connection
+                isoDep.timeout = 10000 // 10 seconds
                 
                 Log.d(TAG, "IsoDep connected successfully with timeout: ${isoDep.timeout}ms")
                 
@@ -91,30 +90,8 @@ class DirectNfcClient(
                 }
                 Log.d(TAG, "SELECT AID successful")
                 
-                // Step 2: Check transfer mode
-                val getModeCommand = byteArrayOf(0x00.toByte(), CMD_GET_BT_ADDRESS, 0x00.toByte(), 0x00.toByte())
-                val modeResponse = isoDep.transceive(getModeCommand)
-                if (!isResponseOK(modeResponse)) {
-                    Log.e(TAG, "Get mode failed")
-                    withContext(Dispatchers.Main) {
-                        onError("Failed to get transfer mode")
-                    }
-                    return@launch
-                }
-                
-                val mode = String(modeResponse.sliceArray(0 until modeResponse.size - 2), StandardCharsets.UTF_8)
-                Log.d(TAG, "Transfer mode: $mode")
-                
-                // Step 3: Send token via direct NFC if receiver supports it
-                if (mode == "DIRECT_READY" || mode == "BLE_READY") {
-                    Log.d(TAG, "Receiver ready for direct NFC transfer")
-                    sendTokenDirectly(isoDep, token)
-                } else {
-                    Log.e(TAG, "Receiver not ready for transfer: $mode")
-                    withContext(Dispatchers.Main) {
-                        onError("Receiver not ready for transfer")
-                    }
-                }
+                // Step 2: Send token directly
+                sendTokenDirectly(isoDep, token)
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Exception in direct transfer", e)
@@ -167,7 +144,7 @@ class DirectNfcClient(
                     byteArrayOf(0x00.toByte(), CMD_GET_CHUNK, 0x00.toByte(), 0x00.toByte(), lc) + chunk
                 }
                 
-                Log.d(TAG, "Sending chunk ${i + 1}/${chunks.size}, size: ${chunk.size}")
+                Log.d(TAG, "Sending chunk ${i + 1}/${chunks.size}, command size: ${command.size}, chunk size: ${chunk.size}")
                 
                 // Check if still connected
                 if (!isoDep.isConnected) {
@@ -180,7 +157,7 @@ class DirectNfcClient(
                 
                 val response = isoDep.transceive(command)
                 if (!isResponseOK(response)) {
-                    Log.e(TAG, "Failed to send chunk ${i + 1}")
+                    Log.e(TAG, "Failed to send chunk ${i + 1}, response: ${response.toHexString()}")
                     withContext(Dispatchers.Main) {
                         onError("Failed to send data chunk ${i + 1}")
                     }
@@ -195,7 +172,7 @@ class DirectNfcClient(
             val completeResponse = isoDep.transceive(completeCommand)
             
             if (isResponseOK(completeResponse)) {
-                Log.d(TAG, "✅ Direct NFC transfer completed successfully!")
+                Log.d(TAG, "✅ NFC transfer completed successfully!")
                 withContext(Dispatchers.Main) {
                     onTransferComplete()
                 }
@@ -218,5 +195,9 @@ class DirectNfcClient(
         return response.size >= 2 && 
                response[response.size - 2] == 0x90.toByte() && 
                response[response.size - 1] == 0x00.toByte()
+    }
+    
+    private fun ByteArray.toHexString(): String {
+        return joinToString("") { "%02x".format(it) }
     }
 }

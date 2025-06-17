@@ -18,10 +18,8 @@ import com.unicity.nfcwalletdemo.databinding.ActivityReceiveBinding
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
-import com.unicity.nfcwalletdemo.ble.BleServer
 import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorService
 import com.unicity.nfcwalletdemo.ui.wallet.MainActivity
-import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 
@@ -30,7 +28,6 @@ class ReceiveActivity : AppCompatActivity() {
     private val viewModel: ReceiveViewModel by viewModels()
     
     private var nfcAdapter: NfcAdapter? = null
-    private var bleServer: BleServer? = null
     private val gson = Gson()
     
     private val tokenReceiver = object : BroadcastReceiver() {
@@ -40,10 +37,10 @@ class ReceiveActivity : AppCompatActivity() {
                 if (tokenJson != null) {
                     try {
                         val token = gson.fromJson(tokenJson, Token::class.java)
-                        Log.d("ReceiveActivity", "Token received via direct NFC: ${token.name}")
+                        Log.d("ReceiveActivity", "Token received via NFC: ${token.name}")
                         runOnUiThread {
                             viewModel.onTokenReceived(token)
-                            Toast.makeText(this@ReceiveActivity, "Token received via direct NFC: ${token.name}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
                         }
                     } catch (e: Exception) {
                         Log.e("ReceiveActivity", "Error parsing received token", e)
@@ -63,19 +60,14 @@ class ReceiveActivity : AppCompatActivity() {
         observeViewModel()
         
         // Check if this was auto-started from NFC tap
-        val autoStarted = intent.getBooleanExtra("auto_started", false)
+        val autoStarted = intent.getBooleanExtra("auto_started", true)
         if (autoStarted) {
             Log.d("ReceiveActivity", "Auto-started from NFC tap")
             viewModel.onNfcDetected()
             
-            // Try BLE first, but fallback to direct NFC if needed
-            if (isBleSupported()) {
-                startBleServer()
-            } else {
-                Log.d("ReceiveActivity", "BLE not supported on this device, using direct NFC")
-                setDirectNfcMode()
-                Toast.makeText(this, "Ready for direct NFC transfer", Toast.LENGTH_SHORT).show()
-            }
+            // Set to direct NFC mode
+            HostCardEmulatorService.currentTransferMode = HostCardEmulatorService.TRANSFER_MODE_DIRECT
+            Toast.makeText(this, "Ready to receive token", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -150,7 +142,7 @@ class ReceiveActivity : AppCompatActivity() {
         super.onResume()
         // HCE is automatically enabled when the service is declared in manifest
         
-        // Register broadcast receiver for direct NFC transfers
+        // Register broadcast receiver for NFC transfers
         val filter = IntentFilter("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
         registerReceiver(tokenReceiver, filter)
     }
@@ -167,69 +159,6 @@ class ReceiveActivity : AppCompatActivity() {
         }
     }
     
-    private fun startBleServer() {
-        Log.d("ReceiveActivity", "Starting BLE server for token reception...")
-        
-        // Check Bluetooth permissions first
-        if (!PermissionUtils.hasBluetoothPermissions(this)) {
-            Log.e("ReceiveActivity", "Missing Bluetooth permissions")
-            PermissionUtils.requestBluetoothPermissions(this)
-            return
-        }
-        
-        bleServer = BleServer(
-            context = this,
-            onConnectionRequest = { deviceName ->
-                Log.d("ReceiveActivity", "BLE connection request from: $deviceName")
-                runOnUiThread {
-                    viewModel.onConnectionRequest(deviceName)
-                }
-            },
-            onGenerateAddress = {
-                Log.d("ReceiveActivity", "Generating address...")
-                viewModel.generateAddress()
-            },
-            onTokenReceived = { token ->
-                Log.d("ReceiveActivity", "Token received via BLE: ${token.name}")
-                runOnUiThread {
-                    viewModel.onTokenReceived(token)
-                    Toast.makeText(this, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
-                }
-            },
-            onError = { error ->
-                Log.e("ReceiveActivity", "BLE server error: $error")
-                runOnUiThread {
-                    if (error.contains("not supported")) {
-                        // BLE not supported - switch to direct NFC mode
-                        Log.d("ReceiveActivity", "BLE not supported, switching to direct NFC mode")
-                        Toast.makeText(this@ReceiveActivity, 
-                            "Ready for direct NFC transfer", 
-                            Toast.LENGTH_SHORT).show()
-                        // Set HCE service to direct transfer mode
-                        setDirectNfcMode()
-                    } else {
-                        viewModel.onError(error)
-                    }
-                }
-            }
-        )
-        
-        try {
-            Log.d("ReceiveActivity", "Starting BLE server...")
-            bleServer?.start()
-            Log.d("ReceiveActivity", "BLE server started successfully")
-            // Set BLE mode in HCE service
-            HostCardEmulatorService.currentTransferMode = HostCardEmulatorService.TRANSFER_MODE_BLE
-            Toast.makeText(this, "Ready to receive tokens via BLE", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Log.e("ReceiveActivity", "Exception starting BLE server", e)
-            runOnUiThread {
-                viewModel.onError("Failed to start BLE server: ${e.message}")
-            }
-        }
-    }
-    
-    
     private fun navigateToMainActivity() {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
@@ -244,42 +173,9 @@ class ReceiveActivity : AppCompatActivity() {
         // The activity is not recreated, so HCE continues
     }
     
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        
-        when (requestCode) {
-            PermissionUtils.BLUETOOTH_PERMISSION_REQUEST_CODE -> {
-                if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-                    Toast.makeText(this, "Bluetooth permissions granted", Toast.LENGTH_SHORT).show()
-                    startBleServer()
-                } else {
-                    Toast.makeText(this, "Bluetooth permissions are required for receiving tokens", Toast.LENGTH_LONG).show()
-                    finish()
-                }
-            }
-        }
-    }
-    
-    
     override fun onDestroy() {
         super.onDestroy()
-        bleServer?.stop()
-    }
-    
-    private fun isBleSupported(): Boolean {
-        return packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_BLUETOOTH_LE) &&
-               PermissionUtils.hasBluetoothPermissions(this) &&
-               PermissionUtils.isBluetoothEnabled()
-    }
-    
-    private fun setDirectNfcMode() {
-        Log.d("ReceiveActivity", "Setting HCE service to direct NFC mode")
-        // Set the transfer mode in the HCE service
+        // Reset transfer mode when leaving
         HostCardEmulatorService.currentTransferMode = HostCardEmulatorService.TRANSFER_MODE_DIRECT
-        viewModel.onNfcDetected()
     }
 }

@@ -40,13 +40,11 @@ class HostCardEmulatorService : HostApduService() {
         private val SW_ERROR = byteArrayOf(0x6F.toByte(), 0x00.toByte())
         
         // Commands
-        private const val CMD_GET_BT_ADDRESS: Byte = 0x01
         private const val CMD_START_DIRECT_TRANSFER: Byte = 0x02
         private const val CMD_GET_CHUNK: Byte = 0x03
         private const val CMD_TRANSFER_COMPLETE: Byte = 0x04
         
         // Transfer modes
-        const val TRANSFER_MODE_BLE = "BLE_READY"
         const val TRANSFER_MODE_DIRECT = "DIRECT_READY"
         
         // Maximum APDU response size (minus status word)
@@ -70,10 +68,6 @@ class HostCardEmulatorService : HostApduService() {
         
         // Check command type
         when (commandApdu[1]) {
-            CMD_GET_BT_ADDRESS -> {
-                Log.d(TAG, "GET_BT_ADDRESS command received")
-                return getTransferModeResponse()
-            }
             CMD_START_DIRECT_TRANSFER -> {
                 Log.d(TAG, "START_DIRECT_TRANSFER command received")
                 return startDirectTransfer(commandApdu)
@@ -104,19 +98,6 @@ class HostCardEmulatorService : HostApduService() {
         return true
     }
     
-    private fun getTransferModeResponse(): ByteArray {
-        try {
-            // Use the static transfer mode set by the activity
-            val mode = currentTransferMode
-            Log.d(TAG, "Sending transfer mode: $mode")
-            
-            val modeBytes = mode.toByteArray(StandardCharsets.UTF_8)
-            return modeBytes + SW_OK
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending transfer mode", e)
-            return SW_ERROR
-        }
-    }
     
     private var directTransferBuffer = ByteArrayOutputStream()
     private var expectedTotalSize = 0
