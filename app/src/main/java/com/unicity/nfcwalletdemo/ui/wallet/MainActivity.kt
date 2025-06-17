@@ -5,6 +5,8 @@ import android.content.res.Configuration
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -17,8 +19,10 @@ import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.nfc.NfcReaderCallback
-import com.unicity.nfcwalletdemo.bluetooth.BluetoothClient
+import com.unicity.nfcwalletdemo.nfc.DirectNfcClient
+import com.unicity.nfcwalletdemo.ble.BleClient
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -119,7 +123,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "Received ready signal: $readySignal")
                 runOnUiThread {
                     disableNfcTransfer()
-                    startBluetoothDiscovery(readySignal, token)
+                    startBleConnection(readySignal, token)
                 }
             },
             onError = { error ->
@@ -143,70 +147,132 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun startBluetoothDiscovery(readySignal: String, token: Token) {
-        Log.d("MainActivity", "Starting Bluetooth discovery with signal: $readySignal")
+    private fun startBleConnection(readySignal: String, token: Token) {
+        Log.d("MainActivity", "Starting hybrid transfer (BLE → NFC fallback)")
         
         // Check Bluetooth permissions first
         if (!PermissionUtils.hasBluetoothPermissions(this)) {
-            Log.e("MainActivity", "Missing Bluetooth permissions")
-            PermissionUtils.requestBluetoothPermissions(this)
-            tokenAdapter.setTransferring(token, false)
-            currentTransferringToken = null
-            Toast.makeText(this, "Bluetooth permissions required", Toast.LENGTH_SHORT).show()
+            Log.e("MainActivity", "Missing Bluetooth permissions, falling back to direct NFC")
+            startDirectNfcTransfer(token)
             return
         }
         
         // Check if Bluetooth is enabled
         if (!PermissionUtils.isBluetoothEnabled()) {
-            Log.e("MainActivity", "Bluetooth is not enabled")
-            PermissionUtils.openBluetoothSettings(this)
-            tokenAdapter.setTransferring(token, false)
-            currentTransferringToken = null
-            Toast.makeText(this, "Please enable Bluetooth", Toast.LENGTH_SHORT).show()
+            Log.e("MainActivity", "Bluetooth disabled, falling back to direct NFC")
+            startDirectNfcTransfer(token)
             return
         }
         
-        val bluetoothClient = BluetoothClient(
+        // Try BLE first with timeout
+        var bleCompleted = false
+        
+        val bleClient = BleClient(
             context = this,
             onConnected = {
-                Log.d("MainActivity", "Bluetooth connected")
-                // UI already shows transferring state
+                Log.d("MainActivity", "✅ BLE connected")
+                bleCompleted = true
             },
             onAddressReceived = { address ->
-                Log.d("MainActivity", "Address received: $address")
-                // Continue with transfer process
+                Log.d("MainActivity", "BLE address received: $address")
             },
             onTransferComplete = {
-                Log.d("MainActivity", "Bluetooth transfer completed")
+                Log.d("MainActivity", "✅ BLE transfer completed")
+                bleCompleted = true
                 runOnUiThread {
                     tokenAdapter.setTransferring(token, false)
                     currentTransferringToken = null
-                    // Remove token from wallet
                     viewModel.removeToken(token.id)
-                    Toast.makeText(this@MainActivity, "Token sent successfully!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Token sent via BLE!", Toast.LENGTH_SHORT).show()
                 }
             },
             onError = { error ->
-                Log.e("MainActivity", "Bluetooth transfer error: $error")
-                runOnUiThread {
-                    tokenAdapter.setTransferring(token, false)
-                    currentTransferringToken = null
-                    Toast.makeText(this@MainActivity, "Transfer failed: $error", Toast.LENGTH_SHORT).show()
+                Log.e("MainActivity", "BLE error: $error")
+                if (!bleCompleted) {
+                    bleCompleted = true
+                    runOnUiThread {
+                        Log.d("MainActivity", "Falling back to direct NFC transfer")
+                        Toast.makeText(this@MainActivity, "BLE failed, trying direct NFC...", Toast.LENGTH_SHORT).show()
+                        startDirectNfcTransfer(token)
+                    }
                 }
             }
         )
         
+        // Set timeout for BLE - if no connection in 3 seconds, fall back to NFC
+        lifecycleScope.launch {
+            delay(3000) // 3 second timeout
+            if (!bleCompleted) {
+                bleCompleted = true
+                Log.d("MainActivity", "BLE timeout, falling back to direct NFC")
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "BLE timeout, using direct NFC...", Toast.LENGTH_SHORT).show()
+                    startDirectNfcTransfer(token)
+                }
+            }
+        }
+        
         lifecycleScope.launch {
             try {
-                bluetoothClient.discoverAndConnect(readySignal, token)
+                bleClient.scanAndConnect(readySignal, token)
             } catch (e: Exception) {
-                Log.e("MainActivity", "Exception in Bluetooth discovery", e)
+                if (!bleCompleted) {
+                    bleCompleted = true
+                    Log.e("MainActivity", "BLE exception, falling back to NFC: ${e.message}")
+                    runOnUiThread {
+                        startDirectNfcTransfer(token)
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun startDirectNfcTransfer(token: Token) {
+        Log.d("MainActivity", "Starting direct NFC transfer for token: ${token.name}")
+        Toast.makeText(this, "Keep phones together for direct NFC transfer...", Toast.LENGTH_LONG).show()
+        
+        val directNfcClient = DirectNfcClient(
+            onTransferComplete = {
+                Log.d("MainActivity", "✅ Direct NFC transfer completed")
                 runOnUiThread {
                     tokenAdapter.setTransferring(token, false)
                     currentTransferringToken = null
-                    Toast.makeText(this@MainActivity, "Discovery failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    viewModel.removeToken(token.id)
+                    disableNfcTransfer()
+                    Toast.makeText(this@MainActivity, "Token sent via direct NFC!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onError = { error ->
+                Log.e("MainActivity", "Direct NFC transfer error: $error")
+                runOnUiThread {
+                    tokenAdapter.setTransferring(token, false)
+                    currentTransferringToken = null
+                    disableNfcTransfer()
+                    Toast.makeText(this@MainActivity, "Direct NFC failed: $error", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onProgress = { current, total ->
+                Log.d("MainActivity", "Direct NFC progress: $current/$total chunks")
+                runOnUiThread {
+                    // Update transfer status to show progress
+                    val progressMsg = if (total > 1) "Sending chunk $current/$total..." else "Sending..."
+                    // We could update the UI here to show progress
                 }
             }
+        )
+        
+        directNfcClient.setTokenToSend(token)
+        
+        // Enable NFC reader mode for direct transfer
+        val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
+        try {
+            nfcAdapter!!.enableReaderMode(this, directNfcClient, flags, null)
+            Log.d("MainActivity", "NFC reader mode enabled for direct transfer")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to enable NFC reader mode for direct transfer", e)
+            tokenAdapter.setTransferring(token, false)
+            currentTransferringToken = null
+            Toast.makeText(this, "Failed to enable NFC: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -278,5 +344,32 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+    
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(com.unicity.nfcwalletdemo.R.menu.main_menu, menu)
+        return true
+    }
+    
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            com.unicity.nfcwalletdemo.R.id.action_reset_wallet -> {
+                showResetWalletDialog()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+    
+    private fun showResetWalletDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Reset Wallet")
+            .setMessage("This will clear all tokens and create demo tokens with different sizes (50KB, 100KB, 250KB, 500KB). Are you sure?")
+            .setPositiveButton("Reset") { _, _ ->
+                viewModel.clearWalletAndCreateDemo()
+                Toast.makeText(this, "Wallet reset with demo tokens", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }

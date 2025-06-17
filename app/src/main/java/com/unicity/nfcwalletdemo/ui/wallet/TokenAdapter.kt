@@ -90,6 +90,7 @@ class TokenAdapter(
             } else {
                 "Address: Not set"
             }
+            binding.tvTokenSize.text = "Size: ${token.getFormattedSize()}"
             
             // Set up expansion/collapse
             binding.layoutExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE

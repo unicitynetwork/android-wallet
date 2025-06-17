@@ -40,19 +40,83 @@ class WalletRepository(context: Context) {
     }
     
     private fun createNewWallet() {
+        val baseTime = System.currentTimeMillis()
         val newWallet = Wallet(
             id = UUID.randomUUID().toString(),
             name = "My Wallet",
-            address = "unicity_wallet_${System.currentTimeMillis()}",
-            tokens = listOf(
-                Token(
-                    name = "Community Coin",
-                    type = "Community Coin",
-                    unicityAddress = "unicity_token_demo_${System.currentTimeMillis()}"
-                )
-            )
+            address = "unicity_wallet_${baseTime}",
+            tokens = createDemoTokens(baseTime)
         )
         saveWallet(newWallet)
+    }
+    
+    private fun createDemoTokens(baseTime: Long): List<Token> {
+        return listOf(
+            Token(
+                name = "Small Token",
+                type = "Demo Token",
+                timestamp = baseTime,
+                unicityAddress = "unicity_small_${UUID.randomUUID().toString().take(8)}",
+                jsonData = generateTokenData(50 * 1024), // 50KB
+                sizeBytes = 50 * 1024
+            ),
+            Token(
+                name = "Medium Token",
+                type = "Demo Token", 
+                timestamp = baseTime + 1,
+                unicityAddress = "unicity_medium_${UUID.randomUUID().toString().take(8)}",
+                jsonData = generateTokenData(100 * 1024), // 100KB
+                sizeBytes = 100 * 1024
+            ),
+            Token(
+                name = "Large Token",
+                type = "Demo Token",
+                timestamp = baseTime + 2,
+                unicityAddress = "unicity_large_${UUID.randomUUID().toString().take(8)}",
+                jsonData = generateTokenData(250 * 1024), // 250KB
+                sizeBytes = 250 * 1024
+            ),
+            Token(
+                name = "XL Token",
+                type = "Demo Token",
+                timestamp = baseTime + 3,
+                unicityAddress = "unicity_xl_${UUID.randomUUID().toString().take(8)}",
+                jsonData = generateTokenData(500 * 1024), // 500KB
+                sizeBytes = 500 * 1024
+            )
+        )
+    }
+    
+    private fun generateTokenData(targetSizeBytes: Int): String {
+        // Generate JSON data that approximates the target size
+        val baseJson = """
+        {
+            "version": "1.0",
+            "type": "demo_token",
+            "metadata": {
+                "description": "Demo token for testing transfer speeds",
+                "features": ["transferable", "divisible", "mintable"]
+            },
+            "data": "
+        """.trimIndent()
+        
+        val suffix = """
+        "
+        }
+        """.trimIndent()
+        
+        // Calculate how much padding we need
+        val baseSize = baseJson.length + suffix.length
+        val paddingSize = maxOf(0, targetSizeBytes - baseSize)
+        
+        // Generate padding data (base64-like string)
+        val padding = StringBuilder()
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        repeat(paddingSize) {
+            padding.append(chars.random())
+        }
+        
+        return baseJson + padding.toString() + suffix
     }
     
     private fun saveWallet(wallet: Wallet) {
@@ -92,5 +156,12 @@ class WalletRepository(context: Context) {
         delay(300)
         // Force reload from storage
         loadWallet()
+    }
+    
+    fun clearWalletAndCreateDemo() {
+        // Clear existing wallet data
+        sharedPreferences.edit().clear().apply()
+        // Create new wallet with demo tokens
+        createNewWallet()
     }
 }

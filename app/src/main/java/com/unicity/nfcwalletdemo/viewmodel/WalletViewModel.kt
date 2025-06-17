@@ -37,4 +37,8 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun refreshTokens() {
         repository.refreshTokens()
     }
+    
+    fun clearWalletAndCreateDemo() {
+        repository.clearWalletAndCreateDemo()
+    }
 }

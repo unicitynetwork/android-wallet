@@ -10,5 +10,14 @@ data class Token(
     val type: String,
     val timestamp: Long = System.currentTimeMillis(),
     val unicityAddress: String? = null,
-    val jsonData: String? = null
-)
+    val jsonData: String? = null,
+    val sizeBytes: Int = 0
+) {
+    fun getFormattedSize(): String {
+        return when {
+            sizeBytes < 1024 -> "${sizeBytes}B"
+            sizeBytes < 1024 * 1024 -> "${sizeBytes / 1024}KB"
+            else -> "${sizeBytes / (1024 * 1024)}MB"
+        }
+    }
+}
