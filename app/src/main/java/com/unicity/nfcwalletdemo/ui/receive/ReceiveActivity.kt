@@ -144,7 +144,14 @@ class ReceiveActivity : AppCompatActivity() {
         
         // Register broadcast receiver for NFC transfers
         val filter = IntentFilter("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
-        registerReceiver(tokenReceiver, filter)
+        
+        // For Android 14+ (API 34+), we need to specify RECEIVER_NOT_EXPORTED
+        // since this is an internal app broadcast
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            registerReceiver(tokenReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(tokenReceiver, filter)
+        }
     }
     
     override fun onPause() {
