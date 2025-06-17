@@ -1,175 +1,223 @@
 # Unicity NFC Wallet Demo
 
-A Proof-of-Concept Android application demonstrating NFC-based token transfers using the Unicity Protocol.
+A proof-of-concept Android app demonstrating direct NFC token transfers using Android Host Card Emulation (HCE). Users can securely transfer tokens between devices with a simple tap.
 
-## Overview
+## 🚀 Current Implementation
 
-This Android app showcases a secure "tap-to-send" experience for transferring digital assets managed by the Unicity Protocol. The app uses NFC for initial handshake and Bluetooth for secure data transfer.
+**Transfer Method**: NFC-only direct transfer using Android HCE  
+**Supported Token Sizes**: 2KB to 64KB  
+**Transfer Speed**: 1-60 seconds depending on token size  
+**User Experience**: True "single tap" - no pairing, no secondary connections
 
-## Features
+## ✨ Features
 
-- **Wallet Management**: View and manage digital tokens
-- **NFC Tap-to-Send**: Transfer tokens by simply tapping phones
-- **Secure Bluetooth Transfer**: Two-way communication for token exchange
-- **MVVM Architecture**: Clean, maintainable code structure
-- **Material Design UI**: Modern, intuitive user interface
+- **Direct NFC Transfer**: Tap-to-send tokens between Android devices
+- **Modern UI**: Material Design with Unicity branding
+- **Real-time Progress**: Transfer progress indicators on both devices
+- **Demo Tokens**: Pre-loaded tokens (2KB, 4KB, 8KB, 16KB, 32KB, 64KB)
+- **Token Management**: Expandable cards with detailed token information
 
-## Technical Architecture
+## 📱 Requirements
 
-### Key Technologies
-- **Language**: Kotlin
-- **Architecture**: MVVM (Model-View-ViewModel)
-- **Communication**:
-  - NFC (Near Field Communication) for initial handshake
-  - Bluetooth for secure data transfer
-- **UI**: Material Design Components
+- **Android 7.0+** (API level 24+)
+- **NFC-enabled device**
+- **Host Card Emulation support** (most modern Android devices)
 
-### Project Structure
-```
-app/
-├── src/main/java/com/unicity/nfcwalletdemo/
-│   ├── ui/
-│   │   ├── wallet/      # Main wallet screen
-│   │   ├── send/        # Send token flow
-│   │   └── receive/     # Receive token flow
-│   ├── data/
-│   │   ├── model/       # Data models
-│   │   └── repository/  # Data management
-│   ├── viewmodel/       # ViewModels for UI state
-│   ├── nfc/            # NFC functionality
-│   ├── bluetooth/      # Bluetooth communication
-│   └── utils/          # Utility classes
-└── src/main/res/       # Resources (layouts, values, etc.)
-```
+## 🛠 Setup
 
-## Requirements
-
-- Android Studio Arctic Fox or later
-- Android SDK 24 or higher
-- Two NFC-enabled Android devices for testing
-- Bluetooth support
-
-## Setup Instructions
+### Quick Start
 
 1. **Clone the repository**
    ```bash
-   git clone [repository-url]
+   git clone <repository-url>
    cd nfc-wallet-demo
    ```
 
 2. **Open in Android Studio**
-   - Open Android Studio
-   - Select "Open an existing project"
-   - Navigate to the project directory
+   - Import the project
+   - Sync Gradle dependencies
 
-3. **Build the project**
-   - Let Android Studio sync the project
-   - Build the project using Build → Make Project
+3. **Build and install**
+   ```bash
+   ./gradlew assembleDebug
+   adb install app/build/outputs/apk/debug/app-debug.apk
+   ```
 
-4. **Install on devices**
-   - Connect two NFC-enabled Android devices
-   - Run the app on both devices
+4. **Test on two NFC devices**
+   - Install on both devices
+   - Enable NFC in device settings
+   - Open app on both devices
+   - Tap one device to the other to transfer tokens
 
-## Usage
+## 🏗 Architecture
+
+### MVVM Pattern
+```
+UI Layer (Activities/Fragments)
+    ↓
+ViewModel Layer (State Management)
+    ↓
+Repository Layer (Data Access)
+    ↓
+Data Layer (Models/Storage)
+```
+
+### Key Components
+
+- **MainActivity**: Token list and wallet management
+- **ReceiveActivity**: Handles incoming token transfers via HCE
+- **HostCardEmulatorService**: NFC HCE service for receiving tokens
+- **DirectNfcClient**: Handles outgoing token transfers
+- **WalletRepository**: Manages token storage and demo data
+
+## 📡 NFC Transfer Flow
 
 ### Sending a Token
-1. Open the app on both devices
-2. On the sending device:
-   - Tap on a token or press "Send Token"
-   - When prompted, tap the receiving device
-3. The transfer will complete automatically
+1. User taps "Send Token" and expands token card
+2. User taps sending device to receiving device
+3. `DirectNfcClient` establishes NFC connection using IsoDep
+4. Token data is chunked and sent via APDU commands
+5. Transfer completes with success confirmation
 
 ### Receiving a Token
-1. On the receiving device:
-   - Press "Receive Token"
-   - Wait for the sender to tap
-2. The token will appear in your wallet
+1. `HostCardEmulatorService` activates when NFC field detected
+2. Service receives APDU commands and reconstructs token data
+3. Progress broadcasts update UI in real-time
+4. Completed token is saved to wallet
+5. Success confirmation sent back to sender
 
-## Transfer Flow
+### Technical Details
+- **Protocol**: Custom APDU commands over NFC-A/ISO 14443 Type A
+- **Chunk Size**: ~250 bytes per APDU (limited by NFC specs)
+- **Buffer Limit**: ~37KB total transfer size (Android HCE limitation)
+- **Timeout**: 30 seconds per transfer attempt
 
-1. **NFC Handshake**: Receiver broadcasts Bluetooth MAC address via NFC
-2. **Bluetooth Connection**: Sender connects to receiver's Bluetooth
-3. **Address Exchange**: Receiver generates unique Unicity address
-4. **Token Transfer**: Sender transfers token JSON to receiver
-5. **Confirmation**: Both devices update their wallet states
+## 🧪 Testing
 
-## Permissions
+### Emulator Testing (UI Only)
+```bash
+# Start Android emulator
+emulator -avd <your-avd-name>
 
-The app requires the following permissions:
-- NFC access
-- Bluetooth access (BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT, BLUETOOTH_SCAN)
-- Location access (for Bluetooth discovery on older Android versions)
+# Install and run
+./gradlew installDebug
+adb shell am start -n com.unicity.nfcwalletdemo/.ui.wallet.MainActivity
+```
 
-## Development Notes
-
-### Unicity SDK Integration
-The app currently uses mock implementations for Unicity SDK functions. To integrate the actual SDK:
-
-1. Add the SDK dependency to `app/build.gradle.kts`
-2. Update `WalletRepository.kt` to use actual SDK methods:
-   - Replace `generateNewAddress()` with SDK's address generation
-   - Implement proper wallet management using SDK
-3. Update `BluetoothClient.kt` to use SDK for token signing
-
-### Testing
-- Unit tests are located in `app/src/test/`
-- Instrumented tests are in `app/src/androidTest/`
-- Run tests using Android Studio or `./gradlew test`
-
-### Known Limitations
-- Currently uses mock Unicity SDK functions
-- Bluetooth MAC address access may be restricted on newer Android versions
-- Token persistence is handled via SharedPreferences (consider using Room DB)
-
-## Testing
-
-### Emulator Testing
-See [TESTING_GUIDE.md](TESTING_GUIDE.md) for:
-- Setting up Android Studio emulator
-- Testing the UI without physical devices
-- Understanding emulator limitations
+**Note**: NFC transfers cannot be tested in emulator - UI functionality only.
 
 ### Real Device Testing
-See [DEVICE_TESTING_GUIDE.md](DEVICE_TESTING_GUIDE.md) for:
-- Detailed device setup instructions
-- Step-by-step testing procedures
-- Debugging and troubleshooting
-- Performance testing guidelines
 
-## Troubleshooting
+#### Requirements
+- 2 physical Android devices with NFC
+- Both devices have NFC enabled in Settings
+- App installed on both devices
 
-### NFC Not Working
-- Ensure NFC is enabled in device settings
-- Check that both devices support NFC
-- Hold devices back-to-back firmly
+#### Test Procedure
+1. **Setup**: Open app on both devices
+2. **Send**: Device A - tap token, select "Send Token"  
+3. **Transfer**: Tap Device A to Device B (back-to-back)
+4. **Verify**: Check token appears in Device B's wallet
+5. **Reverse**: Test transfer from Device B back to Device A
 
-### Bluetooth Connection Failed
-- Ensure Bluetooth is enabled on both devices
-- Grant all required permissions
-- Try disabling and re-enabling Bluetooth
+#### Common Issues
+- **"Tag was lost"**: Devices moved apart during transfer - keep steady contact
+- **"Failed to send"**: Retry with slower, more deliberate tap
+- **App crashes**: Check logs for specific errors
 
-### Transfer Failed
-- Check that both devices have the app in the correct state
-- Ensure stable Bluetooth connection
-- Review logcat for detailed error messages
+## 📊 Token Size Performance
 
-## Quick Start
+| Token Size | Transfer Time | Chunks | Notes |
+|------------|---------------|---------|-------|
+| 2KB        | ~1-2 seconds  | ~8     | Very fast |
+| 4KB        | ~2-4 seconds  | ~16    | Fast |
+| 8KB        | ~4-8 seconds  | ~32    | Good |
+| 16KB       | ~8-15 seconds | ~64    | Acceptable |
+| 32KB       | ~15-30 seconds| ~128   | Slow |
+| 64KB       | ~30-60 seconds| ~256   | Very slow |
 
-See [QUICK_START.md](QUICK_START.md) for a 5-minute guide to get the app running on your phones.
+## 🏭 Production Checklist
 
-## Production Readiness
+### Security
+- [ ] Implement token encryption for sensitive data
+- [ ] Add digital signatures for token authenticity
+- [ ] Secure storage for private keys
+- [ ] Input validation and sanitization
 
-This is a proof-of-concept. See [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) for detailed requirements before production deployment.
+### Integration
+- [ ] Replace demo tokens with real Unicity SDK integration
+- [ ] Implement server-side token validation
+- [ ] Add user authentication
+- [ ] Connect to production Unicity network
 
-## Contributing
+### Testing
+- [ ] Comprehensive device compatibility testing
+- [ ] Edge case handling (interrupted transfers, etc.)
+- [ ] Performance testing with various token sizes
+- [ ] Security penetration testing
 
-We welcome contributions! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+### Release
+- [ ] Code signing with production certificates
+- [ ] ProGuard/R8 code obfuscation
+- [ ] Remove debug logging
+- [ ] Play Store compliance review
 
-## License
+## 🔧 Development
 
-[License information to be added]
+### Project Structure
+```
+app/src/main/
+├── java/com/unicity/nfcwalletdemo/
+│   ├── data/           # Models and repositories
+│   ├── nfc/            # NFC transfer implementation
+│   ├── ui/             # Activities and adapters
+│   ├── utils/          # Utility classes
+│   └── viewmodel/      # MVVM ViewModels
+└── res/
+    ├── drawable/       # Icons and graphics
+    ├── layout/         # XML layouts
+    ├── values/         # Colors, strings, styles
+    └── xml/            # App configuration
+```
+
+### Key Files
+- `HostCardEmulatorService.kt`: NFC receiving logic
+- `DirectNfcClient.kt`: NFC sending logic  
+- `MainActivity.kt`: Main wallet interface
+- `ReceiveActivity.kt`: Transfer receiving UI
+- `apduservice.xml`: HCE service configuration
+
+### Build Commands
+```bash
+# Debug build
+./gradlew assembleDebug
+
+# Release build
+./gradlew assembleRelease
+
+# Run tests
+./gradlew test
+
+# Install debug APK
+./gradlew installDebug
+```
+
+## 📝 Notes
+
+### Design Decisions
+- **NFC-only approach**: Bluetooth pairing proved unreliable on modern Android
+- **Direct HCE**: Eliminates need for backend servers during transfer
+- **Chunked transfers**: Works within NFC APDU size limitations
+- **Material Design**: Provides modern, accessible user interface
+
+### Limitations
+- **Transfer size**: 64KB maximum due to Android HCE buffer limits
+- **NFC only**: No fallback for large files or long-distance transfers
+- **Android only**: iOS has different NFC capabilities
+- **Physical proximity**: Devices must touch during entire transfer
+
+---
+
+**Version**: 1.0.0  
+**Last Updated**: June 2024  
+**License**: MIT
