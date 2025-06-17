@@ -146,6 +146,9 @@ class HostCardEmulatorService : HostApduService() {
                 
                 directTransferBuffer.write(dataToWrite)
                 Log.d(TAG, "Received first chunk: ${dataToWrite.size} bytes, total buffered: ${directTransferBuffer.size()}")
+                
+                // Broadcast progress update
+                broadcastProgress(directTransferBuffer.size(), expectedTotalSize)
             }
             
             // Check if this is a single-chunk transfer
@@ -190,6 +193,9 @@ class HostCardEmulatorService : HostApduService() {
             directTransferBuffer.write(dataToWrite)
             
             Log.d(TAG, "Received chunk: ${dataToWrite.size} bytes, total buffered: ${directTransferBuffer.size()}/$expectedTotalSize")
+            
+            // Broadcast progress update
+            broadcastProgress(directTransferBuffer.size(), expectedTotalSize)
             
             // Check if we have received exactly all data
             if (directTransferBuffer.size() == expectedTotalSize) {
@@ -300,6 +306,19 @@ class HostCardEmulatorService : HostApduService() {
     
     private fun ByteArray.toHexString(): String {
         return joinToString("") { "%02x".format(it) }
+    }
+    
+    private fun broadcastProgress(currentBytes: Int, totalBytes: Int) {
+        try {
+            val intent = Intent("com.unicity.nfcwalletdemo.TRANSFER_PROGRESS").apply {
+                putExtra("current_bytes", currentBytes)
+                putExtra("total_bytes", totalBytes)
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error broadcasting progress", e)
+        }
     }
     
     private fun startReceiveActivity() {

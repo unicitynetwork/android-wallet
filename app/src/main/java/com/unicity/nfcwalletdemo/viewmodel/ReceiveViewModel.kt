@@ -58,7 +58,22 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     }
     
     fun onNfcDetected() {
-        updateStatus(ReceiveState.RECEIVING_TOKEN, "NFC detected. Receiving token...")
+        updateStatus(ReceiveState.RECEIVING_TOKEN, "NFC detected. Ready to receive...")
+    }
+    
+    fun onReceivingProgress(currentBytes: Int, totalBytes: Int) {
+        if (totalBytes > 0) {
+            val progressPercent = (currentBytes * 100) / totalBytes
+            val progressText = "Receiving ${formatBytes(currentBytes)} / ${formatBytes(totalBytes)} ($progressPercent%)"
+            _statusMessage.value = progressText
+        }
+    }
+    
+    private fun formatBytes(bytes: Int): String {
+        return when {
+            bytes >= 1024 -> "${bytes / 1024}KB"
+            else -> "${bytes}B"
+        }
     }
     
     fun setReadyToReceive() {

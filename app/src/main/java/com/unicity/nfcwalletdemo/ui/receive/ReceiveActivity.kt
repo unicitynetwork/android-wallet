@@ -32,18 +32,27 @@ class ReceiveActivity : AppCompatActivity() {
     
     private val tokenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.unicity.nfcwalletdemo.TOKEN_RECEIVED") {
-                val tokenJson = intent.getStringExtra("token_json")
-                if (tokenJson != null) {
-                    try {
-                        val token = gson.fromJson(tokenJson, Token::class.java)
-                        Log.d("ReceiveActivity", "Token received via NFC: ${token.name}")
-                        runOnUiThread {
-                            viewModel.onTokenReceived(token)
-                            Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+            when (intent?.action) {
+                "com.unicity.nfcwalletdemo.TOKEN_RECEIVED" -> {
+                    val tokenJson = intent.getStringExtra("token_json")
+                    if (tokenJson != null) {
+                        try {
+                            val token = gson.fromJson(tokenJson, Token::class.java)
+                            Log.d("ReceiveActivity", "Token received via NFC: ${token.name}")
+                            runOnUiThread {
+                                viewModel.onTokenReceived(token)
+                                Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Log.e("ReceiveActivity", "Error parsing received token", e)
                         }
-                    } catch (e: Exception) {
-                        Log.e("ReceiveActivity", "Error parsing received token", e)
+                    }
+                }
+                "com.unicity.nfcwalletdemo.TRANSFER_PROGRESS" -> {
+                    val currentBytes = intent.getIntExtra("current_bytes", 0)
+                    val totalBytes = intent.getIntExtra("total_bytes", 0)
+                    runOnUiThread {
+                        viewModel.onReceivingProgress(currentBytes, totalBytes)
                     }
                 }
             }
@@ -142,8 +151,11 @@ class ReceiveActivity : AppCompatActivity() {
         super.onResume()
         // HCE is automatically enabled when the service is declared in manifest
         
-        // Register broadcast receiver for NFC transfers
-        val filter = IntentFilter("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
+        // Register broadcast receiver for NFC transfers and progress
+        val filter = IntentFilter().apply {
+            addAction("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
+            addAction("com.unicity.nfcwalletdemo.TRANSFER_PROGRESS")
+        }
         
         // For Android 14+ (API 34+), we need to specify RECEIVER_NOT_EXPORTED
         // since this is an internal app broadcast
@@ -179,6 +191,7 @@ class ReceiveActivity : AppCompatActivity() {
         Log.d("ReceiveActivity", "Configuration changed - maintaining HCE state")
         // The activity is not recreated, so HCE continues
     }
+    
     
     override fun onDestroy() {
         super.onDestroy()
