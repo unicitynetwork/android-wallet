@@ -49,6 +49,9 @@ class HostCardEmulatorService : HostApduService() {
         
         // Maximum APDU response size (minus status word)
         private const val MAX_APDU_SIZE = 240
+        
+        // Android HCE seems to have an internal buffer limit around 37KB
+        private const val MAX_TRANSFER_SIZE = 36000 // Stay below 37KB limit
     }
     
     override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray {
@@ -101,6 +104,7 @@ class HostCardEmulatorService : HostApduService() {
     
     private var directTransferBuffer = ByteArrayOutputStream()
     private var expectedTotalSize = 0
+    private var isProcessingToken = false
     
     private fun startDirectTransfer(commandApdu: ByteArray): ByteArray {
         try {
@@ -118,6 +122,12 @@ class HostCardEmulatorService : HostApduService() {
                                (commandApdu[dataStart + 1].toInt() and 0xFF)
             Log.d(TAG, "Starting direct transfer, expecting total size: $expectedTotalSize bytes")
             
+            // Check if transfer size exceeds Android HCE limits
+            if (expectedTotalSize > MAX_TRANSFER_SIZE) {
+                Log.e(TAG, "Transfer size $expectedTotalSize exceeds maximum allowed $MAX_TRANSFER_SIZE")
+                return SW_ERROR
+            }
+            
             // Reset buffer for new transfer
             directTransferBuffer = ByteArrayOutputStream()
             
@@ -125,12 +135,21 @@ class HostCardEmulatorService : HostApduService() {
             val firstChunkDataStart = dataStart + 2
             if (commandApdu.size > firstChunkDataStart) {
                 val firstChunkData = commandApdu.sliceArray(firstChunkDataStart until commandApdu.size)
-                directTransferBuffer.write(firstChunkData)
-                Log.d(TAG, "Received first chunk: ${firstChunkData.size} bytes, total buffered: ${directTransferBuffer.size()}")
+                
+                // Only accept data up to expected size
+                val dataToWrite = if (firstChunkData.size > expectedTotalSize) {
+                    Log.w(TAG, "First chunk size ${firstChunkData.size} exceeds total size $expectedTotalSize, truncating")
+                    firstChunkData.sliceArray(0 until expectedTotalSize)
+                } else {
+                    firstChunkData
+                }
+                
+                directTransferBuffer.write(dataToWrite)
+                Log.d(TAG, "Received first chunk: ${dataToWrite.size} bytes, total buffered: ${directTransferBuffer.size()}")
             }
             
             // Check if this is a single-chunk transfer
-            if (directTransferBuffer.size() >= expectedTotalSize) {
+            if (directTransferBuffer.size() == expectedTotalSize) {
                 return processCompleteToken()
             }
             
@@ -151,12 +170,29 @@ class HostCardEmulatorService : HostApduService() {
             }
             
             val chunkData = commandApdu.sliceArray(5 until commandApdu.size)
-            directTransferBuffer.write(chunkData)
             
-            Log.d(TAG, "Received chunk: ${chunkData.size} bytes, total buffered: ${directTransferBuffer.size()}/$expectedTotalSize")
+            // Calculate how much data we still need
+            val remainingBytes = expectedTotalSize - directTransferBuffer.size()
             
-            // Check if we have received all data
-            if (directTransferBuffer.size() >= expectedTotalSize) {
+            if (remainingBytes <= 0) {
+                Log.e(TAG, "Received extra data after transfer should be complete")
+                return SW_ERROR
+            }
+            
+            // Only accept the data we need
+            val dataToWrite = if (chunkData.size > remainingBytes) {
+                Log.w(TAG, "Chunk size ${chunkData.size} exceeds remaining bytes $remainingBytes, truncating")
+                chunkData.sliceArray(0 until remainingBytes)
+            } else {
+                chunkData
+            }
+            
+            directTransferBuffer.write(dataToWrite)
+            
+            Log.d(TAG, "Received chunk: ${dataToWrite.size} bytes, total buffered: ${directTransferBuffer.size()}/$expectedTotalSize")
+            
+            // Check if we have received exactly all data
+            if (directTransferBuffer.size() == expectedTotalSize) {
                 return processCompleteToken()
             }
             
@@ -168,6 +204,12 @@ class HostCardEmulatorService : HostApduService() {
     }
     
     private fun processCompleteToken(): ByteArray {
+        if (isProcessingToken) {
+            Log.w(TAG, "Already processing token, ignoring duplicate call")
+            return SW_OK
+        }
+        
+        isProcessingToken = true
         try {
             val tokenJson = String(directTransferBuffer.toByteArray(), StandardCharsets.UTF_8)
             Log.d(TAG, "Processing complete token, JSON size: ${tokenJson.length}")
@@ -178,11 +220,17 @@ class HostCardEmulatorService : HostApduService() {
             
             Log.d(TAG, "Token successfully received via direct NFC: ${receivedToken.name}")
             
-            // Notify ReceiveActivity
-            val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
-                putExtra("token_json", tokenJson)
+            // Notify ReceiveActivity with local broadcast for safety
+            try {
+                val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
+                    putExtra("token_json", tokenJson)
+                    setPackage(packageName) // Restrict to our app only
+                }
+                sendBroadcast(intent)
+                Log.d(TAG, "Broadcast sent for received token")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending broadcast", e)
             }
-            sendBroadcast(intent)
             
             // Reset state for next transfer
             directTransferBuffer = ByteArrayOutputStream()
@@ -195,12 +243,30 @@ class HostCardEmulatorService : HostApduService() {
             directTransferBuffer = ByteArrayOutputStream()
             expectedTotalSize = 0
             return SW_ERROR
+        } finally {
+            isProcessingToken = false
         }
     }
     
     private fun completeTransfer(): ByteArray {
         try {
-            Log.d(TAG, "Transfer completion acknowledged")
+            Log.d(TAG, "Transfer completion request received")
+            
+            // Make sure we have received all the data
+            if (directTransferBuffer.size() < expectedTotalSize) {
+                Log.e(TAG, "Transfer incomplete: received ${directTransferBuffer.size()} of $expectedTotalSize bytes")
+                return SW_ERROR
+            }
+            
+            // Process the token if not already done
+            if (directTransferBuffer.size() > 0) {
+                val result = processCompleteToken()
+                if (result.contentEquals(SW_ERROR)) {
+                    return SW_ERROR
+                }
+            }
+            
+            Log.d(TAG, "Transfer completed and token processed successfully")
             
             // Reset any remaining state
             pendingToken = null

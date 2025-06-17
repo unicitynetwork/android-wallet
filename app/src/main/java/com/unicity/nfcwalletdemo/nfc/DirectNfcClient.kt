@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.nio.charset.StandardCharsets
 
 class DirectNfcClient(
@@ -34,7 +35,12 @@ class DirectNfcClient(
         private const val CMD_TRANSFER_COMPLETE: Byte = 0x04
         
         // Maximum APDU command size (minus header and Lc)
-        private const val MAX_COMMAND_DATA_SIZE = 240
+        // Using smaller chunks for better stability across different devices
+        // Some devices have issues with larger APDUs
+        private const val MAX_COMMAND_DATA_SIZE = 200
+        
+        // Android HCE has a transfer size limit around 37KB
+        private const val MAX_TRANSFER_SIZE = 36000
     }
     
     private var tokenToSend: Token? = null
@@ -75,9 +81,15 @@ class DirectNfcClient(
                 isoDep.connect()
                 
                 // Set a longer timeout for the connection
-                isoDep.timeout = 10000 // 10 seconds
+                isoDep.timeout = 30000 // 30 seconds - much longer for stability
                 
-                Log.d(TAG, "IsoDep connected successfully with timeout: ${isoDep.timeout}ms")
+                // Check if extended length APDUs are supported
+                val maxTransceiveLength = isoDep.maxTransceiveLength
+                Log.d(TAG, "IsoDep connected successfully")
+                Log.d(TAG, "Timeout: ${isoDep.timeout}ms, Max transceive length: $maxTransceiveLength")
+                
+                // If extended APDUs are supported, we could use larger chunks
+                // But for compatibility, we'll stick with standard APDU size
                 
                 // Step 1: Select AID
                 val selectResponse = isoDep.transceive(SELECT_AID)
@@ -117,13 +129,51 @@ class DirectNfcClient(
             
             Log.d(TAG, "Sending token: ${token.name}, JSON size: ${tokenBytes.size} bytes")
             
-            // Split into chunks if necessary
-            val chunks = tokenBytes.toList().chunked(MAX_COMMAND_DATA_SIZE)
+            // Check if token exceeds NFC transfer limits
+            if (tokenBytes.size > MAX_TRANSFER_SIZE) {
+                Log.e(TAG, "Token size ${tokenBytes.size} exceeds maximum NFC transfer size $MAX_TRANSFER_SIZE")
+                withContext(Dispatchers.Main) {
+                    onError("Token too large for NFC transfer (${tokenBytes.size} bytes)")
+                }
+                return
+            }
+            
+            // Split into chunks - first chunk is smaller to accommodate size bytes
+            val chunks = mutableListOf<ByteArray>()
+            val firstChunkDataSize = MAX_COMMAND_DATA_SIZE - 2 // Account for 2-byte size header
+            
+            if (tokenBytes.size <= firstChunkDataSize) {
+                // Everything fits in first chunk
+                chunks.add(tokenBytes)
+            } else {
+                // First chunk - exactly firstChunkDataSize bytes
+                chunks.add(tokenBytes.sliceArray(0 until firstChunkDataSize))
+                var offset = firstChunkDataSize
+                
+                // Remaining chunks - each exactly MAX_COMMAND_DATA_SIZE bytes (except last)
+                while (offset < tokenBytes.size) {
+                    val remaining = tokenBytes.size - offset
+                    val chunkSize = minOf(remaining, MAX_COMMAND_DATA_SIZE)
+                    chunks.add(tokenBytes.sliceArray(offset until offset + chunkSize))
+                    offset += chunkSize
+                }
+            }
+            
+            // Verify total size matches
+            val totalChunkData = chunks.sumOf { it.size }
+            if (totalChunkData != tokenBytes.size) {
+                Log.e(TAG, "Chunk size mismatch: expected ${tokenBytes.size}, got $totalChunkData")
+                withContext(Dispatchers.Main) {
+                    onError("Internal chunking error")
+                }
+                return
+            }
+            
             Log.d(TAG, "Token split into ${chunks.size} chunks")
             
             // Send each chunk
             for (i in chunks.indices) {
-                val chunk = chunks[i].toByteArray()
+                val chunk = chunks[i]
                 
                 withContext(Dispatchers.Main) {
                     onProgress(i + 1, chunks.size)
@@ -155,7 +205,16 @@ class DirectNfcClient(
                     return
                 }
                 
-                val response = isoDep.transceive(command)
+                val response = try {
+                    isoDep.transceive(command)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send chunk ${i + 1}: ${e.message}")
+                    withContext(Dispatchers.Main) {
+                        onError("Connection lost during transfer")
+                    }
+                    return
+                }
+                
                 if (!isResponseOK(response)) {
                     Log.e(TAG, "Failed to send chunk ${i + 1}, response: ${response.toHexString()}")
                     withContext(Dispatchers.Main) {
@@ -165,19 +224,25 @@ class DirectNfcClient(
                 }
                 
                 Log.d(TAG, "Chunk ${i + 1} sent successfully")
+                
+                // Small delay between chunks to prevent overwhelming the receiver
+                if (i < chunks.size - 1) {
+                    delay(50) // 50ms delay between chunks
+                }
             }
             
-            // Complete transfer
+            // Complete transfer - wait for receiver to confirm
+            Log.d(TAG, "All chunks sent, waiting for receiver confirmation...")
             val completeCommand = byteArrayOf(0x00.toByte(), CMD_TRANSFER_COMPLETE, 0x00.toByte(), 0x00.toByte())
             val completeResponse = isoDep.transceive(completeCommand)
             
             if (isResponseOK(completeResponse)) {
-                Log.d(TAG, "✅ NFC transfer completed successfully!")
+                Log.d(TAG, "✅ Receiver confirmed - NFC transfer completed successfully!")
                 withContext(Dispatchers.Main) {
                     onTransferComplete()
                 }
             } else {
-                Log.e(TAG, "Transfer completion failed")
+                Log.e(TAG, "Transfer completion failed - receiver did not confirm")
                 withContext(Dispatchers.Main) {
                     onError("Failed to complete transfer")
                 }

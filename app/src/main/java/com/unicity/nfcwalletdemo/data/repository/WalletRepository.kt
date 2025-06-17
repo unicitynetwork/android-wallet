@@ -51,40 +51,26 @@ class WalletRepository(context: Context) {
     }
     
     private fun createDemoTokens(baseTime: Long): List<Token> {
-        return listOf(
-            Token(
-                name = "Small Token",
-                type = "Demo Token",
-                timestamp = baseTime,
-                unicityAddress = "unicity_small_${UUID.randomUUID().toString().take(8)}",
-                jsonData = generateTokenData(50 * 1024), // 50KB
-                sizeBytes = 50 * 1024
-            ),
-            Token(
-                name = "Medium Token",
-                type = "Demo Token", 
-                timestamp = baseTime + 1,
-                unicityAddress = "unicity_medium_${UUID.randomUUID().toString().take(8)}",
-                jsonData = generateTokenData(100 * 1024), // 100KB
-                sizeBytes = 100 * 1024
-            ),
-            Token(
-                name = "Large Token",
-                type = "Demo Token",
-                timestamp = baseTime + 2,
-                unicityAddress = "unicity_large_${UUID.randomUUID().toString().take(8)}",
-                jsonData = generateTokenData(250 * 1024), // 250KB
-                sizeBytes = 250 * 1024
-            ),
-            Token(
-                name = "XL Token",
-                type = "Demo Token",
-                timestamp = baseTime + 3,
-                unicityAddress = "unicity_xl_${UUID.randomUUID().toString().take(8)}",
-                jsonData = generateTokenData(500 * 1024), // 500KB
-                sizeBytes = 500 * 1024
-            )
+        val tokenSizes = listOf(
+            2 * 1024,  // 2KB
+            4 * 1024,  // 4KB
+            8 * 1024,  // 8KB
+            16 * 1024, // 16KB
+            32 * 1024, // 32KB
+            64 * 1024  // 64KB
         )
+        
+        return tokenSizes.mapIndexed { index, sizeBytes ->
+            val sizeKB = sizeBytes / 1024
+            Token(
+                name = "${sizeKB}KB Token",
+                type = "Demo Token",
+                timestamp = baseTime + index,
+                unicityAddress = "unicity_${sizeKB}kb_${UUID.randomUUID().toString().take(8)}",
+                jsonData = generateTokenData(sizeBytes),
+                sizeBytes = sizeBytes
+            )
+        }
     }
     
     private fun generateTokenData(targetSizeBytes: Int): String {

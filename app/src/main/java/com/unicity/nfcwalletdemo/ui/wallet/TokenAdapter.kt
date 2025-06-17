@@ -20,6 +20,7 @@ class TokenAdapter(
     
     private var expandedTokenId: String? = null
     private var transferringTokenId: String? = null
+    private val transferProgress = mutableMapOf<String, Pair<Int, Int>>() // tokenId -> (current, total)
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TokenViewHolder {
         val binding = ItemTokenBinding.inflate(
@@ -57,6 +58,15 @@ class TokenAdapter(
     
     fun setTransferring(token: Token, isTransferring: Boolean) {
         transferringTokenId = if (isTransferring) token.id else null
+        if (!isTransferring) {
+            transferProgress.remove(token.id)
+        }
+        val index = currentList.indexOfFirst { it.id == token.id }
+        if (index != -1) notifyItemChanged(index)
+    }
+    
+    fun updateTransferProgress(token: Token, current: Int, total: Int) {
+        transferProgress[token.id] = Pair(current, total)
         val index = currentList.indexOfFirst { it.id == token.id }
         if (index != -1) notifyItemChanged(index)
     }
@@ -107,7 +117,19 @@ class TokenAdapter(
                 binding.layoutTransferStatus.visibility = View.VISIBLE
                 binding.btnSend.visibility = View.GONE
                 binding.btnCancel.visibility = View.VISIBLE
-                binding.tvTransferStatus.text = "Waiting for tap..."
+                
+                // Check if we have progress info
+                val progress = transferProgress[token.id]
+                if (progress != null) {
+                    val (current, total) = progress
+                    binding.tvTransferStatus.text = if (total > 1) {
+                        "Sending chunk $current/$total..."
+                    } else {
+                        "Sending..."
+                    }
+                } else {
+                    binding.tvTransferStatus.text = "Waiting for tap..."
+                }
             } else {
                 binding.layoutTransferStatus.visibility = View.GONE
                 binding.btnSend.visibility = View.VISIBLE

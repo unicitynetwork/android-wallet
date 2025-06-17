@@ -117,8 +117,10 @@ class MainActivity : AppCompatActivity() {
             onProgress = { current, total ->
                 Log.d("MainActivity", "NFC progress: $current/$total chunks")
                 runOnUiThread {
-                    val progressMsg = if (total > 1) "Sending chunk $current/$total..." else "Sending..."
-                    Toast.makeText(this@MainActivity, progressMsg, Toast.LENGTH_SHORT).show()
+                    if (total > 1) {
+                        // Update the token's transfer status in the adapter to show progress
+                        tokenAdapter.updateTransferProgress(token, current, total)
+                    }
                 }
             }
         )
@@ -219,7 +221,7 @@ class MainActivity : AppCompatActivity() {
     private fun showResetWalletDialog() {
         AlertDialog.Builder(this)
             .setTitle("Reset Wallet")
-            .setMessage("This will clear all tokens and create demo tokens with different sizes (50KB, 100KB, 250KB, 500KB). Are you sure?")
+            .setMessage("This will clear all tokens and create demo tokens with sizes: 2KB, 4KB, 8KB, 16KB, 32KB, 64KB. Are you sure?")
             .setPositiveButton("Reset") { _, _ ->
                 viewModel.clearWalletAndCreateDemo()
                 Toast.makeText(this, "Wallet reset with demo tokens", Toast.LENGTH_SHORT).show()
