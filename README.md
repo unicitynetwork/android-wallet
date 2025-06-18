@@ -1,27 +1,31 @@
 # Unicity NFC Wallet Demo
 
-A proof-of-concept Android app demonstrating direct NFC token transfers using Android Host Card Emulation (HCE). Users can securely transfer tokens between devices with a simple tap.
+A fully functional Android wallet app for the Unicity Protocol, demonstrating real cryptographic token transfers via NFC using Android Host Card Emulation (HCE). Users can mint, store, and transfer genuine Unicity tokens between devices with a simple tap.
 
 ## 🚀 Current Implementation
 
+**Token Type**: Real Unicity Protocol tokens with cryptographic signatures  
 **Transfer Method**: NFC-only direct transfer using Android HCE  
-**Supported Token Sizes**: 2KB to 64KB  
+**SDK Integration**: Full Unicity State Transition SDK with blockchain commitments  
 **Transfer Speed**: 1-60 seconds depending on token size  
 **User Experience**: True "single tap" - no pairing, no secondary connections
 
 ## ✨ Features
 
+- **Real Unicity Tokens**: Mint genuine cryptographic tokens on the Unicity Protocol
 - **Direct NFC Transfer**: Tap-to-send tokens between Android devices
+- **Blockchain Integration**: Tokens are committed to the Unicity test network
 - **Modern UI**: Material Design with Unicity branding
 - **Real-time Progress**: Transfer progress indicators on both devices
-- **Demo Tokens**: Pre-loaded tokens (2KB, 4KB, 8KB, 16KB, 32KB, 64KB)
 - **Token Management**: Expandable cards with detailed token information
+- **Custom Token Minting**: Create tokens with custom names, amounts, and data
 
 ## 📱 Requirements
 
 - **Android 7.0+** (API level 24+)
 - **NFC-enabled device**
 - **Host Card Emulation support** (most modern Android devices)
+- **Internet connection** (for blockchain commitments)
 
 ## 🛠 Setup
 
@@ -68,7 +72,8 @@ Data Layer (Models/Storage)
 - **ReceiveActivity**: Handles incoming token transfers via HCE
 - **HostCardEmulatorService**: NFC HCE service for receiving tokens
 - **DirectNfcClient**: Handles outgoing token transfers
-- **WalletRepository**: Manages token storage and demo data
+- **WalletRepository**: Manages token storage and Unicity SDK integration
+- **UnicitySdkService**: WebView-based bridge to Unicity State Transition SDK
 
 ## 📡 NFC Transfer Flow
 
@@ -115,10 +120,11 @@ adb shell am start -n com.unicity.nfcwalletdemo/.ui.wallet.MainActivity
 
 #### Test Procedure
 1. **Setup**: Open app on both devices
-2. **Send**: Device A - tap token, select "Send Token"  
-3. **Transfer**: Tap Device A to Device B (back-to-back)
-4. **Verify**: Check token appears in Device B's wallet
-5. **Reverse**: Test transfer from Device B back to Device A
+2. **Mint**: Use menu → "Mint a Token" to create a real Unicity token
+3. **Send**: Device A - tap token, select "Send Token"  
+4. **Transfer**: Tap Device A to Device B (back-to-back)
+5. **Verify**: Check token appears in Device B's wallet
+6. **Reverse**: Test transfer from Device B back to Device A
 
 #### Common Issues
 - **"Tag was lost"**: Devices moved apart during transfer - keep steady contact
@@ -136,19 +142,35 @@ adb shell am start -n com.unicity.nfcwalletdemo/.ui.wallet.MainActivity
 | 32KB       | ~15-30 seconds| ~128   | Slow |
 | 64KB       | ~30-60 seconds| ~256   | Very slow |
 
+## 🔐 Unicity SDK Integration
+
+The app uses the Unicity State Transition SDK to create real cryptographic tokens:
+
+### Token Minting Process
+1. **Generate Identity**: Creates cryptographic key pair (secret + nonce)
+2. **Submit to Network**: Sends mint transaction to Unicity aggregator
+3. **Wait for Proof**: Receives blockchain inclusion proof
+4. **Create Token**: Constructs complete token with transaction history
+
+### Key SDK Features Used
+- **SigningService**: Cryptographic signatures for token ownership
+- **MaskedPredicate**: Privacy-preserving ownership predicates
+- **StateTransitionClient**: Blockchain interaction
+- **InclusionProof**: Proof of blockchain commitment
+
 ## 🏭 Production Checklist
 
 ### Security
-- [ ] Implement token encryption for sensitive data
-- [ ] Add digital signatures for token authenticity
+- [x] Digital signatures via Unicity SDK
+- [x] Cryptographic token authentication
 - [ ] Secure storage for private keys
 - [ ] Input validation and sanitization
 
 ### Integration
-- [ ] Replace demo tokens with real Unicity SDK integration
-- [ ] Implement server-side token validation
-- [ ] Add user authentication
-- [ ] Connect to production Unicity network
+- [x] Real Unicity SDK integration
+- [x] Connection to Unicity test network
+- [ ] Production network credentials
+- [ ] User authentication system
 
 ### Testing
 - [ ] Comprehensive device compatibility testing
@@ -170,9 +192,14 @@ app/src/main/
 ├── java/com/unicity/nfcwalletdemo/
 │   ├── data/           # Models and repositories
 │   ├── nfc/            # NFC transfer implementation
+│   ├── sdk/            # Unicity SDK integration
 │   ├── ui/             # Activities and adapters
 │   ├── utils/          # Utility classes
 │   └── viewmodel/      # MVVM ViewModels
+├── assets/
+│   ├── bridge.html     # WebView bridge HTML
+│   ├── unicity-sdk.js  # Unicity SDK bundle
+│   └── unicity-wrapper.js # SDK JavaScript wrapper
 └── res/
     ├── drawable/       # Icons and graphics
     ├── layout/         # XML layouts
@@ -185,6 +212,8 @@ app/src/main/
 - `DirectNfcClient.kt`: NFC sending logic  
 - `MainActivity.kt`: Main wallet interface
 - `ReceiveActivity.kt`: Transfer receiving UI
+- `UnicitySdkService.kt`: SDK WebView bridge
+- `unicity-wrapper.js`: SDK JavaScript interface
 - `apduservice.xml`: HCE service configuration
 
 ### Build Commands
@@ -205,6 +234,8 @@ app/src/main/
 ## 📝 Notes
 
 ### Design Decisions
+- **Real Unicity tokens**: Full SDK integration for genuine blockchain tokens
+- **WebView bridge**: Enables TypeScript SDK usage in Android app
 - **NFC-only approach**: Bluetooth pairing proved unreliable on modern Android
 - **Direct HCE**: Eliminates need for backend servers during transfer
 - **Chunked transfers**: Works within NFC APDU size limitations
@@ -218,6 +249,18 @@ app/src/main/
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: June 2024  
+## 🚦 Getting Started
+
+1. **Install the app** on two NFC-enabled Android devices
+2. **Open the app** - it starts with an empty wallet
+3. **Mint a token** using the menu (⋮) → "Mint a Token"
+   - Enter a name (e.g., "My First Token")
+   - Set amount (default: 100)
+   - Add custom data (optional)
+4. **Wait for minting** - includes blockchain commitment (~2-5 seconds)
+5. **Transfer tokens** by tapping devices together
+6. **Reset wallet** using menu → "Reset Wallet" if needed
+
+**Version**: 2.0.0  
+**Last Updated**: June 2025  
 **License**: MIT
