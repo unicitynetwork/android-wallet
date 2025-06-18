@@ -20,6 +20,9 @@ import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorService
 import com.unicity.nfcwalletdemo.ui.wallet.MainActivity
+import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
+import com.unicity.nfcwalletdemo.sdk.UnicityToken
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 
@@ -29,6 +32,7 @@ class ReceiveActivity : AppCompatActivity() {
     
     private var nfcAdapter: NfcAdapter? = null
     private val gson = Gson()
+    private lateinit var sdkService: UnicitySdkService
     
     private val tokenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -37,14 +41,27 @@ class ReceiveActivity : AppCompatActivity() {
                     val tokenJson = intent.getStringExtra("token_json")
                     if (tokenJson != null) {
                         try {
-                            val token = gson.fromJson(tokenJson, Token::class.java)
-                            Log.d("ReceiveActivity", "Token received via NFC: ${token.name}")
-                            runOnUiThread {
-                                viewModel.onTokenReceived(token)
-                                Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+                            // Check if this is a Unicity transfer or demo token
+                            val transferData = gson.fromJson(tokenJson, Map::class.java)
+                            if (transferData["type"] == "unicity_transfer") {
+                                // Handle Unicity transfer
+                                lifecycleScope.launch {
+                                    handleUnicityTransfer(transferData)
+                                }
+                            } else {
+                                // Handle demo token
+                                val token = gson.fromJson(tokenJson, Token::class.java)
+                                Log.d("ReceiveActivity", "Demo token received via NFC: ${token.name}")
+                                runOnUiThread {
+                                    viewModel.onTokenReceived(token)
+                                    Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         } catch (e: Exception) {
                             Log.e("ReceiveActivity", "Error parsing received token", e)
+                            runOnUiThread {
+                                Toast.makeText(this@ReceiveActivity, "Error receiving token: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
                         }
                     }
                 }
@@ -63,6 +80,8 @@ class ReceiveActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityReceiveBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        sdkService = UnicitySdkService(this)
         
         setupActionBar()
         setupNfc()
@@ -202,9 +221,88 @@ class ReceiveActivity : AppCompatActivity() {
     }
     
     
+    private suspend fun handleUnicityTransfer(transferData: Map<*, *>) {
+        try {
+            Log.d("ReceiveActivity", "Processing Unicity transfer")
+            
+            runOnUiThread {
+                binding.tvStatus.text = "Processing Unicity transfer..."
+                viewModel.onReceivingToken()
+            }
+            
+            // Extract transfer details
+            val tokenName = transferData["token_name"] as? String ?: "Unknown Token"
+            val transferJson = transferData["transfer_data"] as? String ?: ""
+            val receiverIdentityJson = transferData["receiver_identity"] as? String ?: ""
+            
+            if (transferJson.isEmpty() || receiverIdentityJson.isEmpty()) {
+                throw Exception("Invalid transfer data")
+            }
+            
+            // Use SDK to finish the transfer
+            val result = finishUnicityTransfer(receiverIdentityJson, transferJson)
+            
+            // Create Token object from the result
+            val finalToken = createTokenFromUnicityResult(tokenName, result)
+            
+            Log.d("ReceiveActivity", "Unicity token processed: ${finalToken.name}")
+            
+            runOnUiThread {
+                viewModel.onTokenReceived(finalToken)
+                Toast.makeText(this@ReceiveActivity, "Unicity token received: ${finalToken.name}", Toast.LENGTH_SHORT).show()
+            }
+            
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Failed to process Unicity transfer", e)
+            runOnUiThread {
+                viewModel.onError("Failed to process Unicity transfer: ${e.message}")
+                Toast.makeText(this@ReceiveActivity, "Failed to receive Unicity token: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    private suspend fun finishUnicityTransfer(receiverIdentityJson: String, transferJson: String): String {
+        return kotlin.coroutines.suspendCoroutine { continuation ->
+            sdkService.finishTransfer(receiverIdentityJson, transferJson) { result ->
+                result.onSuccess { resultJson ->
+                    continuation.resumeWith(Result.success(resultJson))
+                }
+                result.onFailure { error ->
+                    continuation.resumeWith(Result.failure(error))
+                }
+            }
+        }
+    }
+    
+    private fun createTokenFromUnicityResult(tokenName: String, resultJson: String): Token {
+        return try {
+            // Parse the result and create a Token object
+            val resultData = gson.fromJson(resultJson, Map::class.java)
+            
+            Token(
+                name = tokenName,
+                type = "Unicity Token",
+                unicityAddress = "unicity_received_${System.currentTimeMillis()}",
+                jsonData = resultJson,
+                sizeBytes = resultJson.length
+            )
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Failed to create token from result", e)
+            // Create fallback token
+            Token(
+                name = tokenName,
+                type = "Unicity Token (Error)",
+                unicityAddress = "error_${System.currentTimeMillis()}",
+                jsonData = "{\"error\": \"${e.message}\"}",
+                sizeBytes = 0
+            )
+        }
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         // Reset transfer mode when leaving
         HostCardEmulatorService.currentTransferMode = HostCardEmulatorService.TRANSFER_MODE_DIRECT
+        sdkService.destroy()
     }
 }

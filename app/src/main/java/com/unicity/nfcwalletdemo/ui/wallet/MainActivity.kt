@@ -82,6 +82,25 @@ class MainActivity : AppCompatActivity() {
                 binding.rvTokens.visibility = if (tokens.isEmpty()) View.GONE else View.VISIBLE
             }
         }
+        
+        lifecycleScope.launch {
+            viewModel.isLoading.collect { isLoading ->
+                binding.swipeRefresh.isRefreshing = isLoading
+            }
+        }
+        
+        lifecycleScope.launch {
+            viewModel.mintResult.collect { result ->
+                result?.let {
+                    if (it.isSuccess) {
+                        Toast.makeText(this@MainActivity, "Token minted successfully!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Failed to mint token: ${it.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                    }
+                    viewModel.clearMintResult()
+                }
+            }
+        }
     }
     
     private fun refreshWallet() {
@@ -105,6 +124,7 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Tap phones together to transfer token", Toast.LENGTH_SHORT).show()
         
         val directNfcClient = DirectNfcClient(
+            sdkService = viewModel.getSdkService(),
             onTransferComplete = {
                 Log.d("MainActivity", "✅ NFC transfer completed")
                 runOnUiThread {
@@ -221,20 +241,71 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             com.unicity.nfcwalletdemo.R.id.action_reset_wallet -> {
-                showResetWalletDialog()
+                showWalletOptionsDialog()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
     
+    private fun showWalletOptionsDialog() {
+        val options = arrayOf(
+            "Create Real Unicity Tokens",
+            "Create Demo Tokens", 
+            "Reset Wallet (Clear All)"
+        )
+        
+        AlertDialog.Builder(this)
+            .setTitle("Wallet Options")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showCreateRealTokensDialog()
+                    1 -> showResetWalletDialog()
+                    2 -> showClearWalletDialog()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun showCreateRealTokensDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Create Real Unicity Tokens")
+            .setMessage("This will create real cryptographic tokens using the Unicity SDK. This may take a few moments.")
+            .setPositiveButton("Create") { _, _ ->
+                viewModel.createSampleTokens()
+                Toast.makeText(this, "Creating real Unicity tokens...", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
     private fun showResetWalletDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Reset Wallet")
+            .setTitle("Create Demo Tokens")
             .setMessage("This will clear all tokens and create demo tokens with sizes: 2KB, 4KB, 8KB, 16KB, 32KB, 64KB. Are you sure?")
-            .setPositiveButton("Reset") { _, _ ->
+            .setPositiveButton("Create") { _, _ ->
                 viewModel.clearWalletAndCreateDemo()
                 Toast.makeText(this, "Wallet reset with demo tokens", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun showClearWalletDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Clear Wallet")
+            .setMessage("This will remove all tokens from your wallet. Are you sure?")
+            .setPositiveButton("Clear") { _, _ ->
+                // Clear wallet without creating new tokens
+                viewModel.clearWalletAndCreateDemo()
+                // Remove the demo tokens that were just created
+                lifecycleScope.launch {
+                    viewModel.tokens.value.forEach { token ->
+                        viewModel.removeToken(token.id)
+                    }
+                }
+                Toast.makeText(this, "Wallet cleared", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()

@@ -6,14 +6,20 @@ import android.nfc.tech.IsoDep
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
+import com.unicity.nfcwalletdemo.sdk.UnicityTransferResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.nio.charset.StandardCharsets
+import kotlin.coroutines.resume
 
 class DirectNfcClient(
+    private val sdkService: UnicitySdkService,
     private val onTransferComplete: () -> Unit,
     private val onError: (String) -> Unit,
     private val onProgress: (Int, Int) -> Unit // current chunk, total chunks
@@ -123,9 +129,16 @@ class DirectNfcClient(
     
     private suspend fun sendTokenDirectly(isoDep: IsoDep, token: Token) {
         try {
-            // Convert token to JSON bytes
-            val tokenJson = gson.toJson(token)
-            val tokenBytes = tokenJson.toByteArray(StandardCharsets.UTF_8)
+            // Check if this is a real Unicity token or demo token
+            val transferData = if (token.type == "Unicity Token" && token.jsonData != null) {
+                // Create Unicity transfer for real tokens
+                createUnicityTransfer(token)
+            } else {
+                // For demo tokens, use existing logic
+                gson.toJson(token)
+            }
+            
+            val tokenBytes = transferData.toByteArray(StandardCharsets.UTF_8)
             
             Log.d(TAG, "Sending token: ${token.name}, JSON size: ${tokenBytes.size} bytes")
             
@@ -264,5 +277,126 @@ class DirectNfcClient(
     
     private fun ByteArray.toHexString(): String {
         return joinToString("") { "%02x".format(it) }
+    }
+    
+    private suspend fun createUnicityTransfer(token: Token): String {
+        return try {
+            // For real Unicity tokens, we need to:
+            // 1. Generate a receiver identity
+            // 2. Create a transfer transaction using the SDK
+            // 3. Return the transfer data as JSON
+            
+            Log.d(TAG, "Creating Unicity transfer for token: ${token.name}")
+            
+            // Generate receiver identity (this should ideally come from the receiver)
+            // For now, we'll generate it here for demo purposes
+            val receiverIdentity = generateReceiverIdentity()
+            
+            // Extract sender identity and token data from the stored jsonData
+            // The jsonData contains the UnicityMintResult with token and identity
+            val senderData = extractSenderData(token)
+            
+            // Create transfer using SDK
+            val transferResult = createTransferWithSdk(
+                senderData.senderIdentity,
+                receiverIdentity,
+                senderData.tokenJson
+            )
+            
+            // Create transfer package with all necessary data
+            val transferPackage = mapOf(
+                "type" to "unicity_transfer",
+                "token_name" to token.name,
+                "transfer_data" to transferResult,
+                "receiver_identity" to receiverIdentity.toJson()
+            )
+            
+            gson.toJson(transferPackage)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create Unicity transfer", e)
+            // Fallback to demo token transfer
+            gson.toJson(token)
+        }
+    }
+    
+    private suspend fun generateReceiverIdentity(): UnicityIdentity = 
+        suspendCancellableCoroutine { continuation ->
+            sdkService.generateIdentity { result ->
+                result.onSuccess { identityJson ->
+                    try {
+                        val identity = UnicityIdentity.fromJson(identityJson)
+                        continuation.resume(identity)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse receiver identity", e)
+                        continuation.resume(UnicityIdentity("receiver_secret", "receiver_nonce"))
+                    }
+                }
+                result.onFailure { error ->
+                    Log.e(TAG, "Failed to generate receiver identity", error)
+                    continuation.resume(UnicityIdentity("fallback_receiver_secret", "fallback_receiver_nonce"))
+                }
+            }
+        }
+    
+    private data class SenderData(
+        val senderIdentity: UnicityIdentity,
+        val tokenJson: String
+    )
+    
+    private fun extractSenderData(token: Token): SenderData {
+        return try {
+            // Parse the stored jsonData to extract sender identity and token
+            val mintResult = gson.fromJson(token.jsonData, Map::class.java)
+            
+            // Extract identity from mint result
+            val identityData = mintResult["identity"] as? Map<*, *>
+            val senderIdentity = if (identityData != null) {
+                UnicityIdentity(
+                    secret = identityData["secret"] as? String ?: "fallback_secret",
+                    nonce = identityData["nonce"] as? String ?: "fallback_nonce"
+                )
+            } else {
+                UnicityIdentity("fallback_secret", "fallback_nonce")
+            }
+            
+            // Extract token data
+            val tokenData = mintResult["token"]
+            val tokenJson = gson.toJson(tokenData)
+            
+            SenderData(senderIdentity, tokenJson)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract sender data", e)
+            SenderData(
+                UnicityIdentity("error_secret", "error_nonce"),
+                "{\"error\": \"failed_to_parse_token\"}"
+            )
+        }
+    }
+    
+    private suspend fun createTransferWithSdk(
+        senderIdentity: UnicityIdentity,
+        receiverIdentity: UnicityIdentity,
+        tokenJson: String
+    ): String = suspendCancellableCoroutine { continuation ->
+        sdkService.createTransfer(
+            senderIdentity.toJson(),
+            receiverIdentity.toJson(),
+            tokenJson
+        ) { result ->
+            result.onSuccess { transferJson ->
+                continuation.resume(transferJson)
+            }
+            result.onFailure { error ->
+                Log.e(TAG, "Failed to create transfer with SDK", error)
+                // Return fallback transfer data
+                val fallbackTransfer = mapOf(
+                    "error" to "sdk_transfer_failed",
+                    "message" to error.message,
+                    "token" to tokenJson
+                )
+                continuation.resume(gson.toJson(fallbackTransfer))
+            }
+        }
     }
 }
