@@ -154,7 +154,7 @@ async function mintToken(identityJson, tokenDataJson) {
     const result = {
       token: token.toJSON(),
       identity: identity,
-      commitment: mintCommitment.toJSON()
+      requestId: mintCommitment.requestId.toJSON()
     };
     
     console.log('Real Unicity token minted successfully!');
