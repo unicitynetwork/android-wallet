@@ -9,11 +9,23 @@ const AGGREGATOR_URL = 'https://gateway-test.unicity.network';
  */
 function initializeSdk() {
   try {
+    // Check what's available in UnicitySDK
+    console.log('UnicitySDK available classes:', Object.keys(UnicitySDK || {}));
+    
+    // Log first few classes to see structure
+    const sdkKeys = Object.keys(UnicitySDK || {});
+    console.log('First 10 SDK classes:', sdkKeys.slice(0, 10));
+    
     const { AggregatorClient, StateTransitionClient } = UnicitySDK;
+    if (!AggregatorClient || !StateTransitionClient) {
+      throw new Error('AggregatorClient or StateTransitionClient not found in UnicitySDK');
+    }
+    
     const aggregatorClient = new AggregatorClient(AGGREGATOR_URL);
     sdkClient = new StateTransitionClient(aggregatorClient);
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: 'SDK initialized' }));
   } catch (e) {
+    console.error('SDK initialization error:', e);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
@@ -53,46 +65,37 @@ async function mintToken(identityJson, tokenDataJson) {
       throw new Error('SDK not initialized');
     }
     
+    console.log('Attempting to mint real Unicity token...');
+    
+    const identity = JSON.parse(identityJson);
+    const tokenData = JSON.parse(tokenDataJson);
+    
     const { 
       SigningService, 
       MaskedPredicate, 
       DirectAddress, 
       TokenId, 
-      TokenType, 
+      TokenType,
       TokenCoinData,
       CoinId,
       Token,
       TokenState,
-      DataHasher,
-      HashAlgorithm
+      HashAlgorithm,
+      DataHasher
     } = UnicitySDK;
-    
-    const identity = JSON.parse(identityJson);
-    const tokenData = JSON.parse(tokenDataJson);
     
     // Convert hex strings back to Uint8Array
     const secret = new Uint8Array(identity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const nonce = new Uint8Array(identity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    // Create token parameters
-    const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
-    const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
-    
-    // Create token data from JSON
-    const testTokenData = new TestTokenData(new TextEncoder().encode(tokenData.data || 'Default token data'));
-    
-    // Create coin data
-    const coinData = new TokenCoinData([
-      [new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(tokenData.amount || 100)]
-    ]);
-    
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const stateData = new TextEncoder().encode(tokenData.stateData || 'Default state');
-    
     // Create signing service
     const signingService = await SigningService.createFromSecret(secret, nonce);
     
-    // Create predicate
+    // Generate token identifiers
+    const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
+    const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
+    
+    // Create predicate for the token owner
     const predicate = await MaskedPredicate.create(
       tokenId,
       tokenType,
@@ -101,39 +104,63 @@ async function mintToken(identityJson, tokenDataJson) {
       nonce
     );
     
+    // Create coin data
+    const coinId = CoinId.create(crypto.getRandomValues(new Uint8Array(32)));
+    const coinData = TokenCoinData.create(coinId, BigInt(tokenData.amount || 100));
+    
+    // Create token data
+    const testTokenData = new TestTokenData(new TextEncoder().encode(tokenData.data || 'Unicity token'));
+    
+    // Create the token state
+    const tokenState = await TokenState.create(predicate, new TextEncoder().encode(tokenData.stateData || 'Token state data'));
+    
+    // Create address for minting
+    const address = await DirectAddress.create(predicate.reference);
+    
     // Submit mint transaction
-    const commitment = await sdkClient.submitMintTransaction(
-      await DirectAddress.create(predicate.reference),
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
+    dataHasher.update(new TextEncoder().encode(tokenData.data || 'default data'));
+    const dataHash = await dataHasher.digest();
+    
+    console.log('Submitting mint transaction...');
+    const mintCommitment = await sdkClient.submitMintTransaction(
+      address,
       tokenId,
       tokenType,
       testTokenData,
       coinData,
       salt,
-      await new DataHasher(HashAlgorithm.SHA256).update(stateData).digest(),
+      dataHash,
       null
     );
     
-    // Wait for inclusion proof
-    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
-    const mintTransaction = await sdkClient.createTransaction(commitment, inclusionProof);
+    console.log('Waiting for inclusion proof...');
+    const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
     
-    // Create token
+    console.log('Creating transaction...');
+    const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
+    
+    // Create the final token
     const token = new Token(
       tokenId,
       tokenType,
       testTokenData,
       coinData,
-      await TokenState.create(predicate, stateData),
+      tokenState,
       [mintTransaction]
     );
     
     const result = {
       token: token.toJSON(),
-      identity: identity
+      identity: identity,
+      commitment: mintCommitment.toJSON()
     };
     
+    console.log('Real Unicity token minted successfully!');
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
+    console.error('Token minting failed:', e);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
@@ -150,21 +177,22 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
       throw new Error('SDK not initialized');
     }
     
-    const { 
-      SigningService, 
-      MaskedPredicate, 
-      DirectAddress, 
-      TransactionData,
-      TokenFactory,
-      PredicateFactory,
-      TokenState,
-      DataHasher,
-      HashAlgorithm
-    } = UnicitySDK;
+    console.log('Creating real Unicity transfer...');
     
     const senderIdentity = JSON.parse(senderIdentityJson);
     const receiverIdentity = JSON.parse(receiverIdentityJson);
     const tokenData = JSON.parse(tokenJson);
+    
+    const { 
+      SigningService, 
+      MaskedPredicate, 
+      DirectAddress, 
+      TokenFactory,
+      PredicateFactory,
+      TransactionData,
+      HashAlgorithm,
+      DataHasher
+    } = UnicitySDK;
     
     // Convert hex strings back to Uint8Array
     const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -176,6 +204,9 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     const tokenFactory = new TokenFactory(new PredicateFactory());
     const token = await tokenFactory.create(tokenData.token, TestTokenData.fromJSON);
     
+    // Create sender signing service
+    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
+    
     // Create receiver predicate
     const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
     const recipientPredicate = await MaskedPredicate.create(
@@ -186,29 +217,35 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
       receiverNonce
     );
     
-    const recipient = await DirectAddress.create(recipientPredicate.reference);
+    // Create recipient address
+    const recipientAddress = await DirectAddress.create(recipientPredicate.reference);
     
-    // Create sender signing service
-    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
-    
-    // Create transfer transaction data
+    // Create transaction data
     const salt = crypto.getRandomValues(new Uint8Array(32));
+    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
+    dataHasher.update(new TextEncoder().encode('transfer data'));
+    const dataHash = await dataHasher.digest();
+    
     const transactionData = await TransactionData.create(
       token.state,
-      recipient.toJSON(),
+      recipientAddress.toJSON(),
       salt,
-      await new DataHasher(HashAlgorithm.SHA256).update(new TextEncoder().encode('transfer data')).digest(),
-      new TextEncoder().encode('transfer message'),
+      dataHash,
+      new TextEncoder().encode('token transfer'),
       token.nametagTokens
     );
     
     // Submit transaction
     const commitment = await sdkClient.submitTransaction(transactionData, senderSigningService);
+    
+    // Wait for inclusion proof
     const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+    
+    // Create transaction
     const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
     
     const result = {
-      token: token.toJSON(),
+      token: tokenData.token,
       transaction: transaction.toJSON(),
       receiverPredicate: {
         secret: receiverIdentity.secret,
@@ -216,8 +253,10 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
       }
     };
     
+    console.log('Real transfer created successfully');
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
+    console.error('Transfer creation failed:', e);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
@@ -285,6 +324,7 @@ async function finishTransfer(receiverIdentityJson, transferJson) {
     
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
+    console.error('Transfer completion failed:', e);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
