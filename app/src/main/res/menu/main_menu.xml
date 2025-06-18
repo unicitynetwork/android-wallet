@@ -3,8 +3,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
     
     <item
+        android:id="@+id/action_mint_token"
+        android:title="Mint a Token"
+        app:showAsAction="never" />
+        
+    <item
         android:id="@+id/action_reset_wallet"
-        android:title="Reset to Demo Tokens"
+        android:title="Reset Wallet"
         app:showAsAction="never" />
         
 </menu>

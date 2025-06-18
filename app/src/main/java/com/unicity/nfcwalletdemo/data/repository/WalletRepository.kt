@@ -60,65 +60,11 @@ class WalletRepository(context: Context) {
             id = UUID.randomUUID().toString(),
             name = "My Wallet",
             address = "unicity_wallet_${baseTime}",
-            tokens = emptyList() // Start with empty tokens, will be populated async
+            tokens = emptyList() // Start with empty tokens
         )
         saveWallet(newWallet)
     }
     
-    private fun createDemoTokens(baseTime: Long): List<Token> {
-        val tokenSizes = listOf(
-            2 * 1024,  // 2KB
-            4 * 1024,  // 4KB
-            8 * 1024,  // 8KB
-            16 * 1024, // 16KB
-            32 * 1024, // 32KB
-            64 * 1024  // 64KB
-        )
-        
-        return tokenSizes.mapIndexed { index, sizeBytes ->
-            val sizeKB = sizeBytes / 1024
-            Token(
-                name = "${sizeKB}KB Token",
-                type = "Demo Token",
-                timestamp = baseTime + index,
-                unicityAddress = "unicity_${sizeKB}kb_${UUID.randomUUID().toString().take(8)}",
-                jsonData = generateTokenData(sizeBytes),
-                sizeBytes = sizeBytes
-            )
-        }
-    }
-    
-    private fun generateTokenData(targetSizeBytes: Int): String {
-        // Generate JSON data that approximates the target size
-        val baseJson = """
-        {
-            "version": "1.0",
-            "type": "demo_token",
-            "metadata": {
-                "description": "Demo token for testing transfer speeds",
-                "features": ["transferable", "divisible", "mintable"]
-            },
-            "data": "
-        """.trimIndent()
-        
-        val suffix = """
-        "
-        }
-        """.trimIndent()
-        
-        // Calculate how much padding we need
-        val baseSize = baseJson.length + suffix.length
-        val paddingSize = maxOf(0, targetSizeBytes - baseSize)
-        
-        // Generate padding data (base64-like string)
-        val padding = StringBuilder()
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        repeat(paddingSize) {
-            padding.append(chars.random())
-        }
-        
-        return baseJson + padding.toString() + suffix
-    }
     
     private fun saveWallet(wallet: Wallet) {
         _wallet.value = wallet
@@ -159,10 +105,10 @@ class WalletRepository(context: Context) {
         loadWallet()
     }
     
-    fun clearWalletAndCreateDemo() {
+    fun clearWallet() {
         // Clear existing wallet data
         sharedPreferences.edit().clear().apply()
-        // Create new wallet with demo tokens
+        // Create new empty wallet
         createNewWallet()
     }
     
@@ -199,32 +145,6 @@ class WalletRepository(context: Context) {
         }
     }
     
-    suspend fun createSampleTokens() {
-        _isLoading.value = true
-        try {
-            val tokenSizes = listOf("2KB", "4KB", "8KB", "16KB", "32KB", "64KB")
-            val tokenAmounts = listOf(100L, 250L, 500L, 750L, 1000L, 1500L)
-            
-            tokenSizes.forEachIndexed { index, sizeLabel ->
-                val result = mintNewToken(
-                    name = "$sizeLabel Token",
-                    data = "Sample token data for $sizeLabel testing with amount ${tokenAmounts[index]}",
-                    amount = tokenAmounts[index]
-                )
-                
-                if (result.isFailure) {
-                    Log.e(TAG, "Failed to create $sizeLabel token: ${result.exceptionOrNull()}")
-                }
-                
-                // Add small delay between tokens to avoid overwhelming the SDK
-                delay(500)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create sample tokens", e)
-        } finally {
-            _isLoading.value = false
-        }
-    }
     
     private suspend fun generateIdentity(): UnicityIdentity = suspendCancellableCoroutine { continuation ->
         unicitySdkService.generateIdentity { result ->

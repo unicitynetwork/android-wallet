@@ -42,20 +42,14 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         repository.refreshTokens()
     }
     
-    fun clearWalletAndCreateDemo() {
-        repository.clearWalletAndCreateDemo()
+    fun clearWallet() {
+        repository.clearWallet()
     }
     
     fun mintNewToken(name: String, data: String, amount: Long = 100) {
         viewModelScope.launch {
             val result = repository.mintNewToken(name, data, amount)
             _mintResult.value = result
-        }
-    }
-    
-    fun createSampleTokens() {
-        viewModelScope.launch {
-            repository.createSampleTokens()
         }
     }
     
