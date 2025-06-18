@@ -2,7 +2,7 @@
 
 // Global variables for SDK components
 let sdkClient = null;
-const AGGREGATOR_URL = 'https://gateway-test.unicity.network';
+const AGGREGATOR_URL = 'https://aggregator-test.mainnet.unicity.network';
 
 /**
  * Initializes the Unicity SDK client
@@ -105,8 +105,8 @@ async function mintToken(identityJson, tokenDataJson) {
     );
     
     // Create coin data
-    const coinId = CoinId.create(crypto.getRandomValues(new Uint8Array(32)));
-    const coinData = TokenCoinData.create(coinId, BigInt(tokenData.amount || 100));
+    const coinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
+    const coinData = new TokenCoinData([[coinId, BigInt(tokenData.amount || 100)]]);
     
     // Create token data
     const testTokenData = new TestTokenData(new TextEncoder().encode(tokenData.data || 'Unicity token'));
@@ -365,17 +365,25 @@ class TestTokenData {
 /**
  * Utility function to wait for inclusion proof
  */
-async function waitInclusionProof(client, commitment, timeout = 10000) {
+async function waitInclusionProof(client, commitment, timeout = 30000) {
   const { InclusionProofVerificationStatus } = UnicitySDK;
   
   const startTime = Date.now();
+  console.log('Waiting for inclusion proof, requestId:', commitment.requestId.toJSON());
+  
   while (Date.now() - startTime < timeout) {
     try {
+      console.log('Requesting inclusion proof, elapsed:', Date.now() - startTime + 'ms');
       const inclusionProof = await client.getInclusionProof(commitment);
+      console.log('Got inclusion proof, verifying...');
+      
       if ((await inclusionProof.verify(commitment.requestId.toBigInt())) === InclusionProofVerificationStatus.OK) {
+        console.log('Inclusion proof verified successfully');
         return inclusionProof;
       }
+      console.log('Inclusion proof verification failed, retrying...');
     } catch (err) {
+      console.log('Inclusion proof request failed:', err.message);
       // Continue waiting if not found yet
     }
     
