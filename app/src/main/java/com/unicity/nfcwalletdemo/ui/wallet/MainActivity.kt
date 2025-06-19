@@ -249,6 +249,10 @@ class MainActivity : AppCompatActivity() {
                 showResetWalletDialog()
                 true
             }
+            com.unicity.nfcwalletdemo.R.id.action_test_transfer -> {
+                runAutomatedTransferTest()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -281,6 +285,34 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Reset") { _, _ ->
                 viewModel.clearWallet()
                 Toast.makeText(this, "Wallet reset successfully", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun runAutomatedTransferTest() {
+        AlertDialog.Builder(this)
+            .setTitle("Automated Transfer Test")
+            .setMessage("This will test the complete token transfer flow between two virtual wallets. Check logs for detailed output.")
+            .setPositiveButton("Run Test") { _, _ ->
+                Toast.makeText(this, "Starting automated transfer test...", Toast.LENGTH_SHORT).show()
+                
+                // Call the JavaScript function through the SDK service
+                lifecycleScope.launch {
+                    try {
+                        viewModel.getSdkService().runAutomatedTransferTest { result ->
+                            runOnUiThread {
+                                result.onSuccess {
+                                    Toast.makeText(this@MainActivity, "Test completed! Check logs.", Toast.LENGTH_LONG).show()
+                                }.onFailure { error ->
+                                    Toast.makeText(this@MainActivity, "Test failed: ${error.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "Failed to start test: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()

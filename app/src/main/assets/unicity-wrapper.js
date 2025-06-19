@@ -400,6 +400,332 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
   }
 }
 
+
+/**
+ * AUTOMATED TRANSFER TEST - Runs within the Android WebView context
+ * This simulates the complete transfer flow without NFC
+ */
+async function runAutomatedTransferTest() {
+  try {
+    console.log('========================================');
+    console.log('STARTING AUTOMATED TRANSFER TEST');
+    console.log('========================================');
+    
+    if (!sdkClient) {
+      initializeSdk();
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for SDK to initialize
+    }
+    
+    // Step 1: Create Alice's wallet (sender)
+    console.log('Step 1: Creating Alice\'s wallet...');
+    const aliceSecret = crypto.getRandomValues(new Uint8Array(32));
+    const aliceNonce = crypto.getRandomValues(new Uint8Array(32));
+    const aliceIdentity = {
+      secret: Array.from(aliceSecret).map(b => b.toString(16).padStart(2, '0')).join(''),
+      nonce: Array.from(aliceNonce).map(b => b.toString(16).padStart(2, '0')).join('')
+    };
+    console.log('Alice identity created:', aliceIdentity.nonce.substring(0, 16) + '...');
+    
+    // Step 2: Create Bob's wallet (receiver)  
+    console.log('Step 2: Creating Bob\'s wallet...');
+    const bobSecret = crypto.getRandomValues(new Uint8Array(32));
+    const bobNonce = crypto.getRandomValues(new Uint8Array(32));
+    const bobIdentity = {
+      secret: Array.from(bobSecret).map(b => b.toString(16).padStart(2, '0')).join(''),
+      nonce: Array.from(bobNonce).map(b => b.toString(16).padStart(2, '0')).join('')
+    };
+    console.log('Bob identity created:', bobIdentity.nonce.substring(0, 16) + '...');
+    
+    // Step 3: Alice mints a token (direct call, not through Android bridge)
+    console.log('Step 3: Alice mints a token...');
+    const aliceToken = await mintTokenDirectly(aliceIdentity, 'TestToken', '100', 'Automated test token');
+    console.log('Alice minted token successfully, ID:', aliceToken.id);
+    
+    // Step 4: Bob generates receiving address
+    console.log('Step 4: Bob generates receiving address...');
+    const bobReceivingAddress = await generateReceivingAddressDirectly(aliceToken.id, aliceToken.type, bobIdentity);
+    console.log('Bob generated address:', bobReceivingAddress);
+    
+    // Step 5: Alice creates transfer package
+    console.log('Step 5: Alice creates transfer package...');
+    const transferPackage = await createTransferDirectly(aliceIdentity, bobIdentity, aliceToken);
+    console.log('Alice created transfer package with keys:', Object.keys(transferPackage));
+    
+    // Step 6: Bob completes the transfer
+    console.log('Step 6: Bob completes the transfer...');
+    const completedTransfer = await completeTransferDirectly(bobIdentity, transferPackage);
+    console.log('Bob completed transfer successfully!');
+    console.log('Bob\'s token transactions count:', completedTransfer.token.transactions.length);
+    
+    console.log('========================================');
+    console.log('AUTOMATED TRANSFER TEST COMPLETED SUCCESSFULLY!');
+    console.log('Token successfully transferred from Alice to Bob');
+    console.log('========================================');
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'success', 
+      message: 'Automated transfer test completed successfully',
+      data: {
+        aliceTokenId: aliceToken.id,
+        bobTokenId: completedTransfer.token.id,
+        transferPackageKeys: Object.keys(transferPackage),
+        bobTransactionCount: completedTransfer.token.transactions.length
+      }
+    }));
+    
+  } catch (error) {
+    console.error('========================================');
+    console.error('AUTOMATED TRANSFER TEST FAILED!');
+    console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('========================================');
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'error', 
+      message: `Automated transfer test failed: ${error.message}`,
+      error: error.stack
+    }));
+  }
+}
+
+/**
+ * Direct mint function that doesn't use Android bridge callbacks
+ */
+async function mintTokenDirectly(identity, tokenName, amount, customData) {
+  const { 
+    SigningService, 
+    MaskedPredicate, 
+    DirectAddress,
+    TokenId,
+    TokenType,
+    TokenCoinData,
+    CoinId,
+    TokenState,
+    Token,
+    HashAlgorithm,
+    DataHasher
+  } = UnicitySDK;
+  
+  const secret = new Uint8Array(identity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+  const nonce = new Uint8Array(identity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+  
+  const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
+  const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
+  const testTokenData = new TestTokenData(new TextEncoder().encode(customData));
+  const coinData = new TokenCoinData([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(amount)]]);
+  
+  const signingService = await SigningService.createFromSecret(secret, nonce);
+  const predicate = await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, nonce);
+  const tokenState = await TokenState.create(predicate, new TextEncoder().encode('Default state'));
+  
+  const dataHasher = new DataHasher(HashAlgorithm.SHA256);
+  dataHasher.update(new TextEncoder().encode('mint token'));
+  const dataHash = await dataHasher.digest();
+  
+  const mintCommitment = await sdkClient.submitMintTransaction(
+    await DirectAddress.create(predicate.reference),
+    tokenId,
+    tokenType,
+    testTokenData,
+    coinData,
+    crypto.getRandomValues(new Uint8Array(32)),
+    dataHash,
+    null
+  );
+  
+  const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
+  const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
+  
+  const token = new Token(tokenId, tokenType, testTokenData, coinData, tokenState, [mintTransaction]);
+  return token.toJSON();
+}
+
+/**
+ * Direct address generation that doesn't use Android bridge
+ */
+async function generateReceivingAddressDirectly(tokenIdHex, tokenTypeHex, receiverIdentity) {
+  const { 
+    SigningService, 
+    MaskedPredicate, 
+    DirectAddress,
+    TokenId,
+    TokenType,
+    HashAlgorithm
+  } = UnicitySDK;
+  
+  const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+  const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+  
+  const tokenId = new TokenId(tokenIdHex);
+  const tokenType = new TokenType(tokenTypeHex);
+  
+  const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+  const recipientPredicate = await MaskedPredicate.create(tokenId, tokenType, receiverSigningService, HashAlgorithm.SHA256, receiverNonce);
+  const address = await DirectAddress.create(recipientPredicate.reference);
+  
+  return address.toJSON();
+}
+
+/**
+ * Direct transfer creation that doesn't use Android bridge
+ */
+async function createTransferDirectly(senderIdentity, receiverIdentity, tokenJson) {
+  try {
+    if (!sdkClient) {
+      throw new Error('SDK not initialized');
+    }
+    
+    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
+    const tokenObj = parsedTokenData.token || parsedTokenData;
+    
+    const { 
+      SigningService, 
+      MaskedPredicate, 
+      DirectAddress,
+      TokenId,
+      TokenType,
+      HashAlgorithm,
+      TokenFactory,
+      PredicateFactory,
+      TransactionData,
+      DataHasher,
+      HexConverter
+    } = UnicitySDK;
+    
+    // Generate Bob's address first
+    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    const tokenId = new TokenId(tokenObj.id);
+    const tokenType = new TokenType(tokenObj.type);
+    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+    const recipientPredicate = await MaskedPredicate.create(
+      tokenId,
+      tokenType,
+      receiverSigningService,
+      HashAlgorithm.SHA256,
+      receiverNonce
+    );
+    const recipientAddress = await DirectAddress.create(recipientPredicate.reference);
+    
+    // Now create the transfer
+    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(tokenObj, tokenDataFromJSON);
+    
+    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
+    
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
+    dataHasher.update(new TextEncoder().encode('token transfer'));
+    const dataHash = await dataHasher.digest();
+    
+    const transactionData = await TransactionData.create(
+      token.state,
+      recipientAddress,
+      salt,
+      dataHash,
+      new TextEncoder().encode('token transfer'),
+      token.nametagTokens
+    );
+    
+    const commitment = await sdkClient.submitTransaction(transactionData, senderSigningService);
+    
+    return {
+      token: token.toJSON(),
+      commitment: commitment.toJSON(),
+      recipientAddress: recipientAddress.toJSON()
+    };
+  } catch (e) {
+    console.error('createTransferDirectly failed:', e);
+    throw e;
+  }
+}
+
+/**
+ * Direct transfer completion that doesn't use Android bridge
+ */
+async function completeTransferDirectly(receiverIdentity, transferPackage) {
+  try {
+    if (!sdkClient) {
+      throw new Error('SDK not initialized');
+    }
+    
+    const { 
+      SigningService, 
+      MaskedPredicate, 
+      TokenFactory,
+      PredicateFactory,
+      Commitment,
+      TokenState,
+      HashAlgorithm,
+      HexConverter
+    } = UnicitySDK;
+    
+    console.log('Completing transfer directly...');
+    console.log('Transfer package:', JSON.stringify(transferPackage, null, 2));
+    
+    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Import the token from the transfer package
+    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(transferPackage.token, tokenDataFromJSON);
+    
+    // Bob receives the commitment from Alice and gets the inclusion proof
+    const commitment = await Commitment.fromJSON(transferPackage.commitment);
+    
+    console.log('Bob received commitment:', commitment.requestId.toJSON());
+    
+    // Bob waits for inclusion proof (Alice already submitted the transaction)
+    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+    
+    console.log('Bob got inclusion proof');
+    
+    // Create the transaction with inclusion proof
+    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
+    
+    // Recreate receiver's predicate
+    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+    const recipientPredicate = await MaskedPredicate.create(
+      token.id,
+      token.type,
+      receiverSigningService,
+      HashAlgorithm.SHA256,
+      receiverNonce
+    );
+    
+    // Complete the transaction with the recipient predicate
+    const updatedToken = await sdkClient.finishTransaction(
+      token,
+      await TokenState.create(recipientPredicate, new TextEncoder().encode('received token')),
+      transaction
+    );
+    
+    return {
+      token: updatedToken.toJSON(),
+      identity: receiverIdentity
+    };
+  } catch (e) {
+    console.error('completeTransferDirectly failed:', e);
+    throw e;
+  }
+}
+
 // Keep the old functions for backward compatibility but update them to use new flow
 async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJson) {
   try {

@@ -85,6 +85,12 @@ class UnicitySdkService(context: Context) {
             callback(result)
         }
     }
+
+    fun runAutomatedTransferTest(callback: (Result<String>) -> Unit) {
+        executeJs("runAutomatedTransferTest()") { result ->
+            callback(result)
+        }
+    }
     
     private fun executeJs(script: String, callback: (Result<String>) -> Unit) {
         if (!isInitialized) {
