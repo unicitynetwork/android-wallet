@@ -1,4 +1,5 @@
 // app/src/main/assets/unicity-wrapper.js
+console.log('========== UNICITY WRAPPER LOADED ==========');
 
 // Global variables for SDK components
 let sdkClient = null;
@@ -347,15 +348,27 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
     
     // Import the token from the transfer package
     const tokenFactory = new TokenFactory(new PredicateFactory());
-    const token = await tokenFactory.create(transferPackage.token, TestTokenData.fromJSON);
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(transferPackage.token, tokenDataFromJSON);
     
-    // Import the transaction
-    const transaction = await Transaction.fromJSON(
-      token.id,
-      token.type,
-      transferPackage.transaction,
-      new PredicateFactory()
-    );
+    // Bob receives the commitment from Alice and gets the inclusion proof
+    const { Commitment } = UnicitySDK;
+    const commitment = await Commitment.fromJSON(transferPackage.commitment);
+    
+    console.log('Bob received commitment:', commitment.requestId.toJSON());
+    
+    // Bob waits for inclusion proof (Alice already submitted the transaction)
+    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+    
+    console.log('Bob got inclusion proof');
+    
+    // Create the transaction with inclusion proof
+    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
     
     // Recreate receiver's predicate
     const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
@@ -390,11 +403,16 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
 // Keep the old functions for backward compatibility but update them to use new flow
 async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJson) {
   try {
+    console.log('============ CREATE TRANSFER STARTED ============');
     console.log('Using updated createTransfer for backward compatibility...');
+    console.log('Sender Identity:', senderIdentityJson);
+    console.log('Receiver Identity:', receiverIdentityJson);
+    console.log('Token JSON:', tokenJson);
     
     // Parse the token to get ID and type
     const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
     const tokenObj = parsedTokenData.token || parsedTokenData;
+    console.log('Parsed token object:', JSON.stringify(tokenObj, null, 2));
     
     // Step 1: Generate receiving address (normally Bob would do this)
     const { 
@@ -406,7 +424,8 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
       HashAlgorithm,
       Token,
       TransactionData,
-      DataHasher
+      DataHasher,
+      HexConverter
     } = UnicitySDK;
     
     const receiverIdentity = JSON.parse(receiverIdentityJson);
@@ -443,7 +462,41 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const token = await Token.fromJSON(tokenObj);
+    const tokenFactory = new TokenFactory(new PredicateFactory());
+    // Create a simple fromJSON function for the token data
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(tokenObj, tokenDataFromJSON);
+    
+    console.log('Token recreated successfully');
+    console.log('Token ID:', token.id.toJSON());
+    console.log('Token state:', token.state);
+    console.log('Token state data:', token.state?.data);
+    console.log('Token state predicate:', token.state?.unlockPredicate);
+    console.log('Number of transactions:', token.transactions?.length);
+    
+    // Check if token has already been transferred
+    if (token.transactions && token.transactions.length > 0) {
+      console.log('Token transaction history:');
+      token.transactions.forEach((tx, index) => {
+        console.log(`Transaction ${index}:`, {
+          type: tx.data?.type || (index === 0 ? 'mint' : 'transfer'),
+          recipient: tx.data?.recipient,
+          hasInclusionProof: !!tx.inclusionProof
+        });
+      });
+      
+      // Check if this is a spent token
+      if (token.transactions.length > 1) {
+        console.warn('WARNING: Token has been transferred before!');
+        const lastTransfer = token.transactions[token.transactions.length - 1];
+        console.warn('Last transfer was to:', lastTransfer.data?.recipient);
+      }
+    }
     
     // Create sender signing service
     const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
@@ -454,6 +507,11 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     dataHasher.update(new TextEncoder().encode('token transfer'));
     const dataHash = await dataHasher.digest();
     
+    console.log('Creating transaction data...');
+    console.log('Token state:', token.state);
+    console.log('Recipient address:', recipientAddress);
+    console.log('Token nametag tokens:', token.nametagTokens);
+    
     const transactionData = await TransactionData.create(
       token.state,
       recipientAddress,
@@ -463,14 +521,11 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
       token.nametagTokens
     );
     
-    // Submit transaction
+    // Alice submits the transaction but doesn't wait for inclusion proof
+    // She sends the commitment to Bob, who will get the inclusion proof later
     const commitment = await sdkClient.submitTransaction(transactionData, senderSigningService);
     
-    // Wait for inclusion proof
-    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
-    
-    // Create transaction
-    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
+    console.log('Transaction submitted, commitment:', commitment.requestId.toJSON());
     
     // Return the transfer package in the expected format
     const tokenData = token.toJSON();
@@ -479,8 +534,8 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     
     const result = {
       token: tokenData,
-      transaction: transaction.toJSON(),
-      commitment: commitment.requestId.toJSON()
+      commitment: commitment.toJSON(),
+      recipientAddress: recipientAddress
     };
     
     console.log('Transfer package created successfully');
