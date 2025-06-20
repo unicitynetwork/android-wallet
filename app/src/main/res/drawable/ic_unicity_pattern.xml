@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="60dp"
+    android:height="60dp"
+    android:viewportWidth="60"
+    android:viewportHeight="60">
+    
+    <!-- Circular pattern -->
+    <path
+        android:fillColor="#40FFFFFF"
+        android:pathData="M30,5C15.64,5 4,16.64 4,31s11.64,26 26,26s26,-11.64 26,-26S44.36,5 30,5zM30,50c-10.49,0 -19,-8.51 -19,-19s8.51,-19 19,-19s19,8.51 19,19S40.49,50 30,50z" />
+    
+    <!-- Inner circles -->
+    <path
+        android:fillColor="#30FFFFFF"
+        android:pathData="M30,18c-7.18,0 -13,5.82 -13,13s5.82,13 13,13s13,-5.82 13,-13S37.18,18 30,18zM30,38c-3.87,0 -7,-3.13 -7,-7s3.13,-7 7,-7s7,3.13 7,7S33.87,38 30,38z" />
+    
+    <!-- Center dot -->
+    <path
+        android:fillColor="#50FFFFFF"
+        android:pathData="M30,28c1.66,0 3,1.34 3,3s-1.34,3 -3,3s-3,-1.34 -3,-3S28.34,28 30,28z" />
+</vector>

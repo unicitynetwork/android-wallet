@@ -83,6 +83,16 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 priceEur = 0.91,
                 change24h = 0.1,
                 iconResId = R.drawable.ic_tether
+            ),
+            CryptoCurrency(
+                id = "subway",
+                symbol = "SUB",
+                name = "Subway",
+                balance = 200.0,
+                priceUsd = 1.0,
+                priceEur = 0.91,
+                change24h = 0.0,
+                iconResId = R.drawable.subway
             )
         )
     }

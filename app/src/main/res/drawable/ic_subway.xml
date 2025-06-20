@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Subway brand colors: Green and Yellow -->
+    <path
+        android:fillColor="#00A651"
+        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2z" />
+    
+    <!-- White "S" letter -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,6c-2.2,0 -4,1.8 -4,4v4c0,2.2 1.8,4 4,4s4,-1.8 4,-4v-1h-2v1c0,1.1 -0.9,2 -2,2s-2,-0.9 -2,-2v-1h6v-3c0,-2.2 -1.8,-4 -4,-4zM8,10c0,-1.1 0.9,-2 2,-2s2,0.9 2,2v1H8v-1z" />
+</vector>

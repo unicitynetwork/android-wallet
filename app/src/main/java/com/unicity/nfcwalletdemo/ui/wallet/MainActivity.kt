@@ -114,10 +114,8 @@ class MainActivity : AppCompatActivity() {
         )
         
         cryptoAdapter = CryptoAdapter(
-            onItemClick = { crypto ->
-                if (currentTab == 0) {
-                    showCryptoDetailDialog(crypto)
-                }
+            onSendClick = { crypto ->
+                showCryptoSendAmountDialog(crypto)
             },
             currency = selectedCurrency
         )
@@ -476,17 +474,6 @@ class MainActivity : AppCompatActivity() {
             .setTitle("About Unicity Wallet")
             .setMessage("Version 2.0.0\n\nA demo wallet for Unicity tokens and cryptocurrencies with NFC transfer capabilities.\n\n© 2024 Unicity")
             .setPositiveButton("OK", null)
-            .show()
-    }
-    
-    private fun showCryptoDetailDialog(crypto: CryptoCurrency) {
-        AlertDialog.Builder(this)
-            .setTitle(crypto.name)
-            .setMessage("Balance: ${crypto.getFormattedBalance()} ${crypto.symbol}\nValue: ${crypto.getFormattedBalanceInFiat(selectedCurrency)}\nPrice: ${crypto.getFormattedPrice(selectedCurrency)}\n24h Change: ${crypto.getFormattedChange()}")
-            .setPositiveButton("Send") { _, _ ->
-                showCryptoSendAmountDialog(crypto)
-            }
-            .setNegativeButton("Close", null)
             .show()
     }
     
