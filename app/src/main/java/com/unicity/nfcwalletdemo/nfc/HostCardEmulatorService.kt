@@ -217,25 +217,26 @@ class HostCardEmulatorService : HostApduService() {
         
         isProcessingToken = true
         try {
-            val tokenJson = String(directTransferBuffer.toByteArray(), StandardCharsets.UTF_8)
-            Log.d(TAG, "Processing complete token, JSON size: ${tokenJson.length}")
+            val receivedData = String(directTransferBuffer.toByteArray(), StandardCharsets.UTF_8)
+            Log.d(TAG, "Processing complete data, JSON size: ${receivedData.length}")
             
-            // Parse the token
-            val receivedToken = gson.fromJson(tokenJson, Token::class.java)
-            tokenToReceive = receivedToken
-            
-            Log.d(TAG, "Token successfully received via direct NFC: ${receivedToken.name}")
-            
-            // Notify ReceiveActivity with local broadcast for safety
-            try {
-                val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
-                    putExtra("token_json", tokenJson)
-                    setPackage(packageName) // Restrict to our app only
-                }
-                sendBroadcast(intent)
-                Log.d(TAG, "Broadcast sent for received token")
+            // Check if this is crypto transfer data or token data
+            val transferType = try {
+                val dataMap = gson.fromJson(receivedData, Map::class.java)
+                dataMap["type"] as? String
             } catch (e: Exception) {
-                Log.e(TAG, "Error sending broadcast", e)
+                null
+            }
+            
+            when (transferType) {
+                "crypto_transfer" -> {
+                    Log.d(TAG, "Processing crypto transfer")
+                    processCryptoTransfer(receivedData)
+                }
+                else -> {
+                    Log.d(TAG, "Processing token transfer")
+                    processTokenTransfer(receivedData)
+                }
             }
             
             // Reset state for next transfer
@@ -244,13 +245,49 @@ class HostCardEmulatorService : HostApduService() {
             
             return SW_OK
         } catch (e: Exception) {
-            Log.e(TAG, "Error processing complete token", e)
+            Log.e(TAG, "Error processing complete data", e)
             // Reset state on error
             directTransferBuffer = ByteArrayOutputStream()
             expectedTotalSize = 0
             return SW_ERROR
         } finally {
             isProcessingToken = false
+        }
+    }
+    
+    private fun processTokenTransfer(tokenJson: String) {
+        try {
+            // Parse the token
+            val receivedToken = gson.fromJson(tokenJson, Token::class.java)
+            tokenToReceive = receivedToken
+            
+            Log.d(TAG, "Token successfully received via direct NFC: ${receivedToken.name}")
+            
+            // Notify ReceiveActivity with local broadcast for safety
+            val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
+                putExtra("token_json", tokenJson)
+                setPackage(packageName) // Restrict to our app only
+            }
+            sendBroadcast(intent)
+            Log.d(TAG, "Broadcast sent for received token")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing token transfer", e)
+        }
+    }
+    
+    private fun processCryptoTransfer(cryptoJson: String) {
+        try {
+            Log.d(TAG, "Crypto transfer successfully received via direct NFC")
+            
+            // Notify ReceiveActivity with crypto transfer broadcast
+            val intent = Intent("com.unicity.nfcwalletdemo.CRYPTO_RECEIVED").apply {
+                putExtra("crypto_json", cryptoJson)
+                setPackage(packageName) // Restrict to our app only
+            }
+            sendBroadcast(intent)
+            Log.d(TAG, "Broadcast sent for received crypto")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing crypto transfer", e)
         }
     }
     

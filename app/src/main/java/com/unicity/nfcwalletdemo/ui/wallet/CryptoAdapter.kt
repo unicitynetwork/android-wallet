@@ -21,6 +21,7 @@ class CryptoAdapter(
     private var expandedItemId: String? = null
 
     fun updateCurrency(newCurrency: String) {
+        // Trigger data refresh to update currency display
         notifyDataSetChanged()
     }
 
@@ -71,6 +72,9 @@ class CryptoAdapter(
             onSendClick: (CryptoCurrency) -> Unit,
             onToggleExpand: (CryptoCurrency) -> Unit
         ) {
+            // Log what's being displayed in UI
+            android.util.Log.d("CryptoAdapter", "Binding ${crypto.symbol}: balance=${crypto.balance} formatted=${crypto.getFormattedBalance()}")
+            
             // Basic info
             cryptoIcon.setImageResource(crypto.iconResId)
             cryptoName.text = crypto.name

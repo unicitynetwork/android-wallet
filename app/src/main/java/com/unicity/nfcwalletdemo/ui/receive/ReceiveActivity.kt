@@ -65,6 +65,12 @@ class ReceiveActivity : AppCompatActivity() {
                         }
                     }
                 }
+                "com.unicity.nfcwalletdemo.CRYPTO_RECEIVED" -> {
+                    val cryptoJson = intent.getStringExtra("crypto_json")
+                    if (cryptoJson != null) {
+                        handleCryptoTransfer(cryptoJson)
+                    }
+                }
                 "com.unicity.nfcwalletdemo.TRANSFER_PROGRESS" -> {
                     val currentBytes = intent.getIntExtra("current_bytes", 0)
                     val totalBytes = intent.getIntExtra("total_bytes", 0)
@@ -182,6 +188,7 @@ class ReceiveActivity : AppCompatActivity() {
         // Register broadcast receiver for NFC transfers and progress
         val filter = IntentFilter().apply {
             addAction("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
+            addAction("com.unicity.nfcwalletdemo.CRYPTO_RECEIVED")
             addAction("com.unicity.nfcwalletdemo.TRANSFER_PROGRESS")
         }
         
@@ -296,6 +303,76 @@ class ReceiveActivity : AppCompatActivity() {
                 jsonData = "{\"error\": \"${e.message}\"}",
                 sizeBytes = 0
             )
+        }
+    }
+    
+    private fun handleCryptoTransfer(cryptoJson: String) {
+        try {
+            Log.d("ReceiveActivity", "Crypto transfer received via NFC")
+            
+            val cryptoData = gson.fromJson(cryptoJson, Map::class.java)
+            val cryptoSymbol = cryptoData["crypto_symbol"] as? String ?: "UNKNOWN"
+            val cryptoName = cryptoData["crypto_name"] as? String ?: "Unknown Crypto"
+            
+            // Handle amount with better precision - Gson might parse as Number
+            val amountRaw = cryptoData["amount"]
+            val amount = when (amountRaw) {
+                is Number -> amountRaw.toDouble()
+                is String -> amountRaw.toDoubleOrNull() ?: 0.0
+                else -> 0.0
+            }
+            
+            val priceUsdRaw = cryptoData["price_usd"]
+            val priceUsd = when (priceUsdRaw) {
+                is Number -> priceUsdRaw.toDouble()
+                is String -> priceUsdRaw.toDoubleOrNull() ?: 0.0
+                else -> 0.0
+            }
+            
+            val priceEurRaw = cryptoData["price_eur"]
+            val priceEur = when (priceEurRaw) {
+                is Number -> priceEurRaw.toDouble()
+                is String -> priceEurRaw.toDoubleOrNull() ?: 0.0
+                else -> 0.0
+            }
+            
+            Log.d("ReceiveActivity", "Received amount: $amount (from $amountRaw)")
+            Log.d("ReceiveActivity", "Crypto transfer: $amount $cryptoSymbol")
+            
+            runOnUiThread {
+                binding.tvStatus.text = "Processing crypto transfer..."
+                viewModel.onReceivingToken()
+                
+                // Store the crypto data for MainActivity to process via SharedPreferences
+                val prefs = getSharedPreferences("crypto_transfers", MODE_PRIVATE)
+                prefs.edit().apply {
+                    putBoolean("crypto_received", true)
+                    putString("crypto_symbol", cryptoSymbol)
+                    putString("crypto_amount", amount.toString()) // Store as string to preserve precision
+                    putString("crypto_name", cryptoName)
+                    putString("price_usd", priceUsd.toString()) // Store as string to preserve precision
+                    putString("price_eur", priceEur.toString()) // Store as string to preserve precision
+                    putLong("timestamp", System.currentTimeMillis())
+                    apply()
+                }
+                
+                // Show success
+                viewModel.onTokenReceived(Token(
+                    id = "temp_crypto",
+                    name = "Crypto Received",
+                    type = "Success"
+                ))
+                
+                val value = String.format("%.2f", amount * priceUsd)
+                Toast.makeText(this@ReceiveActivity, "Received $amount $cryptoSymbol (~$$value)", Toast.LENGTH_LONG).show()
+            }
+            
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Error processing crypto transfer", e)
+            runOnUiThread {
+                viewModel.onError("Failed to process crypto transfer: ${e.message}")
+                Toast.makeText(this@ReceiveActivity, "Failed to receive crypto: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
     

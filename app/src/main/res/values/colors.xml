@@ -64,6 +64,21 @@
     <color name="green_positive">#4CAF50</color>
     <color name="red_negative">#F44336</color>
     
+    <!-- Additional UI Colors -->
+    <color name="primary_blue">#4169E1</color>
+    <color name="purple_accent">#6200EE</color>
+    
+    <!-- Button Text Colors -->
+    <color name="button_text_color">#000000</color>
+    
+    <!-- Tab Colors -->
+    <color name="tab_background_color">#FFFFFF</color>
+    <color name="tab_text_color">#808080</color>
+    <color name="tab_text_selected_color">#000000</color>
+    
+    <!-- App Background -->
+    <color name="app_background">#F5F5FA</color>
+    
     <!-- Legacy Android Colors (for compatibility) -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>

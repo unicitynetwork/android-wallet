@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark Mode Colors -->
+    <color name="background_dark">#121212</color>
+    <color name="surface_dark">#1E1E1E</color>
+    <color name="surface_variant_dark">#2D2D2D</color>
+    
+    <!-- Text Colors for Dark Mode -->
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#B3B3B3</color>
+    <color name="text_tertiary_dark">#808080</color>
+    
+    <!-- Card Colors for Dark Mode -->
+    <color name="card_background_dark">#1E1E1E</color>
+    <color name="card_elevated_dark">#2D2D2D</color>
+    
+    <!-- Button Text Colors for Dark Mode -->
+    <color name="button_text_color">#FFFFFF</color>
+    
+    <!-- Tab Colors for Dark Mode -->
+    <color name="tab_background_color">#FFFFFF</color>
+    <color name="tab_text_color">#808080</color>
+    <color name="tab_text_selected_color">#000000</color>
+    
+    <!-- App Background for Dark Mode -->
+    <color name="app_background">@color/background_dark</color>
+</resources>

@@ -48,10 +48,10 @@ class MainActivity : AppCompatActivity() {
         setupUI()
         setupRecyclerView()
         setupTabLayout()
+        setupSwipeRefresh()
         observeViewModel()
         
-        // Load initial demo cryptocurrencies
-        viewModel.loadDemoCryptocurrencies()
+        // Don't load cryptocurrencies here - ViewModel init handles it
     }
     
     private fun setupActionBar() {
@@ -153,6 +153,19 @@ class MainActivity : AppCompatActivity() {
         binding.tabLayout.getTabAt(0)?.select()
     }
     
+    private fun setupSwipeRefresh() {
+        binding.swipeRefreshLayout.apply {
+            setColorSchemeColors(
+                getColor(R.color.primary_blue),
+                getColor(R.color.green_positive),
+                getColor(R.color.purple_accent)
+            )
+            setOnRefreshListener {
+                refreshWallet()
+            }
+        }
+    }
+    
     private fun updateListDisplay() {
         if (currentTab == 0) {
             // Show crypto assets
@@ -221,7 +234,10 @@ class MainActivity : AppCompatActivity() {
         
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
-                // Remove swipe refresh as it's not in the new layout
+                // Stop swipe refresh when loading is complete
+                if (!isLoading) {
+                    binding.swipeRefreshLayout.isRefreshing = false
+                }
             }
         }
         
@@ -240,11 +256,40 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun refreshWallet() {
-        // Refresh the tokens from repository
+        // Show refresh animation if initiated by swipe
+        if (!binding.swipeRefreshLayout.isRefreshing) {
+            binding.swipeRefreshLayout.isRefreshing = true
+        }
+        
+        Log.d("MainActivity", "Refreshing wallet display...")
+        
+        // Log all current crypto balances
+        val cryptos = viewModel.cryptocurrencies.value
+        Log.d("MainActivity", "=== CURRENT CRYPTO BALANCES ===")
+        cryptos.forEach { crypto ->
+            Log.d("MainActivity", "${crypto.symbol}: ${crypto.balance} (ID: ${crypto.id})")
+        }
+        Log.d("MainActivity", "==============================")
+        
+        // Refresh the tokens from repository (this doesn't change balances)
         lifecycleScope.launch {
             viewModel.refreshTokens()
         }
-        viewModel.loadDemoCryptocurrencies()
+        
+        // Refresh UI display without changing balances
+        updateListDisplay()
+        updateBalanceDisplay()
+        
+        // Show feedback toast
+        Toast.makeText(this, "Refreshing display...", Toast.LENGTH_SHORT).show()
+        
+        // Add a small delay to show the refresh animation
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(500) // Shorter delay since we're only refreshing display
+            binding.swipeRefreshLayout.isRefreshing = false
+            Toast.makeText(this@MainActivity, "Display refreshed", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "Wallet display refresh completed")
+        }
     }
     
     private fun startTokenTransfer(token: Token) {
@@ -328,8 +373,48 @@ class MainActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
+        Log.d("MainActivity", "onResume called")
+        
+        // Log current balances before any operations
+        val cryptosBefore = viewModel.cryptocurrencies.value
+        Log.d("MainActivity", "=== BALANCES ON RESUME (BEFORE) ===")
+        cryptosBefore.forEach { crypto ->
+            Log.d("MainActivity", "${crypto.symbol}: ${crypto.balance}")
+        }
+        
+        // Check for received crypto transfers
+        checkForReceivedCrypto()
         // Refresh wallet when returning to MainActivity
         refreshWallet()
+    }
+    
+    private fun checkForReceivedCrypto() {
+        val prefs = getSharedPreferences("crypto_transfers", MODE_PRIVATE)
+        if (prefs.getBoolean("crypto_received", false)) {
+            val cryptoSymbol = prefs.getString("crypto_symbol", "") ?: ""
+            val amount = prefs.getString("crypto_amount", "0.0")?.toDoubleOrNull() ?: 0.0
+            val cryptoName = prefs.getString("crypto_name", "") ?: ""
+            val priceUsd = prefs.getString("price_usd", "0.0")?.toDoubleOrNull() ?: 0.0
+            
+            if (cryptoSymbol.isNotEmpty() && amount > 0) {
+                Log.d("MainActivity", "Processing received crypto: EXACT amount = $amount $cryptoSymbol")
+                
+                // Add to existing crypto balance
+                val success = viewModel.addReceivedCrypto(cryptoSymbol, amount)
+                
+                if (success) {
+                    val value = String.format("%.2f", amount * priceUsd)
+                    Toast.makeText(this, "Added $amount $cryptoSymbol (~$$value) to your wallet!", Toast.LENGTH_LONG).show()
+                    Log.d("MainActivity", "Successfully added received crypto: EXACT amount = $amount $cryptoSymbol")
+                } else {
+                    Toast.makeText(this, "Received $amount $cryptoSymbol but couldn't add to wallet (unsupported crypto)", Toast.LENGTH_LONG).show()
+                    Log.w("MainActivity", "Received unsupported crypto: $cryptoSymbol")
+                }
+                
+                // Clear the received crypto data
+                prefs.edit().clear().apply()
+            }
+        }
     }
     
     override fun onPause() {
@@ -513,8 +598,12 @@ class MainActivity : AppCompatActivity() {
             .setMessage("Available balance: ${crypto.getFormattedBalance()} ${crypto.symbol}")
             .setView(input)
             .setPositiveButton("Send") { _, _ ->
-                val amount = input.text.toString().toDoubleOrNull()
+                val inputText = input.text.toString()
+                val amount = inputText.toDoubleOrNull()
+                Log.d("MainActivity", "User entered: '$inputText' parsed as: $amount")
+                
                 if (amount != null && amount > 0 && amount <= crypto.balance) {
+                    Log.d("MainActivity", "Starting transfer of exactly $amount ${crypto.symbol} (balance: ${crypto.balance})")
                     checkNfc {
                         startCryptoTransfer(crypto, amount)
                     }
@@ -528,17 +617,80 @@ class MainActivity : AppCompatActivity() {
     
     private fun startCryptoTransfer(crypto: CryptoCurrency, amount: Double) {
         currentTransferringCrypto = crypto
-        Toast.makeText(this, "Tap phones together to transfer ${amount} ${crypto.symbol}", Toast.LENGTH_SHORT).show()
         
-        // For demo purposes, we'll simulate the transfer
-        // In a real implementation, this would use NFC to transfer the crypto
-        lifecycleScope.launch {
-            kotlinx.coroutines.delay(2000) // Simulate NFC tap delay
-            runOnUiThread {
-                currentTransferringCrypto = null
-                viewModel.updateCryptoBalance(crypto.id, crypto.balance - amount)
-                Toast.makeText(this@MainActivity, "Sent ${amount} ${crypto.symbol} successfully!", Toast.LENGTH_SHORT).show()
+        Log.d("MainActivity", "Starting NFC crypto transfer: EXACT amount = $amount ${crypto.symbol}")
+        Toast.makeText(this, "Tap phones together to transfer $amount ${crypto.symbol}", Toast.LENGTH_SHORT).show()
+        
+        val directNfcClient = DirectNfcClient(
+            sdkService = viewModel.getSdkService(),
+            onTransferComplete = {
+                Log.d("MainActivity", "✅ NFC crypto transfer completed")
+                runOnUiThread {
+                    currentTransferringCrypto = null
+                    val newBalance = crypto.balance - amount
+                    Log.d("MainActivity", "Deducting from sender: ${crypto.balance} - $amount = $newBalance")
+                    viewModel.updateCryptoBalance(crypto.id, newBalance)
+                    disableNfcTransfer()
+                    Toast.makeText(this@MainActivity, "Sent $amount ${crypto.symbol} successfully!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onError = { error ->
+                Log.e("MainActivity", "NFC crypto transfer error: $error")
+                runOnUiThread {
+                    currentTransferringCrypto = null
+                    disableNfcTransfer()
+                    Toast.makeText(this@MainActivity, "Crypto transfer failed: $error", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onProgress = { current, total ->
+                Log.d("MainActivity", "NFC crypto progress: $current/$total chunks")
+                runOnUiThread {
+                    if (total > 1) {
+                        // Could show progress in UI if needed
+                        val progress = (current * 100) / total
+                        Log.d("MainActivity", "Crypto transfer progress: ${progress}%")
+                    }
+                }
             }
+        )
+        
+        // Create a crypto transfer token
+        val cryptoTransferToken = Token(
+            id = "crypto_transfer_${System.currentTimeMillis()}",
+            name = "${amount} ${crypto.symbol}",
+            type = "Crypto Transfer",
+            jsonData = createCryptoTransferData(crypto, amount)
+        )
+        
+        directNfcClient.setCryptoToSend(cryptoTransferToken)
+        
+        // Enable NFC reader mode for crypto transfer
+        val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
+        try {
+            nfcAdapter!!.enableReaderMode(this, directNfcClient, flags, null)
+            Log.d("MainActivity", "NFC reader mode enabled for crypto transfer")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to enable NFC reader mode for crypto", e)
+            currentTransferringCrypto = null
+            Toast.makeText(this, "Failed to enable NFC: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+    
+    private fun createCryptoTransferData(crypto: CryptoCurrency, amount: Double): String {
+        val transferData = mapOf(
+            "type" to "crypto_transfer",
+            "crypto_id" to crypto.id,
+            "crypto_symbol" to crypto.symbol,
+            "crypto_name" to crypto.name,
+            "amount" to amount,
+            "price_usd" to crypto.priceUsd,
+            "price_eur" to crypto.priceEur,
+            "timestamp" to System.currentTimeMillis(),
+            "icon_res_id" to crypto.iconResId
+        )
+        val jsonData = com.google.gson.Gson().toJson(transferData)
+        Log.d("MainActivity", "Created transfer JSON with amount: $amount")
+        Log.d("MainActivity", "Transfer JSON: $jsonData")
+        return jsonData
     }
 }

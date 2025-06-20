@@ -57,6 +57,11 @@ class DirectNfcClient(
         Log.d(TAG, "Token set for NFC transfer: ${token.name}")
     }
     
+    fun setCryptoToSend(cryptoToken: Token) {
+        tokenToSend = cryptoToken
+        Log.d(TAG, "Crypto token set for NFC transfer: ${cryptoToken.name}")
+    }
+    
     override fun onTagDiscovered(tag: Tag?) {
         Log.d(TAG, "✅ NFC TAG DISCOVERED for transfer!")
         tag?.let { processDirectTransfer(it) }
@@ -129,13 +134,25 @@ class DirectNfcClient(
     
     private suspend fun sendTokenDirectly(isoDep: IsoDep, token: Token) {
         try {
-            // Check if this is a real Unicity token or demo token
-            val transferData = if (token.type == "Unicity Token" && token.jsonData != null) {
-                // Create Unicity transfer for real tokens
-                createUnicityTransfer(token)
-            } else {
-                // For demo tokens, use existing logic
-                gson.toJson(token)
+            // Check the token type and handle accordingly
+            val transferData = when (token.type) {
+                "Unicity Token" -> {
+                    if (token.jsonData != null) {
+                        // Create Unicity transfer for real tokens
+                        createUnicityTransfer(token)
+                    } else {
+                        // Demo Unicity token
+                        gson.toJson(token)
+                    }
+                }
+                "Crypto Transfer" -> {
+                    // For crypto transfers, send the crypto data directly
+                    token.jsonData ?: gson.toJson(token)
+                }
+                else -> {
+                    // For other demo tokens, use existing logic
+                    gson.toJson(token)
+                }
             }
             
             val tokenBytes = transferData.toByteArray(StandardCharsets.UTF_8)
