@@ -588,31 +588,95 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showCryptoSendAmountDialog(crypto: CryptoCurrency) {
-        val input = EditText(this).apply {
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-            hint = "Amount to send"
+        val dialogView = layoutInflater.inflate(R.layout.dialog_send_crypto, null)
+        
+        // Set up dialog elements
+        val cryptoIcon = dialogView.findViewById<android.widget.ImageView>(R.id.cryptoIcon)
+        val cryptoName = dialogView.findViewById<TextView>(R.id.cryptoName)
+        val availableBalance = dialogView.findViewById<TextView>(R.id.availableBalance)
+        val amountInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.amountInput)
+        val estimatedValue = dialogView.findViewById<TextView>(R.id.estimatedValue)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+        val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
+        val chip25 = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chip25)
+        val chip50 = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chip50)
+        val chip75 = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chip75)
+        val chipMax = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chipMax)
+        
+        // Set crypto info
+        cryptoIcon.setImageResource(crypto.iconResId)
+        cryptoName.text = crypto.name
+        availableBalance.text = "Available: ${crypto.getFormattedBalance()} ${crypto.symbol}"
+        
+        // Set default amount to total balance
+        amountInput.setText(crypto.getFormattedBalance())
+        
+        // Update estimated value
+        fun updateEstimatedValue() {
+            val amount = amountInput.text.toString().toDoubleOrNull() ?: 0.0
+            val value = amount * (if (selectedCurrency == "EUR") crypto.priceEur else crypto.priceUsd)
+            val symbol = if (selectedCurrency == "EUR") "€" else "$"
+            estimatedValue.text = "≈ $symbol${String.format("%.2f", value)}"
         }
         
-        AlertDialog.Builder(this)
-            .setTitle("Send ${crypto.name}")
-            .setMessage("Available balance: ${crypto.getFormattedBalance()} ${crypto.symbol}")
-            .setView(input)
-            .setPositiveButton("Send") { _, _ ->
-                val inputText = input.text.toString()
-                val amount = inputText.toDoubleOrNull()
-                Log.d("MainActivity", "User entered: '$inputText' parsed as: $amount")
-                
-                if (amount != null && amount > 0 && amount <= crypto.balance) {
-                    Log.d("MainActivity", "Starting transfer of exactly $amount ${crypto.symbol} (balance: ${crypto.balance})")
-                    checkNfc {
-                        startCryptoTransfer(crypto, amount)
-                    }
-                } else {
-                    Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
-                }
+        // Initial value calculation
+        updateEstimatedValue()
+        
+        // Add text watcher for real-time value updates
+        amountInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                updateEstimatedValue()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        })
+        
+        // Set up quick amount chips
+        chip25.setOnClickListener {
+            val amount = crypto.balance * 0.25
+            amountInput.setText(String.format("%.8f", amount).trimEnd('0').trimEnd('.'))
+        }
+        
+        chip50.setOnClickListener {
+            val amount = crypto.balance * 0.50
+            amountInput.setText(String.format("%.8f", amount).trimEnd('0').trimEnd('.'))
+        }
+        
+        chip75.setOnClickListener {
+            val amount = crypto.balance * 0.75
+            amountInput.setText(String.format("%.8f", amount).trimEnd('0').trimEnd('.'))
+        }
+        
+        chipMax.setOnClickListener {
+            amountInput.setText(crypto.getFormattedBalance())
+        }
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        // Set up button listeners
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        btnSend.setOnClickListener {
+            val inputText = amountInput.text.toString()
+            val amount = inputText.toDoubleOrNull()
+            Log.d("MainActivity", "User entered: '$inputText' parsed as: $amount")
+            
+            if (amount != null && amount > 0 && amount <= crypto.balance) {
+                Log.d("MainActivity", "Starting transfer of exactly $amount ${crypto.symbol} (balance: ${crypto.balance})")
+                dialog.dismiss()
+                checkNfc {
+                    startCryptoTransfer(crypto, amount)
+                }
+            } else {
+                Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        dialog.show()
     }
     
     private fun startCryptoTransfer(crypto: CryptoCurrency, amount: Double) {
