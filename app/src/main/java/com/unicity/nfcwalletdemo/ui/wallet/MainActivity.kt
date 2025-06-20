@@ -59,8 +59,20 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupUI() {
-        // Setup header
-        binding.settingsButton.setOnClickListener {
+        // Setup bottom navigation
+        binding.navUnicity.setOnClickListener {
+            Toast.makeText(this, "Unicity selected", Toast.LENGTH_SHORT).show()
+        }
+        
+        binding.navTawasal.setOnClickListener {
+            Toast.makeText(this, "Tawasal selected", Toast.LENGTH_SHORT).show()
+        }
+        
+        binding.navSphere.setOnClickListener {
+            Toast.makeText(this, "Sphere selected", Toast.LENGTH_SHORT).show()
+        }
+        
+        binding.navSettings.setOnClickListener {
             showSettingsDialog()
         }
         
