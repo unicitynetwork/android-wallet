@@ -60,6 +60,10 @@
     <color name="nfc_success">#4CAF50</color>
     <color name="nfc_error">#F44336</color>
     
+    <!-- Price Change Colors -->
+    <color name="green_positive">#4CAF50</color>
+    <color name="red_negative">#F44336</color>
+    
     <!-- Legacy Android Colors (for compatibility) -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>

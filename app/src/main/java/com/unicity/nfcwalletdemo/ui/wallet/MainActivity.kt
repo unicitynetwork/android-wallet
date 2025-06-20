@@ -9,17 +9,20 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.tabs.TabLayout
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityMainBinding
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.model.CryptoCurrency
 import com.unicity.nfcwalletdemo.nfc.DirectNfcClient
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import kotlinx.coroutines.launch
@@ -28,8 +31,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: WalletViewModel by viewModels()
     private lateinit var tokenAdapter: TokenAdapter
+    private lateinit var cryptoAdapter: CryptoAdapter
     private var nfcAdapter: NfcAdapter? = null
     private var currentTransferringToken: Token? = null
+    private var currentTransferringCrypto: CryptoCurrency? = null
+    private var currentTab = 0 // 0 for Assets, 1 for NFTs
+    private var selectedCurrency = "USD"
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,17 +45,60 @@ class MainActivity : AppCompatActivity() {
         
         setupActionBar()
         setupNfc()
+        setupUI()
         setupRecyclerView()
-        setupSwipeRefresh()
+        setupTabLayout()
         observeViewModel()
+        
+        // Load initial demo cryptocurrencies
+        viewModel.loadDemoCryptocurrencies()
     }
     
     private fun setupActionBar() {
-        supportActionBar?.apply {
-            setDisplayShowCustomEnabled(true)
-            setDisplayShowTitleEnabled(false)
-            setCustomView(R.layout.actionbar_layout)
+        supportActionBar?.hide()
+    }
+    
+    private fun setupUI() {
+        // Setup header
+        binding.settingsButton.setOnClickListener {
+            showSettingsDialog()
         }
+        
+        // Setup action buttons
+        binding.sendButton.setOnClickListener {
+            if (currentTab == 0) {
+                // For crypto assets
+                val cryptos = viewModel.cryptocurrencies.value
+                if (cryptos.isNotEmpty()) {
+                    showCryptoSendDialog()
+                } else {
+                    Toast.makeText(this, "No assets to send", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // For NFTs/Tokens
+                val tokens = viewModel.tokens.value
+                if (tokens.isNotEmpty()) {
+                    Toast.makeText(this, "Select a token from the list to send", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "No tokens to send", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        
+        binding.receiveButton.setOnClickListener {
+            Toast.makeText(this, "Receive feature coming soon", Toast.LENGTH_SHORT).show()
+        }
+        
+        binding.swapButton.setOnClickListener {
+            Toast.makeText(this, "Swap feature coming soon", Toast.LENGTH_SHORT).show()
+        }
+        
+        // Setup currency selector
+        binding.currencySelector.setOnClickListener {
+            showCurrencyDialog()
+        }
+        
+        updateBalanceDisplay()
     }
     
     private fun setupRecyclerView() {
@@ -63,30 +113,105 @@ class MainActivity : AppCompatActivity() {
             }
         )
         
+        cryptoAdapter = CryptoAdapter(
+            onItemClick = { crypto ->
+                if (currentTab == 0) {
+                    showCryptoDetailDialog(crypto)
+                }
+            },
+            currency = selectedCurrency
+        )
+        
         binding.rvTokens.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = tokenAdapter
+            adapter = cryptoAdapter // Start with crypto adapter
         }
     }
     
-    private fun setupSwipeRefresh() {
-        binding.swipeRefresh.setOnRefreshListener {
-            refreshWallet()
+    private fun setupTabLayout() {
+        binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                currentTab = tab?.position ?: 0
+                updateListDisplay()
+            }
+            
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+        
+        // Select first tab
+        binding.tabLayout.getTabAt(0)?.select()
+    }
+    
+    private fun updateListDisplay() {
+        if (currentTab == 0) {
+            // Show crypto assets
+            binding.rvTokens.adapter = cryptoAdapter
+            val cryptos = viewModel.cryptocurrencies.value
+            cryptoAdapter.submitList(cryptos)
+            binding.emptyStateContainer.visibility = if (cryptos.isEmpty()) View.VISIBLE else View.GONE
+        } else {
+            // Show NFTs/Tokens
+            binding.rvTokens.adapter = tokenAdapter
+            val tokens = viewModel.tokens.value
+            tokenAdapter.submitList(tokens)
+            binding.emptyStateContainer.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
         }
+    }
+    
+    private fun updateBalanceDisplay() {
+        val cryptos = viewModel.cryptocurrencies.value
+        val totalBalance = cryptos.sumOf { it.getBalanceInFiat(selectedCurrency) }
+        
+        val symbol = if (selectedCurrency == "EUR") "€" else "$"
+        binding.balanceAmount.text = "$symbol${String.format("%,.2f", totalBalance)}"
+        binding.selectedCurrency.text = selectedCurrency
+        
+        // Calculate 24h change
+        val totalPreviousBalance = cryptos.sumOf { 
+            val previousPrice = when (selectedCurrency) {
+                "EUR" -> it.priceEur / (1 + it.change24h / 100)
+                else -> it.priceUsd / (1 + it.change24h / 100)
+            }
+            it.balance * previousPrice
+        }
+        
+        val changePercent = if (totalPreviousBalance > 0) {
+            ((totalBalance - totalPreviousBalance) / totalPreviousBalance) * 100
+        } else 0.0
+        
+        val changeAmount = totalBalance - totalPreviousBalance
+        val changeSign = if (changePercent >= 0) "+" else ""
+        
+        binding.balanceChange.text = "$changeSign${String.format("%.2f", changePercent)}% ($changeSign$symbol${String.format("%.2f", changeAmount)})"
+        binding.balanceChange.setTextColor(
+            if (changePercent >= 0) getColor(R.color.green_positive) else getColor(R.color.red_negative)
+        )
     }
     
     private fun observeViewModel() {
         lifecycleScope.launch {
             viewModel.tokens.collect { tokens ->
-                tokenAdapter.submitList(tokens)
-                binding.emptyStateContainer.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
-                binding.rvTokens.visibility = if (tokens.isEmpty()) View.GONE else View.VISIBLE
+                if (currentTab == 1) {
+                    tokenAdapter.submitList(tokens)
+                    binding.emptyStateContainer.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
+                }
+            }
+        }
+        
+        lifecycleScope.launch {
+            viewModel.cryptocurrencies.collect { cryptos ->
+                if (currentTab == 0) {
+                    cryptoAdapter.submitList(cryptos)
+                    binding.emptyStateContainer.visibility = if (cryptos.isEmpty()) View.VISIBLE else View.GONE
+                }
+                updateBalanceDisplay()
             }
         }
         
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
-                binding.swipeRefresh.isRefreshing = isLoading
+                // Remove swipe refresh as it's not in the new layout
             }
         }
         
@@ -107,13 +232,9 @@ class MainActivity : AppCompatActivity() {
     private fun refreshWallet() {
         // Refresh the tokens from repository
         lifecycleScope.launch {
-            try {
-                viewModel.refreshTokens()
-            } finally {
-                // Always stop the refresh spinner
-                binding.swipeRefresh.isRefreshing = false
-            }
+            viewModel.refreshTokens()
         }
+        viewModel.loadDemoCryptocurrencies()
     }
     
     private fun startTokenTransfer(token: Token) {
@@ -316,5 +437,109 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+    
+    private fun showCurrencyDialog() {
+        val currencies = arrayOf("USD", "EUR")
+        val currentIndex = currencies.indexOf(selectedCurrency)
+        
+        AlertDialog.Builder(this)
+            .setTitle("Select Currency")
+            .setSingleChoiceItems(currencies, currentIndex) { dialog, which ->
+                selectedCurrency = currencies[which]
+                binding.selectedCurrency.text = selectedCurrency
+                cryptoAdapter.updateCurrency(selectedCurrency)
+                updateBalanceDisplay()
+                dialog.dismiss()
+            }
+            .show()
+    }
+    
+    private fun showSettingsDialog() {
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "About")
+        
+        AlertDialog.Builder(this)
+            .setTitle("Settings")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showMintTokenDialog()
+                    1 -> showResetWalletDialog()
+                    2 -> runAutomatedTransferTest()
+                    3 -> showAboutDialog()
+                }
+            }
+            .show()
+    }
+    
+    private fun showAboutDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("About Unicity Wallet")
+            .setMessage("Version 2.0.0\n\nA demo wallet for Unicity tokens and cryptocurrencies with NFC transfer capabilities.\n\n© 2024 Unicity")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+    
+    private fun showCryptoDetailDialog(crypto: CryptoCurrency) {
+        AlertDialog.Builder(this)
+            .setTitle(crypto.name)
+            .setMessage("Balance: ${crypto.getFormattedBalance()} ${crypto.symbol}\nValue: ${crypto.getFormattedBalanceInFiat(selectedCurrency)}\nPrice: ${crypto.getFormattedPrice(selectedCurrency)}\n24h Change: ${crypto.getFormattedChange()}")
+            .setPositiveButton("Send") { _, _ ->
+                showCryptoSendAmountDialog(crypto)
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+    
+    private fun showCryptoSendDialog() {
+        val cryptos = viewModel.cryptocurrencies.value
+        val cryptoNames = cryptos.map { "${it.name} (${it.getFormattedBalance()} ${it.symbol})" }.toTypedArray()
+        
+        AlertDialog.Builder(this)
+            .setTitle("Select Asset to Send")
+            .setItems(cryptoNames) { _, which ->
+                showCryptoSendAmountDialog(cryptos[which])
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun showCryptoSendAmountDialog(crypto: CryptoCurrency) {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            hint = "Amount to send"
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Send ${crypto.name}")
+            .setMessage("Available balance: ${crypto.getFormattedBalance()} ${crypto.symbol}")
+            .setView(input)
+            .setPositiveButton("Send") { _, _ ->
+                val amount = input.text.toString().toDoubleOrNull()
+                if (amount != null && amount > 0 && amount <= crypto.balance) {
+                    checkNfc {
+                        startCryptoTransfer(crypto, amount)
+                    }
+                } else {
+                    Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun startCryptoTransfer(crypto: CryptoCurrency, amount: Double) {
+        currentTransferringCrypto = crypto
+        Toast.makeText(this, "Tap phones together to transfer ${amount} ${crypto.symbol}", Toast.LENGTH_SHORT).show()
+        
+        // For demo purposes, we'll simulate the transfer
+        // In a real implementation, this would use NFC to transfer the crypto
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(2000) // Simulate NFC tap delay
+            runOnUiThread {
+                currentTransferringCrypto = null
+                viewModel.updateCryptoBalance(crypto.id, crypto.balance - amount)
+                Toast.makeText(this@MainActivity, "Sent ${amount} ${crypto.symbol} successfully!", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 }
