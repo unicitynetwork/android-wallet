@@ -91,6 +91,13 @@ class TokenAdapter(
             binding.tvTokenName.text = token.name
             binding.tvTokenIdShort.text = token.id.take(8)
             
+            // Set Unicity logo for token icon
+            binding.ivTokenIcon.setImageResource(R.drawable.unicity_logo)
+            binding.ivTokenIcon.background = null
+            binding.ivTokenIcon.setPadding(0, 0, 0, 0)
+            binding.ivTokenIcon.imageTintList = null // Remove any tint
+            binding.ivTokenIcon.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            
             // Expanded details
             binding.tvTokenId.text = "ID: ${token.id.take(12)}..."
             binding.tvTokenTimestamp.text = "Created: ${formatDate(token.timestamp)}"
