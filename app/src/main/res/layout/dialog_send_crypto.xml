@@ -32,14 +32,14 @@
                 android:layout_height="wrap_content"
                 android:textSize="20sp"
                 android:textStyle="bold"
-                android:textColor="@color/text_primary" />
+                android:textColor="?android:attr/textColorPrimary" />
 
             <TextView
                 android:id="@+id/availableBalance"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textSize="14sp"
-                android:textColor="@color/text_secondary"
+                android:textColor="?android:attr/textColorSecondary"
                 android:layout_marginTop="4dp" />
 
         </LinearLayout>
@@ -133,7 +133,7 @@
         android:layout_height="wrap_content"
         android:text="≈ $0.00"
         android:textSize="16sp"
-        android:textColor="@color/text_secondary"
+        android:textColor="?android:attr/textColorSecondary"
         android:gravity="center"
         android:layout_marginBottom="24dp" />
 
