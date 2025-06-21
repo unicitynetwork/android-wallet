@@ -713,14 +713,29 @@ class MainActivity : AppCompatActivity() {
             val amount = inputText.toDoubleOrNull()
             Log.d("MainActivity", "User entered: '$inputText' parsed as: $amount")
             
-            if (amount != null && amount > 0 && amount <= crypto.balance) {
+            Log.d("MainActivity", "Validation: amount=$amount, crypto.balance=${crypto.balance}")
+            
+            // Use a small epsilon for floating point comparison to handle precision issues
+            val epsilon = 0.00000001
+            val balanceCheck = amount != null && amount <= crypto.balance + epsilon
+            
+            Log.d("MainActivity", "Checks: amount!=null=${amount != null}, amount>0=${amount != null && amount > 0}, amount<=balance=$balanceCheck")
+            
+            if (amount != null && amount > 0 && balanceCheck) {
                 Log.d("MainActivity", "Starting transfer of exactly $amount ${crypto.symbol} (balance: ${crypto.balance})")
                 dialog.dismiss()
                 checkNfc {
                     startCryptoTransfer(crypto, amount)
                 }
             } else {
-                Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+                val reason = when {
+                    amount == null -> "amount is null"
+                    amount <= 0 -> "amount is not positive ($amount)"
+                    amount > crypto.balance + epsilon -> "amount ($amount) exceeds balance (${crypto.balance})"
+                    else -> "unknown reason"
+                }
+                Log.d("MainActivity", "Transfer failed: $reason")
+                Toast.makeText(this, "Invalid amount: $reason", Toast.LENGTH_LONG).show()
             }
         }
         
