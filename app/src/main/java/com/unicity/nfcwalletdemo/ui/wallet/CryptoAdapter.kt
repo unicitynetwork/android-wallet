@@ -18,13 +18,14 @@ import com.unicity.nfcwalletdemo.model.CryptoCurrency
 
 class CryptoAdapter(
     private val onSendClick: (CryptoCurrency) -> Unit,
-    private val currency: String = "USD",
+    private var currency: String = "USD",
     private val onLongPress: ((CryptoCurrency) -> Unit)? = null
 ) : ListAdapter<CryptoCurrency, CryptoAdapter.CryptoViewHolder>(CryptoDiffCallback()) {
 
     private var expandedItemId: String? = null
 
     fun updateCurrency(newCurrency: String) {
+        currency = newCurrency
         // Trigger data refresh to update currency display
         notifyDataSetChanged()
     }
@@ -32,13 +33,13 @@ class CryptoAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CryptoViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_crypto, parent, false)
-        return CryptoViewHolder(view, currency, onLongPress)
+        return CryptoViewHolder(view, onLongPress)
     }
 
     override fun onBindViewHolder(holder: CryptoViewHolder, position: Int) {
         val crypto = getItem(position)
         val isExpanded = expandedItemId == crypto.id
-        holder.bind(crypto, isExpanded, onSendClick) { clickedCrypto ->
+        holder.bind(crypto, isExpanded, currency, onSendClick) { clickedCrypto ->
             val previousExpanded = expandedItemId
             expandedItemId = if (expandedItemId == clickedCrypto.id) null else clickedCrypto.id
             
@@ -53,7 +54,6 @@ class CryptoAdapter(
 
     class CryptoViewHolder(
         itemView: View,
-        private var currency: String,
         private val onLongPress: ((CryptoCurrency) -> Unit)?
     ) : RecyclerView.ViewHolder(itemView) {
         private val layoutCollapsed: LinearLayout = itemView.findViewById(R.id.layoutCollapsed)
@@ -76,7 +76,8 @@ class CryptoAdapter(
 
         fun bind(
             crypto: CryptoCurrency, 
-            isExpanded: Boolean, 
+            isExpanded: Boolean,
+            currency: String,
             onSendClick: (CryptoCurrency) -> Unit,
             onToggleExpand: (CryptoCurrency) -> Unit
         ) {

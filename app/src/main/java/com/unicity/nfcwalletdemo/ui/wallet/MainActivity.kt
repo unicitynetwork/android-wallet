@@ -311,8 +311,6 @@ class MainActivity : AppCompatActivity() {
         updateListDisplay()
         updateBalanceDisplay()
         
-        // Show feedback toast
-        Toast.makeText(this, "Refreshing prices...", Toast.LENGTH_SHORT).show()
         
         // Add a small delay to show the refresh animation
         lifecycleScope.launch {
