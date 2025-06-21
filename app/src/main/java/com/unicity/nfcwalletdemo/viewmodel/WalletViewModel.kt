@@ -6,16 +6,21 @@ import androidx.lifecycle.viewModelScope
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.repository.WalletRepository
+import com.unicity.nfcwalletdemo.data.service.CryptoPriceService
 import com.unicity.nfcwalletdemo.model.CryptoCurrency
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 
 class WalletViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = WalletRepository(application)
     private val prefs = application.getSharedPreferences("crypto_balances", android.content.Context.MODE_PRIVATE)
+    private val priceService = CryptoPriceService(application)
+    private var priceUpdateJob: Job? = null
     
     val tokens: StateFlow<List<Token>> = repository.tokens
     val isLoading: StateFlow<Boolean> = repository.isLoading
@@ -32,6 +37,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     init {
         Log.d("WalletViewModel", "ViewModel initialized - loading saved balances")
         loadSavedCryptocurrencies()
+        startPriceUpdates()
     }
     
     fun selectToken(token: Token) {
@@ -67,15 +73,21 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         // Check if we have saved balances
         if (prefs.contains("btc_balance")) {
             Log.d("WalletViewModel", "Loading saved crypto balances")
+            
+            // Get cached prices or use defaults
+            val btcPrice = priceService.getCachedPrice("bitcoin") ?: CryptoPriceService.DEFAULT_PRICES["bitcoin"]!!
+            val ethPrice = priceService.getCachedPrice("ethereum") ?: CryptoPriceService.DEFAULT_PRICES["ethereum"]!!
+            val usdtPrice = priceService.getCachedPrice("tether") ?: CryptoPriceService.DEFAULT_PRICES["tether"]!!
+            
             _cryptocurrencies.value = listOf(
                 CryptoCurrency(
                     id = "bitcoin",
                     symbol = "BTC",
                     name = "Bitcoin",
                     balance = prefs.getFloat("btc_balance", 1.0f).toDouble(),
-                    priceUsd = 43251.57,
-                    priceEur = 39326.88,
-                    change24h = 3.7,
+                    priceUsd = btcPrice.priceUsd,
+                    priceEur = btcPrice.priceEur,
+                    change24h = btcPrice.change24h,
                     iconResId = R.drawable.ic_bitcoin
                 ),
                 CryptoCurrency(
@@ -83,9 +95,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     symbol = "ETH",
                     name = "Ethereum",
                     balance = prefs.getFloat("eth_balance", 5.0f).toDouble(),
-                    priceUsd = 2754.32,
-                    priceEur = 2503.92,
-                    change24h = -2.3,
+                    priceUsd = ethPrice.priceUsd,
+                    priceEur = ethPrice.priceEur,
+                    change24h = ethPrice.change24h,
                     iconResId = R.drawable.ic_ethereum
                 ),
                 CryptoCurrency(
@@ -93,9 +105,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     symbol = "USDT",
                     name = "Tether USD",
                     balance = prefs.getFloat("usdt_balance", 1200.0f).toDouble(),
-                    priceUsd = 1.0,
-                    priceEur = 0.91,
-                    change24h = 0.1,
+                    priceUsd = usdtPrice.priceUsd,
+                    priceEur = usdtPrice.priceEur,
+                    change24h = usdtPrice.change24h,
                     iconResId = R.drawable.ic_tether
                 ),
                 CryptoCurrency(
@@ -110,6 +122,11 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 )
             )
             Log.d("WalletViewModel", "Loaded BTC balance: ${_cryptocurrencies.value.find { it.symbol == "BTC" }?.balance}")
+            
+            // Trigger price update in background
+            viewModelScope.launch {
+                updateCryptoPrices()
+            }
         } else {
             Log.d("WalletViewModel", "No saved balances, loading demo cryptocurrencies")
             loadDemoCryptocurrencies()
@@ -139,16 +156,16 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         
+        // Get cached prices or use defaults
+        val btcPrice = priceService.getCachedPrice("bitcoin") ?: CryptoPriceService.DEFAULT_PRICES["bitcoin"]!!
+        val ethPrice = priceService.getCachedPrice("ethereum") ?: CryptoPriceService.DEFAULT_PRICES["ethereum"]!!
+        val usdtPrice = priceService.getCachedPrice("tether") ?: CryptoPriceService.DEFAULT_PRICES["tether"]!!
+        
         // Generate slightly randomized balances for more realistic appearance
         val btcBalance = (1.0 + kotlin.random.Random.nextDouble(-0.8, 2.0)).coerceAtLeast(0.1)
         val ethBalance = (5.0 + kotlin.random.Random.nextDouble(-3.0, 10.0)).coerceAtLeast(0.1)
         val usdtBalance = (1200.0 + kotlin.random.Random.nextDouble(-800.0, 3000.0)).coerceAtLeast(50.0)
         val subBalance = (200.0 + kotlin.random.Random.nextDouble(-150.0, 500.0)).coerceAtLeast(10.0)
-        
-        // Also slightly randomize price changes
-        val btcChange = 3.7 + kotlin.random.Random.nextDouble(-2.0, 2.0)
-        val ethChange = -2.3 + kotlin.random.Random.nextDouble(-2.0, 2.0)
-        val usdtChange = 0.1 + kotlin.random.Random.nextDouble(-0.2, 0.2)
         
         _cryptocurrencies.value = listOf(
             CryptoCurrency(
@@ -156,9 +173,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 symbol = "BTC",
                 name = "Bitcoin",
                 balance = kotlin.math.round(btcBalance * 100) / 100.0, // Round to 2 decimals
-                priceUsd = 43251.57,
-                priceEur = 39326.88,
-                change24h = kotlin.math.round(btcChange * 10) / 10.0, // Round to 1 decimal
+                priceUsd = btcPrice.priceUsd,
+                priceEur = btcPrice.priceEur,
+                change24h = btcPrice.change24h,
                 iconResId = R.drawable.ic_bitcoin
             ),
             CryptoCurrency(
@@ -166,9 +183,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 symbol = "ETH", 
                 name = "Ethereum",
                 balance = kotlin.math.round(ethBalance * 100) / 100.0,
-                priceUsd = 2754.32,
-                priceEur = 2503.92,
-                change24h = kotlin.math.round(ethChange * 10) / 10.0,
+                priceUsd = ethPrice.priceUsd,
+                priceEur = ethPrice.priceEur,
+                change24h = ethPrice.change24h,
                 iconResId = R.drawable.ic_ethereum
             ),
             CryptoCurrency(
@@ -176,9 +193,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 symbol = "USDT",
                 name = "Tether USD",
                 balance = kotlin.math.round(usdtBalance * 100) / 100.0,
-                priceUsd = 1.0,
-                priceEur = 0.91,
-                change24h = kotlin.math.round(usdtChange * 10) / 10.0,
+                priceUsd = usdtPrice.priceUsd,
+                priceEur = usdtPrice.priceEur,
+                change24h = usdtPrice.change24h,
                 iconResId = R.drawable.ic_tether
             ),
             CryptoCurrency(
@@ -194,6 +211,11 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         )
         
         saveCryptocurrencies() // Save after generating new balances
+        
+        // Trigger price update in background
+        viewModelScope.launch {
+            updateCryptoPrices()
+        }
     }
     
     fun updateCryptoBalance(cryptoId: String, newBalance: Double) {
@@ -251,6 +273,69 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     
     override fun onCleared() {
         super.onCleared()
+        priceUpdateJob?.cancel()
         repository.destroy()
+    }
+    
+    private fun startPriceUpdates() {
+        priceUpdateJob?.cancel()
+        priceUpdateJob = viewModelScope.launch {
+            while (true) {
+                updateCryptoPrices()
+                delay(60000) // Update every minute
+            }
+        }
+    }
+    
+    private suspend fun updateCryptoPrices() {
+        try {
+            val prices = priceService.fetchPrices()
+            val currentCryptos = _cryptocurrencies.value
+            
+            if (currentCryptos.isNotEmpty()) {
+                _cryptocurrencies.value = currentCryptos.map { crypto ->
+                    val priceData = prices[crypto.id]
+                    if (priceData != null) {
+                        crypto.copy(
+                            priceUsd = priceData.priceUsd,
+                            priceEur = priceData.priceEur,
+                            change24h = priceData.change24h
+                        )
+                    } else {
+                        crypto
+                    }
+                }
+                Log.d("WalletViewModel", "Updated crypto prices from API/cache")
+            }
+        } catch (e: Exception) {
+            Log.e("WalletViewModel", "Error updating prices: ${e.message}")
+        }
+    }
+    
+    fun refreshPrices() {
+        viewModelScope.launch {
+            try {
+                val prices = priceService.fetchPrices(forceRefresh = true)
+                val currentCryptos = _cryptocurrencies.value
+                
+                if (currentCryptos.isNotEmpty()) {
+                    _cryptocurrencies.value = currentCryptos.map { crypto ->
+                        val priceData = prices[crypto.id]
+                        if (priceData != null) {
+                            crypto.copy(
+                                priceUsd = priceData.priceUsd,
+                                priceEur = priceData.priceEur,
+                                change24h = priceData.change24h
+                            )
+                        } else {
+                            crypto
+                        }
+                    }
+                    Log.d("WalletViewModel", "Force refreshed crypto prices")
+                }
+            } catch (e: Exception) {
+                Log.e("WalletViewModel", "Error refreshing prices: ${e.message}")
+            }
+        }
     }
 }

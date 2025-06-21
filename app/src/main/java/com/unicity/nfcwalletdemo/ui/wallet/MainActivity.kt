@@ -264,7 +264,7 @@ class MainActivity : AppCompatActivity() {
             binding.swipeRefreshLayout.isRefreshing = true
         }
         
-        Log.d("MainActivity", "Refreshing wallet display...")
+        Log.d("MainActivity", "Refreshing wallet display and prices...")
         
         // Log all current crypto balances
         val cryptos = viewModel.cryptocurrencies.value
@@ -279,19 +279,22 @@ class MainActivity : AppCompatActivity() {
             viewModel.refreshTokens()
         }
         
+        // Refresh crypto prices from API
+        viewModel.refreshPrices()
+        
         // Refresh UI display without changing balances
         updateListDisplay()
         updateBalanceDisplay()
         
         // Show feedback toast
-        Toast.makeText(this, "Refreshing display...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Refreshing prices...", Toast.LENGTH_SHORT).show()
         
         // Add a small delay to show the refresh animation
         lifecycleScope.launch {
-            kotlinx.coroutines.delay(500) // Shorter delay since we're only refreshing display
+            kotlinx.coroutines.delay(1000) // Slightly longer delay to allow price fetch
             binding.swipeRefreshLayout.isRefreshing = false
-            Toast.makeText(this@MainActivity, "Display refreshed", Toast.LENGTH_SHORT).show()
-            Log.d("MainActivity", "Wallet display refresh completed")
+            Toast.makeText(this@MainActivity, "Prices updated", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "Wallet display and price refresh completed")
         }
     }
     
