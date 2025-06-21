@@ -2,6 +2,10 @@ package com.unicity.nfcwalletdemo.ui.wallet
 
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.util.Log
@@ -9,6 +13,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -17,6 +22,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityMainBinding
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
@@ -77,12 +86,16 @@ class MainActivity : AppCompatActivity() {
         }
         
         // Setup action buttons
-        binding.depositButton.setOnClickListener {
-            Toast.makeText(this, "Deposit feature coming soon", Toast.LENGTH_SHORT).show()
-        }
-        
         binding.buyButton.setOnClickListener {
             Toast.makeText(this, "Buy feature coming soon", Toast.LENGTH_SHORT).show()
+        }
+        
+        binding.receiveButton.setOnClickListener {
+            showReceiveQRDialog()
+        }
+        
+        binding.depositButton.setOnClickListener {
+            Toast.makeText(this, "Deposit feature coming soon", Toast.LENGTH_SHORT).show()
         }
         
         binding.transferButton.setOnClickListener {
@@ -728,6 +741,63 @@ class MainActivity : AppCompatActivity() {
         }
         
         dialog.show()
+    }
+    
+    private fun showReceiveQRDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_qr_code, null)
+        
+        val qrCodeImage = dialogView.findViewById<ImageView>(R.id.qrCodeImage)
+        val btnShare = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnShare)
+        val btnClose = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnClose)
+        
+        // Generate QR code
+        val url = "https://github.com/unicitynetwork/"
+        
+        try {
+            val qrCodeBitmap = generateQRCode(url)
+            qrCodeImage.setImageBitmap(qrCodeBitmap)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error generating QR code", e)
+            Toast.makeText(this, "Error generating QR code", Toast.LENGTH_SHORT).show()
+        }
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        btnShare.setOnClickListener {
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, url)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share Unicity Network"))
+        }
+        
+        btnClose.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        dialog.show()
+    }
+    
+    private fun generateQRCode(content: String): Bitmap {
+        val writer = QRCodeWriter()
+        val hints = hashMapOf<EncodeHintType, Any>()
+        hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.H
+        hints[EncodeHintType.MARGIN] = 1
+        
+        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, 512, 512, hints)
+        val width = bitMatrix.width
+        val height = bitMatrix.height
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+        
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
+            }
+        }
+        
+        return bitmap
     }
     
     private fun startCryptoTransfer(crypto: CryptoCurrency, amount: Double) {
