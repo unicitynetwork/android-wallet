@@ -12,6 +12,8 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
@@ -31,8 +33,12 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     private val _mintResult = MutableStateFlow<Result<Token>?>(null)
     val mintResult: StateFlow<Result<Token>?> = _mintResult.asStateFlow()
     
-    private val _cryptocurrencies = MutableStateFlow<List<CryptoCurrency>>(emptyList())
-    val cryptocurrencies: StateFlow<List<CryptoCurrency>> = _cryptocurrencies.asStateFlow()
+    private val _allCryptocurrencies = MutableStateFlow<List<CryptoCurrency>>(emptyList())
+    
+    // Public cryptocurrencies flow that filters out zero balances
+    val cryptocurrencies: StateFlow<List<CryptoCurrency>> = _allCryptocurrencies
+        .map { cryptos -> cryptos.filter { it.balance > 0.0 } }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
     
     init {
         Log.d("WalletViewModel", "ViewModel initialized - loading saved balances")
@@ -65,7 +71,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         // Clear saved balances
         prefs.edit().clear().apply()
         // Clear existing cryptocurrencies to force regeneration
-        _cryptocurrencies.value = emptyList()
+        _allCryptocurrencies.value = emptyList()
         loadDemoCryptocurrencies()
     }
     
@@ -80,7 +86,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             val ethPrice = priceService.getCachedPrice("ethereum") ?: CryptoPriceService.DEFAULT_PRICES["ethereum"]!!
             val usdtPrice = priceService.getCachedPrice("tether") ?: CryptoPriceService.DEFAULT_PRICES["tether"]!!
             
-            _cryptocurrencies.value = listOf(
+            _allCryptocurrencies.value = listOf(
                 CryptoCurrency(
                     id = "enaira",
                     symbol = "eNGN",
@@ -132,7 +138,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     iconResId = R.drawable.subway
                 )
             )
-            Log.d("WalletViewModel", "Loaded BTC balance: ${_cryptocurrencies.value.find { it.symbol == "BTC" }?.balance}")
+            Log.d("WalletViewModel", "Loaded BTC balance: ${_allCryptocurrencies.value.find { it.symbol == "BTC" }?.balance}")
             
             // Trigger price update in background
             viewModelScope.launch {
@@ -145,7 +151,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     }
     
     private fun saveCryptocurrencies() {
-        val cryptos = _cryptocurrencies.value
+        val cryptos = _allCryptocurrencies.value
         prefs.edit().apply {
             cryptos.forEach { crypto ->
                 when (crypto.symbol) {
@@ -163,7 +169,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     
     fun loadDemoCryptocurrencies() {
         // Only generate new balances if the list is empty (first load or after reset)
-        if (_cryptocurrencies.value.isNotEmpty()) {
+        if (_allCryptocurrencies.value.isNotEmpty()) {
             Log.d("WalletViewModel", "Cryptocurrencies already loaded, skipping regeneration")
             return
         }
@@ -181,7 +187,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         val usdtBalance = (1200.0 + kotlin.random.Random.nextDouble(-800.0, 3000.0)).coerceAtLeast(50.0)
         val subBalance = (200.0 + kotlin.random.Random.nextDouble(-150.0, 500.0)).coerceAtLeast(10.0)
         
-        _cryptocurrencies.value = listOf(
+        _allCryptocurrencies.value = listOf(
             CryptoCurrency(
                 id = "enaira",
                 symbol = "eNGN",
@@ -243,10 +249,10 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     }
     
     fun updateCryptoBalance(cryptoId: String, newBalance: Double) {
-        val oldBalance = _cryptocurrencies.value.find { it.id == cryptoId }?.balance ?: 0.0
+        val oldBalance = _allCryptocurrencies.value.find { it.id == cryptoId }?.balance ?: 0.0
         Log.d("WalletViewModel", "Updating crypto balance for $cryptoId: $oldBalance -> $newBalance")
         
-        _cryptocurrencies.value = _cryptocurrencies.value.map { crypto ->
+        _allCryptocurrencies.value = _allCryptocurrencies.value.map { crypto ->
             if (crypto.id == cryptoId) {
                 crypto.copy(balance = newBalance)
             } else {
@@ -260,7 +266,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     fun addReceivedCrypto(cryptoSymbol: String, amount: Double): Boolean {
         Log.d("WalletViewModel", "addReceivedCrypto called with: $cryptoSymbol, amount = $amount")
         
-        val currentCryptos = _cryptocurrencies.value.toMutableList()
+        val currentCryptos = _allCryptocurrencies.value.toMutableList()
         val existingCrypto = currentCryptos.find { it.symbol == cryptoSymbol }
         
         return if (existingCrypto != null) {
@@ -270,7 +276,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             Log.d("WalletViewModel", "Adding $amount $cryptoSymbol to existing balance: $oldBalance + $amount = $newBalance")
             
             val updatedCrypto = existingCrypto.copy(balance = newBalance)
-            _cryptocurrencies.value = currentCryptos.map { crypto ->
+            _allCryptocurrencies.value = currentCryptos.map { crypto ->
                 if (crypto.id == existingCrypto.id) updatedCrypto else crypto
             }
             saveCryptocurrencies() // Save after receiving crypto
@@ -314,10 +320,10 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun updateCryptoPrices() {
         try {
             val prices = priceService.fetchPrices()
-            val currentCryptos = _cryptocurrencies.value
+            val currentCryptos = _allCryptocurrencies.value
             
             if (currentCryptos.isNotEmpty()) {
-                _cryptocurrencies.value = currentCryptos.map { crypto ->
+                _allCryptocurrencies.value = currentCryptos.map { crypto ->
                     val priceData = prices[crypto.id]
                     if (priceData != null) {
                         crypto.copy(
@@ -340,10 +346,10 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 val prices = priceService.fetchPrices(forceRefresh = true)
-                val currentCryptos = _cryptocurrencies.value
+                val currentCryptos = _allCryptocurrencies.value
                 
                 if (currentCryptos.isNotEmpty()) {
-                    _cryptocurrencies.value = currentCryptos.map { crypto ->
+                    _allCryptocurrencies.value = currentCryptos.map { crypto ->
                         val priceData = prices[crypto.id]
                         if (priceData != null) {
                             crypto.copy(
