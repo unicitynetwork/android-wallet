@@ -77,32 +77,32 @@ class MainActivity : AppCompatActivity() {
         }
         
         // Setup action buttons
-        binding.sendButton.setOnClickListener {
+        binding.depositButton.setOnClickListener {
+            Toast.makeText(this, "Deposit feature coming soon", Toast.LENGTH_SHORT).show()
+        }
+        
+        binding.buyButton.setOnClickListener {
+            Toast.makeText(this, "Buy feature coming soon", Toast.LENGTH_SHORT).show()
+        }
+        
+        binding.transferButton.setOnClickListener {
             if (currentTab == 0) {
                 // For crypto assets
                 val cryptos = viewModel.cryptocurrencies.value
                 if (cryptos.isNotEmpty()) {
                     showCryptoSendDialog()
                 } else {
-                    Toast.makeText(this, "No assets to send", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "No assets to transfer", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 // For NFTs/Tokens
                 val tokens = viewModel.tokens.value
                 if (tokens.isNotEmpty()) {
-                    Toast.makeText(this, "Select a token from the list to send", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Select a token from the list to transfer", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this, "No tokens to send", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "No tokens to transfer", Toast.LENGTH_SHORT).show()
                 }
             }
-        }
-        
-        binding.receiveButton.setOnClickListener {
-            Toast.makeText(this, "Receive feature coming soon", Toast.LENGTH_SHORT).show()
-        }
-        
-        binding.swapButton.setOnClickListener {
-            Toast.makeText(this, "Swap feature coming soon", Toast.LENGTH_SHORT).show()
         }
         
         // Setup currency selector

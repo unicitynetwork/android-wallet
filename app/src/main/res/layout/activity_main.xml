@@ -130,7 +130,7 @@
         app:layout_constraintTop_toBottomOf="@id/balanceCard">
 
         <LinearLayout
-            android:id="@+id/sendButton"
+            android:id="@+id/depositButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -145,13 +145,13 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/ic_send"
-                app:tint="#4169E1" />
+                android:src="@drawable/ic_deposit"
+                app:tint="#4CAF50" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Send"
+                android:text="Deposit"
                 android:textSize="12sp"
                 android:textColor="@color/button_text_color"
                 android:layout_marginTop="8dp" />
@@ -159,7 +159,7 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/receiveButton"
+            android:id="@+id/buyButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -174,13 +174,13 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/ic_receive"
+                android:src="@drawable/ic_buy"
                 app:tint="#FFA500" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Receive"
+                android:text="Buy"
                 android:textSize="12sp"
                 android:textColor="@color/button_text_color"
                 android:layout_marginTop="8dp" />
@@ -188,7 +188,7 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/swapButton"
+            android:id="@+id/transferButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -203,13 +203,13 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/ic_swap"
-                app:tint="#9370DB" />
+                android:src="@drawable/ic_transfer"
+                app:tint="#4169E1" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Swap"
+                android:text="Transfer"
                 android:textSize="12sp"
                 android:textColor="@color/button_text_color"
                 android:layout_marginTop="8dp" />
