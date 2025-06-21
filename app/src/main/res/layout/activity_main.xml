@@ -69,7 +69,7 @@
                     android:layout_height="wrap_content"
                     android:text="USD"
                     android:textColor="#FFFFFF"
-                    android:textSize="12sp"
+                    android:textSize="11sp"
                     android:paddingHorizontal="8dp" />
 
                 <ImageView
@@ -152,9 +152,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Buy"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp" />
+                android:layout_marginTop="8dp"
+                android:singleLine="true"
+                android:maxLines="1" />
 
         </LinearLayout>
 
@@ -181,9 +183,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Receive"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp" />
+                android:layout_marginTop="8dp"
+                android:singleLine="true"
+                android:maxLines="1" />
 
         </LinearLayout>
 
@@ -210,9 +214,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Deposit"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp" />
+                android:layout_marginTop="8dp"
+                android:singleLine="true"
+                android:maxLines="1" />
 
         </LinearLayout>
 
@@ -239,9 +245,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Transfer"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp" />
+                android:layout_marginTop="8dp"
+                android:singleLine="true"
+                android:maxLines="1" />
 
         </LinearLayout>
 
