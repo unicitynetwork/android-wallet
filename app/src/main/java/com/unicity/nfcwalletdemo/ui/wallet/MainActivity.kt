@@ -57,6 +57,9 @@ class MainActivity : AppCompatActivity() {
     private val dialogHandler = Handler(Looper.getMainLooper())
     private var dialogDismissRunnable: Runnable? = null
     
+    // NFC waiting dialog
+    private var nfcWaitingDialog: AlertDialog? = null
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -901,17 +904,50 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    private fun showNfcWaitingDialog(crypto: CryptoCurrency, amount: Double) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_nfc_waiting, null)
+        val transferDetails = dialogView.findViewById<TextView>(R.id.transferDetails)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancelNfc)
+        
+        transferDetails.text = "Tap phones together to send $amount ${crypto.symbol}"
+        
+        nfcWaitingDialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+        
+        btnCancel.setOnClickListener {
+            cancelNfcTransfer()
+        }
+        
+        nfcWaitingDialog?.show()
+    }
+    
+    private fun hideNfcWaitingDialog() {
+        nfcWaitingDialog?.dismiss()
+        nfcWaitingDialog = null
+    }
+    
+    private fun cancelNfcTransfer() {
+        Log.d("MainActivity", "User cancelled NFC transfer")
+        currentTransferringCrypto = null
+        disableNfcTransfer()
+        hideNfcWaitingDialog()
+        Toast.makeText(this, "Transfer cancelled", Toast.LENGTH_SHORT).show()
+    }
+
     private fun startCryptoTransfer(crypto: CryptoCurrency, amount: Double) {
         currentTransferringCrypto = crypto
         
         Log.d("MainActivity", "Starting NFC crypto transfer: EXACT amount = $amount ${crypto.symbol}")
-        Toast.makeText(this, "Tap phones together to transfer $amount ${crypto.symbol}", Toast.LENGTH_SHORT).show()
+        showNfcWaitingDialog(crypto, amount)
         
         val directNfcClient = DirectNfcClient(
             sdkService = viewModel.getSdkService(),
             onTransferComplete = {
                 Log.d("MainActivity", "✅ NFC crypto transfer completed")
                 runOnUiThread {
+                    hideNfcWaitingDialog()
                     currentTransferringCrypto = null
                     val newBalance = crypto.balance - amount
                     Log.d("MainActivity", "Deducting from sender: ${crypto.balance} - $amount = $newBalance")
@@ -926,6 +962,7 @@ class MainActivity : AppCompatActivity() {
             onError = { error ->
                 Log.e("MainActivity", "NFC crypto transfer error: $error")
                 runOnUiThread {
+                    hideNfcWaitingDialog()
                     currentTransferringCrypto = null
                     disableNfcTransfer()
                     Toast.makeText(this@MainActivity, "Crypto transfer failed: $error", Toast.LENGTH_SHORT).show()
