@@ -75,11 +75,22 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             Log.d("WalletViewModel", "Loading saved crypto balances")
             
             // Get cached prices or use defaults
+            val enairaPrice = priceService.getCachedPrice("enaira") ?: CryptoPriceService.DEFAULT_PRICES["enaira"]!!
             val btcPrice = priceService.getCachedPrice("bitcoin") ?: CryptoPriceService.DEFAULT_PRICES["bitcoin"]!!
             val ethPrice = priceService.getCachedPrice("ethereum") ?: CryptoPriceService.DEFAULT_PRICES["ethereum"]!!
             val usdtPrice = priceService.getCachedPrice("tether") ?: CryptoPriceService.DEFAULT_PRICES["tether"]!!
             
             _cryptocurrencies.value = listOf(
+                CryptoCurrency(
+                    id = "enaira",
+                    symbol = "eNGN",
+                    name = "eNaira",
+                    balance = prefs.getFloat("enaira_balance", 500000.0f).toDouble(),
+                    priceUsd = enairaPrice.priceUsd,
+                    priceEur = enairaPrice.priceEur,
+                    change24h = enairaPrice.change24h,
+                    iconResId = R.drawable.ic_naira
+                ),
                 CryptoCurrency(
                     id = "bitcoin",
                     symbol = "BTC",
@@ -138,6 +149,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         prefs.edit().apply {
             cryptos.forEach { crypto ->
                 when (crypto.symbol) {
+                    "eNGN" -> putFloat("enaira_balance", crypto.balance.toFloat())
                     "BTC" -> putFloat("btc_balance", crypto.balance.toFloat())
                     "ETH" -> putFloat("eth_balance", crypto.balance.toFloat())
                     "USDT" -> putFloat("usdt_balance", crypto.balance.toFloat())
@@ -157,17 +169,29 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         }
         
         // Get cached prices or use defaults
+        val enairaPrice = priceService.getCachedPrice("enaira") ?: CryptoPriceService.DEFAULT_PRICES["enaira"]!!
         val btcPrice = priceService.getCachedPrice("bitcoin") ?: CryptoPriceService.DEFAULT_PRICES["bitcoin"]!!
         val ethPrice = priceService.getCachedPrice("ethereum") ?: CryptoPriceService.DEFAULT_PRICES["ethereum"]!!
         val usdtPrice = priceService.getCachedPrice("tether") ?: CryptoPriceService.DEFAULT_PRICES["tether"]!!
         
         // Generate slightly randomized balances for more realistic appearance
+        val enairaBalance = (500000.0 + kotlin.random.Random.nextDouble(-200000.0, 1000000.0)).coerceAtLeast(50000.0)
         val btcBalance = (1.0 + kotlin.random.Random.nextDouble(-0.8, 2.0)).coerceAtLeast(0.1)
         val ethBalance = (5.0 + kotlin.random.Random.nextDouble(-3.0, 10.0)).coerceAtLeast(0.1)
         val usdtBalance = (1200.0 + kotlin.random.Random.nextDouble(-800.0, 3000.0)).coerceAtLeast(50.0)
         val subBalance = (200.0 + kotlin.random.Random.nextDouble(-150.0, 500.0)).coerceAtLeast(10.0)
         
         _cryptocurrencies.value = listOf(
+            CryptoCurrency(
+                id = "enaira",
+                symbol = "eNGN",
+                name = "eNaira",
+                balance = kotlin.math.round(enairaBalance), // Round to whole numbers for Naira
+                priceUsd = enairaPrice.priceUsd,
+                priceEur = enairaPrice.priceEur,
+                change24h = enairaPrice.change24h,
+                iconResId = R.drawable.ic_naira
+            ),
             CryptoCurrency(
                 id = "bitcoin",
                 symbol = "BTC",

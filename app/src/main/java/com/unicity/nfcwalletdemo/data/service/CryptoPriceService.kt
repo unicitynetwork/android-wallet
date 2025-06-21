@@ -46,6 +46,11 @@ class CryptoPriceService(context: Context) {
                 priceUsd = 1.0,
                 priceEur = 0.92,
                 change24h = 0.01
+            ),
+            "enaira" to CryptoPriceData(
+                priceUsd = 0.000647, // 1 NGN = ~0.000647 USD (1 USD = 1546.55 NGN)
+                priceEur = 0.000564, // 1 NGN = ~0.000564 EUR (1 EUR = 1772.27 NGN)
+                change24h = 0.02 // Small fluctuation for stablecoin
             )
         )
     }
