@@ -129,7 +129,10 @@ class MainActivity : AppCompatActivity() {
             onSendClick = { crypto ->
                 showCryptoSendAmountDialog(crypto)
             },
-            currency = selectedCurrency
+            currency = selectedCurrency,
+            onLongPress = { crypto ->
+                showEditBalanceDialog(crypto)
+            }
         )
         
         binding.rvTokens.apply {
@@ -673,6 +676,51 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        dialog.show()
+    }
+    
+    private fun showEditBalanceDialog(crypto: CryptoCurrency) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_edit_balance, null)
+        
+        // Set up dialog elements
+        val cryptoIcon = dialogView.findViewById<android.widget.ImageView>(R.id.cryptoIcon)
+        val cryptoName = dialogView.findViewById<TextView>(R.id.cryptoName)
+        val currentBalance = dialogView.findViewById<TextView>(R.id.currentBalance)
+        val balanceInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.balanceInput)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+        val btnSave = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSave)
+        
+        // Set crypto info
+        cryptoIcon.setImageResource(crypto.iconResId)
+        cryptoName.text = crypto.name
+        currentBalance.text = "Current: ${crypto.getFormattedBalance()} ${crypto.symbol}"
+        
+        // Set current balance in input
+        balanceInput.setText(crypto.getFormattedBalance())
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        // Set up button listeners
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        btnSave.setOnClickListener {
+            val inputText = balanceInput.text.toString()
+            val newBalance = inputText.toDoubleOrNull()
+            
+            if (newBalance != null && newBalance >= 0) {
+                Log.d("MainActivity", "🔧 Hidden feature: Updating ${crypto.symbol} balance from ${crypto.balance} to $newBalance")
+                viewModel.updateCryptoBalance(crypto.id, newBalance)
+                dialog.dismiss()
+                Toast.makeText(this, "🔧 Balance updated: ${crypto.symbol} = $newBalance", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Invalid balance amount", Toast.LENGTH_SHORT).show()
             }
         }
         

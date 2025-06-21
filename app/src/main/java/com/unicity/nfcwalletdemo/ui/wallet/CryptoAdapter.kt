@@ -1,6 +1,9 @@
 package com.unicity.nfcwalletdemo.ui.wallet
 
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -15,7 +18,8 @@ import com.unicity.nfcwalletdemo.model.CryptoCurrency
 
 class CryptoAdapter(
     private val onSendClick: (CryptoCurrency) -> Unit,
-    private val currency: String = "USD"
+    private val currency: String = "USD",
+    private val onLongPress: ((CryptoCurrency) -> Unit)? = null
 ) : ListAdapter<CryptoCurrency, CryptoAdapter.CryptoViewHolder>(CryptoDiffCallback()) {
 
     private var expandedItemId: String? = null
@@ -28,7 +32,7 @@ class CryptoAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CryptoViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_crypto, parent, false)
-        return CryptoViewHolder(view, currency)
+        return CryptoViewHolder(view, currency, onLongPress)
     }
 
     override fun onBindViewHolder(holder: CryptoViewHolder, position: Int) {
@@ -49,7 +53,8 @@ class CryptoAdapter(
 
     class CryptoViewHolder(
         itemView: View,
-        private var currency: String
+        private var currency: String,
+        private val onLongPress: ((CryptoCurrency) -> Unit)?
     ) : RecyclerView.ViewHolder(itemView) {
         private val layoutCollapsed: LinearLayout = itemView.findViewById(R.id.layoutCollapsed)
         private val layoutExpanded: LinearLayout = itemView.findViewById(R.id.layoutExpanded)
@@ -65,6 +70,9 @@ class CryptoAdapter(
         private val cryptoMarketCap: TextView = itemView.findViewById(R.id.cryptoMarketCap)
         private val cryptoVolume: TextView = itemView.findViewById(R.id.cryptoVolume)
         private val btnSendCrypto: MaterialButton = itemView.findViewById(R.id.btnSendCrypto)
+        
+        private val longPressHandler = Handler(Looper.getMainLooper())
+        private var longPressRunnable: Runnable? = null
 
         fun bind(
             crypto: CryptoCurrency, 
@@ -102,6 +110,33 @@ class CryptoAdapter(
             // Click handlers
             layoutCollapsed.setOnClickListener { onToggleExpand(crypto) }
             btnSendCrypto.setOnClickListener { onSendClick(crypto) }
+            
+            // Long press detection (2+ seconds) for hidden balance editing feature
+            setupLongPressDetection(crypto)
+        }
+        
+        private fun setupLongPressDetection(crypto: CryptoCurrency) {
+            layoutCollapsed.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        // Cancel any previous long press
+                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+                        
+                        // Start new long press timer (2 seconds)
+                        longPressRunnable = Runnable {
+                            onLongPress?.invoke(crypto)
+                        }
+                        longPressHandler.postDelayed(longPressRunnable!!, 2000)
+                        false // Don't consume the event, let normal click handling proceed
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        // Cancel long press if finger is lifted
+                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+                        false // Don't consume the event
+                    }
+                    else -> false
+                }
+            }
         }
         
         private fun getFormattedMarketCap(crypto: CryptoCurrency): String {
