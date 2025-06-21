@@ -7,10 +7,16 @@ import android.content.IntentFilter
 import android.content.res.Configuration
 import android.nfc.NfcAdapter
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.unicity.nfcwalletdemo.R
@@ -34,6 +40,12 @@ class ReceiveActivity : AppCompatActivity() {
     private val gson = Gson()
     private lateinit var sdkService: UnicitySdkService
     
+    // Success dialog properties
+    private lateinit var confettiContainer: FrameLayout
+    private lateinit var transferDetailsText: TextView
+    private val dialogHandler = Handler(Looper.getMainLooper())
+    private var dialogDismissRunnable: Runnable? = null
+    
     private val tokenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -54,6 +66,7 @@ class ReceiveActivity : AppCompatActivity() {
                                 Log.d("ReceiveActivity", "Demo token received via NFC: ${token.name}")
                                 runOnUiThread {
                                     viewModel.onTokenReceived(token)
+                                    showSuccessDialog("Received ${token.name} successfully!")
                                     Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
                                 }
                             }
@@ -92,6 +105,7 @@ class ReceiveActivity : AppCompatActivity() {
         setupActionBar()
         setupNfc()
         setupViews()
+        setupSuccessDialog()
         observeViewModel()
         
         // Check if this was auto-started from NFC tap
@@ -132,6 +146,7 @@ class ReceiveActivity : AppCompatActivity() {
             finish()
         }
     }
+    
     
     private fun observeViewModel() {
         // Observe receive state
@@ -256,6 +271,7 @@ class ReceiveActivity : AppCompatActivity() {
             
             runOnUiThread {
                 viewModel.onTokenReceived(finalToken)
+                showSuccessDialog("Received ${finalToken.name} successfully!")
                 Toast.makeText(this@ReceiveActivity, "Unicity token received: ${finalToken.name}", Toast.LENGTH_SHORT).show()
             }
             
@@ -364,6 +380,7 @@ class ReceiveActivity : AppCompatActivity() {
                 ))
                 
                 val value = String.format("%.2f", amount * priceUsd)
+                showSuccessDialog("Received $amount $cryptoSymbol successfully!")
                 Toast.makeText(this@ReceiveActivity, "Received $amount $cryptoSymbol (~$$value)", Toast.LENGTH_LONG).show()
             }
             
@@ -373,6 +390,54 @@ class ReceiveActivity : AppCompatActivity() {
                 viewModel.onError("Failed to process crypto transfer: ${e.message}")
                 Toast.makeText(this@ReceiveActivity, "Failed to receive crypto: ${e.message}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+    
+    private fun setupSuccessDialog() {
+        try {
+            confettiContainer = binding.confettiOverlay.confettiContainer
+            transferDetailsText = binding.confettiOverlay.transferDetailsText
+            
+            // Initially hide dialog
+            confettiContainer.visibility = View.GONE
+            
+            // Set up tap to dismiss
+            confettiContainer.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    dismissSuccessDialog()
+                    true
+                } else {
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Error setting up success dialog", e)
+        }
+    }
+    
+    private fun showSuccessDialog(message: String) {
+        try {
+            transferDetailsText.text = message
+            confettiContainer.visibility = View.VISIBLE
+            
+            // Auto-dismiss after 3 seconds
+            dialogDismissRunnable = Runnable { 
+                dismissSuccessDialog() 
+            }
+            dialogHandler.postDelayed(dialogDismissRunnable!!, 3000)
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Error showing success dialog", e)
+        }
+    }
+    
+    private fun dismissSuccessDialog() {
+        try {
+            dialogDismissRunnable?.let { dialogHandler.removeCallbacks(it) }
+            if (::confettiContainer.isInitialized) {
+                confettiContainer.visibility = View.GONE
+            }
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Error dismissing success dialog", e)
         }
     }
     

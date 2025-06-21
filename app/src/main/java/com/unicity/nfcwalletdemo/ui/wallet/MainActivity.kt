@@ -8,11 +8,15 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.nfc.NfcAdapter
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -47,6 +51,12 @@ class MainActivity : AppCompatActivity() {
     private var currentTab = 0 // 0 for Assets, 1 for NFTs
     private var selectedCurrency = "USD"
     
+    // Success dialog properties
+    private lateinit var confettiContainer: FrameLayout
+    private lateinit var transferDetailsText: TextView
+    private val dialogHandler = Handler(Looper.getMainLooper())
+    private var dialogDismissRunnable: Runnable? = null
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -58,6 +68,8 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupTabLayout()
         setupSwipeRefresh()
+        setupSuccessDialog()
+        setupTestTrigger()
         observeViewModel()
         
         // Don't load cryptocurrencies here - ViewModel init handles it
@@ -70,15 +82,15 @@ class MainActivity : AppCompatActivity() {
     private fun setupUI() {
         // Setup bottom navigation
         binding.navUnicity.setOnClickListener {
-            Toast.makeText(this, "Unicity selected", Toast.LENGTH_SHORT).show()
+            // Navigation handled without toast feedback
         }
         
         binding.navTawasal.setOnClickListener {
-            Toast.makeText(this, "Tawasal selected", Toast.LENGTH_SHORT).show()
+            // Navigation handled without toast feedback
         }
         
         binding.navSphere.setOnClickListener {
-            Toast.makeText(this, "Sphere selected", Toast.LENGTH_SHORT).show()
+            // Navigation handled without toast feedback
         }
         
         binding.navSettings.setOnClickListener {
@@ -306,7 +318,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             kotlinx.coroutines.delay(1000) // Slightly longer delay to allow price fetch
             binding.swipeRefreshLayout.isRefreshing = false
-            Toast.makeText(this@MainActivity, "Prices updated", Toast.LENGTH_SHORT).show()
+            // Prices updated silently
             Log.d("MainActivity", "Wallet display and price refresh completed")
         }
     }
@@ -328,6 +340,9 @@ class MainActivity : AppCompatActivity() {
                     currentTransferringToken = null
                     viewModel.removeToken(token.id)
                     disableNfcTransfer()
+                    
+                    // Show success dialog for token transfer
+                    showSuccessDialog("${token.name} sent successfully!")
                     Toast.makeText(this@MainActivity, "Token sent successfully!", Toast.LENGTH_SHORT).show()
                 }
             },
@@ -800,6 +815,63 @@ class MainActivity : AppCompatActivity() {
         return bitmap
     }
     
+    private fun setupSuccessDialog() {
+        try {
+            confettiContainer = binding.confettiOverlay.confettiContainer
+            transferDetailsText = binding.confettiOverlay.transferDetailsText
+            
+            // Initially hide dialog
+            confettiContainer.visibility = View.GONE
+            
+            // Set up tap to dismiss
+            confettiContainer.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    dismissSuccessDialog()
+                    true
+                } else {
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error setting up success dialog", e)
+        }
+    }
+    
+    private fun showSuccessDialog(message: String) {
+        try {
+            transferDetailsText.text = message
+            confettiContainer.visibility = View.VISIBLE
+            
+            // Auto-dismiss after 3 seconds
+            dialogDismissRunnable = Runnable { 
+                dismissSuccessDialog() 
+            }
+            dialogHandler.postDelayed(dialogDismissRunnable!!, 3000)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error showing success dialog", e)
+        }
+    }
+    
+    private fun dismissSuccessDialog() {
+        try {
+            dialogDismissRunnable?.let { dialogHandler.removeCallbacks(it) }
+            if (::confettiContainer.isInitialized) {
+                confettiContainer.visibility = View.GONE
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error dismissing success dialog", e)
+        }
+    }
+    
+    private fun setupTestTrigger() {
+        // Add long-press listener to balance card for testing success dialog
+        binding.balanceCard.setOnLongClickListener {
+            Log.d("MainActivity", "Long press detected on balance card - triggering test success dialog")
+            showSuccessDialog("Excellent, you've sent 1.5 BTC!")
+            true
+        }
+    }
+    
     private fun startCryptoTransfer(crypto: CryptoCurrency, amount: Double) {
         currentTransferringCrypto = crypto
         
@@ -816,6 +888,9 @@ class MainActivity : AppCompatActivity() {
                     Log.d("MainActivity", "Deducting from sender: ${crypto.balance} - $amount = $newBalance")
                     viewModel.updateCryptoBalance(crypto.id, newBalance)
                     disableNfcTransfer()
+                    
+                    // Show success dialog for crypto transfer
+                    showSuccessDialog("Sent $amount ${crypto.symbol} successfully!")
                     Toast.makeText(this@MainActivity, "Sent $amount ${crypto.symbol} successfully!", Toast.LENGTH_SHORT).show()
                 }
             },

@@ -418,4 +418,11 @@
 
     </LinearLayout>
 
+    <!-- Success Dialog Overlay -->
+    <include
+        android:id="@+id/confettiOverlay"
+        layout="@layout/confetti_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
