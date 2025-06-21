@@ -608,15 +608,31 @@ class MainActivity : AppCompatActivity() {
     
     private fun showCryptoSendDialog() {
         val cryptos = viewModel.cryptocurrencies.value
-        val cryptoNames = cryptos.map { "${it.name} (${it.getFormattedBalance()} ${it.symbol})" }.toTypedArray()
         
-        AlertDialog.Builder(this)
-            .setTitle("Select Asset to Send")
-            .setItems(cryptoNames) { _, which ->
-                showCryptoSendAmountDialog(cryptos[which])
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        // Create custom dialog
+        val dialogView = layoutInflater.inflate(R.layout.dialog_select_asset, null)
+        val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvAssets)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+        
+        // Setup RecyclerView
+        recyclerView.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        val adapter = AssetDialogAdapter(cryptos) { selectedAsset ->
+            dialog.dismiss()
+            showCryptoSendAmountDialog(selectedAsset)
+        }
+        
+        recyclerView.adapter = adapter
+        
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        dialog.show()
     }
     
     private fun showCryptoSendAmountDialog(crypto: CryptoCurrency) {
