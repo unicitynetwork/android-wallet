@@ -100,67 +100,70 @@
             android:paddingTop="0dp"
             android:visibility="gone">
 
-            <!-- Asset Details -->
+            <!-- Asset Details with Send Button -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginBottom="16dp">
+                android:orientation="horizontal">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <!-- Asset Details -->
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="Asset Details"
-                    android:textColor="#000000"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/cryptoUnitPrice"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Price: $43,251.57"
-                    android:textColor="#666666"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="4dp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Asset Details"
+                        android:textColor="#000000"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
 
-                <TextView
-                    android:id="@+id/cryptoMarketCap"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Market Cap: $847.2B"
-                    android:textColor="#666666"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="4dp" />
+                    <TextView
+                        android:id="@+id/cryptoUnitPrice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Price: $43,251.57"
+                        android:textColor="#666666"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp" />
 
-                <TextView
-                    android:id="@+id/cryptoVolume"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="24h Volume: $28.4B"
-                    android:textColor="#666666"
-                    android:textSize="14sp" />
+                    <TextView
+                        android:id="@+id/cryptoMarketCap"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Market Cap: $847.2B"
+                        android:textColor="#666666"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp" />
 
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/cryptoVolume"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="24h Volume: $28.4B"
+                        android:textColor="#666666"
+                        android:textSize="14sp" />
 
-            <!-- Action Buttons -->
-            <LinearLayout
-                android:id="@+id/layoutButtons"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="end">
+                </LinearLayout>
 
+                <!-- Send Button -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSendCrypto"
                     style="@style/Widget.Material3.Button"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Send"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    android:backgroundTint="#4169E1" />
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    app:icon="@drawable/ic_send_plane"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:backgroundTint="#4169E1"
+                    android:layout_marginStart="16dp"
+                    android:layout_gravity="bottom" />
 
             </LinearLayout>
 
