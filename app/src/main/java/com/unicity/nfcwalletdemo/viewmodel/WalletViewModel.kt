@@ -37,7 +37,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     
     // Public cryptocurrencies flow that filters out zero balances
     val cryptocurrencies: StateFlow<List<CryptoCurrency>> = _allCryptocurrencies
-        .map { cryptos -> cryptos.filter { it.balance > 0.0 } }
+        .map { cryptos -> cryptos.filter { it.balance > 0.00000001 } } // Use epsilon for floating point comparison
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
     
     init {
