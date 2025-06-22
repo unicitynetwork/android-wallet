@@ -47,6 +47,11 @@ class CryptoPriceService(context: Context) {
                 priceEur = 0.92,
                 change24h = 0.01
             ),
+            "efranc" to CryptoPriceData(
+                priceUsd = 0.00169, // 1 XAF = ~0.00169 USD (1 USD = 592 XAF)
+                priceEur = 0.00152, // 1 XAF = ~0.00152 EUR (1 EUR = 656 XAF)
+                change24h = 0.01 // Small fluctuation for stablecoin
+            ),
             "enaira" to CryptoPriceData(
                 priceUsd = 0.000647, // 1 NGN = ~0.000647 USD (1 USD = 1546.55 NGN)
                 priceEur = 0.000564, // 1 NGN = ~0.000564 EUR (1 EUR = 1772.27 NGN)

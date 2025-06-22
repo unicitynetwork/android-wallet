@@ -81,12 +81,23 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             Log.d("WalletViewModel", "Loading saved crypto balances")
             
             // Get cached prices or use defaults
+            val efrancPrice = priceService.getCachedPrice("efranc") ?: CryptoPriceService.DEFAULT_PRICES["efranc"]!!
             val enairaPrice = priceService.getCachedPrice("enaira") ?: CryptoPriceService.DEFAULT_PRICES["enaira"]!!
             val btcPrice = priceService.getCachedPrice("bitcoin") ?: CryptoPriceService.DEFAULT_PRICES["bitcoin"]!!
             val ethPrice = priceService.getCachedPrice("ethereum") ?: CryptoPriceService.DEFAULT_PRICES["ethereum"]!!
             val usdtPrice = priceService.getCachedPrice("tether") ?: CryptoPriceService.DEFAULT_PRICES["tether"]!!
             
             _allCryptocurrencies.value = listOf(
+                CryptoCurrency(
+                    id = "efranc",
+                    symbol = "eXAF",
+                    name = "eFranc",
+                    balance = prefs.getFloat("efranc_balance", 250000.0f).toDouble(),
+                    priceUsd = efrancPrice.priceUsd,
+                    priceEur = efrancPrice.priceEur,
+                    change24h = efrancPrice.change24h,
+                    iconResId = R.drawable.ic_franc
+                ),
                 CryptoCurrency(
                     id = "enaira",
                     symbol = "eNGN",
@@ -155,6 +166,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         prefs.edit().apply {
             cryptos.forEach { crypto ->
                 when (crypto.symbol) {
+                    "eXAF" -> putFloat("efranc_balance", crypto.balance.toFloat())
                     "eNGN" -> putFloat("enaira_balance", crypto.balance.toFloat())
                     "BTC" -> putFloat("btc_balance", crypto.balance.toFloat())
                     "ETH" -> putFloat("eth_balance", crypto.balance.toFloat())
@@ -175,12 +187,14 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         }
         
         // Get cached prices or use defaults
+        val efrancPrice = priceService.getCachedPrice("efranc") ?: CryptoPriceService.DEFAULT_PRICES["efranc"]!!
         val enairaPrice = priceService.getCachedPrice("enaira") ?: CryptoPriceService.DEFAULT_PRICES["enaira"]!!
         val btcPrice = priceService.getCachedPrice("bitcoin") ?: CryptoPriceService.DEFAULT_PRICES["bitcoin"]!!
         val ethPrice = priceService.getCachedPrice("ethereum") ?: CryptoPriceService.DEFAULT_PRICES["ethereum"]!!
         val usdtPrice = priceService.getCachedPrice("tether") ?: CryptoPriceService.DEFAULT_PRICES["tether"]!!
         
         // Generate slightly randomized balances for more realistic appearance
+        val efrancBalance = (250000.0 + kotlin.random.Random.nextDouble(-100000.0, 500000.0)).coerceAtLeast(25000.0)
         val enairaBalance = (500000.0 + kotlin.random.Random.nextDouble(-200000.0, 1000000.0)).coerceAtLeast(50000.0)
         val btcBalance = (1.0 + kotlin.random.Random.nextDouble(-0.8, 2.0)).coerceAtLeast(0.1)
         val ethBalance = (5.0 + kotlin.random.Random.nextDouble(-3.0, 10.0)).coerceAtLeast(0.1)
@@ -188,6 +202,16 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         val subBalance = (200.0 + kotlin.random.Random.nextDouble(-150.0, 500.0)).coerceAtLeast(10.0)
         
         _allCryptocurrencies.value = listOf(
+            CryptoCurrency(
+                id = "efranc",
+                symbol = "eXAF",
+                name = "eFranc",
+                balance = kotlin.math.round(efrancBalance), // Round to whole numbers for Franc
+                priceUsd = efrancPrice.priceUsd,
+                priceEur = efrancPrice.priceEur,
+                change24h = efrancPrice.change24h,
+                iconResId = R.drawable.ic_franc
+            ),
             CryptoCurrency(
                 id = "enaira",
                 symbol = "eNGN",
