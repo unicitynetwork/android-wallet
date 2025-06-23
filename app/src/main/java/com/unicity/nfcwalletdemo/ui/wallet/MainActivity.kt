@@ -103,7 +103,7 @@ class MainActivity : AppCompatActivity() {
         
         // Setup action buttons
         binding.buyButton.setOnClickListener {
-            Toast.makeText(this, "Buy feature coming soon", Toast.LENGTH_SHORT).show()
+            showBuySellDialog()
         }
         
         binding.receiveButton.setOnClickListener {
@@ -875,6 +875,84 @@ class MainActivity : AppCompatActivity() {
         }
         
         btnWithdrawEth.setOnClickListener {
+            // Do nothing
+        }
+        
+        dialog.show()
+    }
+    
+    private fun showBuySellDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_buy_sell, null)
+        
+        // Get views
+        val btnClose = dialogView.findViewById<ImageButton>(R.id.btnClose)
+        val btnBuyBtc = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnBuyBtc)
+        val btnSellBtc = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSellBtc)
+        val btnBuyEth = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnBuyEth)
+        val btnSellEth = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSellEth)
+        val btnBuyUsdt = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnBuyUsdt)
+        val btnSellUsdt = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSellUsdt)
+        
+        // Update prices with current data from cryptocurrencies
+        val btcCrypto = viewModel.cryptocurrencies.value.find { it.symbol == "BTC" }
+        val ethCrypto = viewModel.cryptocurrencies.value.find { it.symbol == "ETH" }
+        val usdtCrypto = viewModel.cryptocurrencies.value.find { it.symbol == "USDT" }
+        
+        // Update BTC price
+        val btcPriceText = dialogView.findViewById<TextView>(R.id.btcPrice)
+        val btcChangeText = dialogView.findViewById<TextView>(R.id.btcChange)
+        if (btcCrypto != null) {
+            btcPriceText?.text = "$${String.format("%,.2f", btcCrypto.priceUsd)}"
+            btcChangeText?.text = "${if (btcCrypto.change24h >= 0) "+" else ""}${String.format("%.2f", btcCrypto.change24h)}%"
+            btcChangeText?.setTextColor(if (btcCrypto.change24h >= 0) getColor(R.color.green_positive) else getColor(R.color.red_negative))
+        }
+        
+        // Update ETH price
+        val ethPriceText = dialogView.findViewById<TextView>(R.id.ethPrice)
+        val ethChangeText = dialogView.findViewById<TextView>(R.id.ethChange)
+        if (ethCrypto != null) {
+            ethPriceText?.text = "$${String.format("%,.2f", ethCrypto.priceUsd)}"
+            ethChangeText?.text = "${if (ethCrypto.change24h >= 0) "+" else ""}${String.format("%.2f", ethCrypto.change24h)}%"
+            ethChangeText?.setTextColor(if (ethCrypto.change24h >= 0) getColor(R.color.green_positive) else getColor(R.color.red_negative))
+        }
+        
+        // Update USDT price
+        val usdtPriceText = dialogView.findViewById<TextView>(R.id.usdtPrice)
+        if (usdtCrypto != null) {
+            usdtPriceText?.text = "$${String.format("%.4f", usdtCrypto.priceUsd)}"
+        }
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        // Set up click listeners
+        btnClose.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        // Button click listeners that do nothing as requested
+        btnBuyBtc.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnSellBtc.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnBuyEth.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnSellEth.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnBuyUsdt.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnSellUsdt.setOnClickListener {
             // Do nothing
         }
         
