@@ -145,13 +145,12 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/ic_buy"
-                app:tint="#FFA500" />
+                android:src="@drawable/ic_buy_sell" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Buy"
+                android:text="Buy/Sell"
                 android:textSize="11sp"
                 android:textColor="@color/button_text_color"
                 android:layout_marginTop="8dp"
