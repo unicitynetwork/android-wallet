@@ -17,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -110,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         binding.depositButton.setOnClickListener {
-            Toast.makeText(this, "Deposit feature coming soon", Toast.LENGTH_SHORT).show()
+            showDepositDialog()
         }
         
         binding.transferButton.setOnClickListener {
@@ -822,6 +823,59 @@ class MainActivity : AppCompatActivity() {
         
         btnClose.setOnClickListener {
             dialog.dismiss()
+        }
+        
+        dialog.show()
+    }
+    
+    private fun showDepositDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_deposit, null)
+        
+        // Get views
+        val btnClose = dialogView.findViewById<ImageButton>(R.id.btnClose)
+        val btnDepositBtc = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDepositBtc)
+        val btnWithdrawBtc = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnWithdrawBtc)
+        val btnDepositEth = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDepositEth)
+        val btnWithdrawEth = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnWithdrawEth)
+        
+        // Update balance displays with actual crypto balances
+        val btcCard = dialogView.findViewById<com.google.android.material.card.MaterialCardView>(R.id.btcCard)
+        val ethCard = dialogView.findViewById<com.google.android.material.card.MaterialCardView>(R.id.ethCard)
+        val btcBalanceText = btcCard?.findViewById<TextView>(R.id.btcBalance)
+        val ethBalanceText = ethCard?.findViewById<TextView>(R.id.ethBalance)
+        
+        // Get current balances
+        val btcBalance = viewModel.cryptocurrencies.value.find { it.symbol == "BTC" }?.balance ?: 0.0
+        val ethBalance = viewModel.cryptocurrencies.value.find { it.symbol == "ETH" }?.balance ?: 0.0
+        
+        // Update balance texts if views exist
+        btcBalanceText?.text = "Balance: ${String.format("%.2f", btcBalance)}"
+        ethBalanceText?.text = "Balance: ${String.format("%.2f", ethBalance)}"
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        // Set up click listeners
+        btnClose.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        // Button click listeners that do nothing as requested
+        btnDepositBtc.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnWithdrawBtc.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnDepositEth.setOnClickListener {
+            // Do nothing
+        }
+        
+        btnWithdrawEth.setOnClickListener {
+            // Do nothing
         }
         
         dialog.show()
