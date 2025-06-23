@@ -34,6 +34,8 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityMainBinding
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
+import android.widget.AutoCompleteTextView
+import android.widget.ArrayAdapter
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.model.CryptoCurrency
@@ -119,7 +121,7 @@ class MainActivity : AppCompatActivity() {
                 // For crypto assets
                 val cryptos = viewModel.cryptocurrencies.value
                 if (cryptos.isNotEmpty()) {
-                    showCryptoSendDialog()
+                    showSendDialog()
                 } else {
                     Toast.makeText(this, "No assets to transfer", Toast.LENGTH_SHORT).show()
                 }
@@ -608,6 +610,53 @@ class MainActivity : AppCompatActivity() {
             .setMessage("Version 2.0.0\n\nA demo wallet for Unicity tokens and cryptocurrencies with NFC transfer capabilities.\n\n© 2024 Unicity")
             .setPositiveButton("OK", null)
             .show()
+    }
+    
+    private fun showSendDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_send, null)
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        // Setup close button
+        val btnClose = dialogView.findViewById<ImageButton>(R.id.btnClose)
+        btnClose.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        // Setup token selector
+        val tokenSelector = dialogView.findViewById<AutoCompleteTextView>(R.id.tokenSelector)
+        val tokenNames = listOf("Bitcoin", "Ethereum", "eNaira", "eFranc")
+        val tokenAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tokenNames)
+        tokenSelector.setAdapter(tokenAdapter)
+        
+        val availableBalanceText = dialogView.findViewById<TextView>(R.id.availableBalanceText)
+        tokenSelector.setOnItemClickListener { _, _, position, _ ->
+            val selectedToken = tokenNames[position]
+            when (selectedToken) {
+                "Bitcoin" -> availableBalanceText.text = "Available: 0.025 BTC"
+                "Ethereum" -> availableBalanceText.text = "Available: 1.5 ETH" 
+                "eNaira" -> availableBalanceText.text = "Available: 50,000 NGN"
+                "eFranc" -> availableBalanceText.text = "Available: 25,000 XAF"
+                else -> availableBalanceText.text = "Available balance will be shown when token is selected"
+            }
+        }
+        
+        // Setup recipient selector
+        val recipientSelector = dialogView.findViewById<AutoCompleteTextView>(R.id.recipientSelector)
+        val recipients = listOf("Contact 1", "Contact 2", "Contact 3", "Add new recipient...")
+        val recipientAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, recipients)
+        recipientSelector.setAdapter(recipientAdapter)
+        
+        // Setup send button
+        val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
+        btnSend.setOnClickListener {
+            dialog.dismiss()
+            Toast.makeText(this, "Transfer preparation not implemented yet", Toast.LENGTH_SHORT).show()
+        }
+        
+        dialog.show()
     }
     
     private fun showCryptoSendDialog() {

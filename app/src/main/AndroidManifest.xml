@@ -44,6 +44,11 @@
             android:name=".ui.receive.ReceiveActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+            
+        <activity 
+            android:name=".ui.send.SendActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
         
         <!-- NFC Host Card Emulation Service -->
         <service
