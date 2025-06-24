@@ -89,3 +89,4 @@ lint/tmp/
 *.hprof
 .idea
 .claude
+js-sdk-bundler/node_modules
