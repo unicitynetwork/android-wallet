@@ -1,0 +1,18 @@
+{
+  "name": "unicity-sdk-bundler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A package to bundle the Unicity SDK for the Android WebView.",
+  "scripts": {
+    "build": "webpack"
+  },
+  "dependencies": {
+    "@unicitylabs/state-transition-sdk": "1.4.7-rc.000c25a"
+  },
+  "devDependencies": {
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.5",
+    "webpack": "^5.91.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

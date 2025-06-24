@@ -92,3 +92,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling:1.5.4")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.5.4")
 }
+
+tasks.named("preBuild") {
+    dependsOn(":bundleJsSdk")
+}
