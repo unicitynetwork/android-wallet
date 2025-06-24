@@ -572,6 +572,57 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
+    private fun runTokenMintTest() {
+        AlertDialog.Builder(this)
+            .setTitle("Token Mint Test")
+            .setMessage("This will test the token minting functionality. Check logs for detailed output.")
+            .setPositiveButton("Run Test") { _, _ ->
+                Toast.makeText(this, "Starting token mint test...", Toast.LENGTH_SHORT).show()
+                
+                lifecycleScope.launch {
+                    try {
+                        val sdkService = viewModel.getSdkService()
+                        
+                        // Generate identity
+                        sdkService.generateIdentity { identityResult ->
+                            identityResult.onSuccess { identityResponse ->
+                                val identityJson = org.json.JSONObject(identityResponse)
+                                if (identityJson.getString("status") == "success") {
+                                    val identity = identityJson.getString("data")
+                                    
+                                    // Mint token
+                                    val tokenData = """{"amount":100,"data":"Test token from debug menu","stateData":"Initial state"}"""
+                                    sdkService.mintToken(identity, tokenData) { mintResult ->
+                                        runOnUiThread {
+                                            mintResult.onSuccess {
+                                                Toast.makeText(this@MainActivity, "✅ Token minted successfully! Check logs.", Toast.LENGTH_LONG).show()
+                                                Log.d("TokenMintTest", "Token mint success: $it")
+                                            }.onFailure { error ->
+                                                Toast.makeText(this@MainActivity, "❌ Token mint failed: ${error.message}", Toast.LENGTH_LONG).show()
+                                                Log.e("TokenMintTest", "Token mint failed", error)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    runOnUiThread {
+                                        Toast.makeText(this@MainActivity, "Identity generation failed", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }.onFailure { error ->
+                                runOnUiThread {
+                                    Toast.makeText(this@MainActivity, "Identity generation failed: ${error.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "Failed to start test: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
     private fun showCurrencyDialog() {
         val currencies = arrayOf("USD", "EUR")
         val currentIndex = currencies.indexOf(selectedCurrency)
@@ -589,7 +640,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "About")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Test Token Minting", "About")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -598,7 +649,8 @@ class MainActivity : AppCompatActivity() {
                     0 -> showMintTokenDialog()
                     1 -> showResetWalletDialog()
                     2 -> runAutomatedTransferTest()
-                    3 -> showAboutDialog()
+                    3 -> runTokenMintTest()
+                    4 -> showAboutDialog()
                 }
             }
             .show()

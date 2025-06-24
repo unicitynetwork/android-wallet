@@ -1,4 +1,5 @@
 const path = require('path');
+const webpack = require('webpack');
 
 module.exports = {
   // 1. Mode: 'production' creates an optimized, smaller file.
@@ -37,5 +38,18 @@ module.exports = {
   // 5. Resolve Extensions: Helps Webpack find imported files.
   resolve: {
     extensions: ['.tsx', '.ts', '.js'],
+    fallback: {
+      crypto: require.resolve('crypto-browserify'),
+      stream: require.resolve('stream-browserify'),
+      buffer: require.resolve('buffer'),
+    },
   },
+
+  // 6. Plugins: Additional functionality.
+  plugins: [
+    new webpack.ProvidePlugin({
+      Buffer: ['buffer', 'Buffer'],
+      process: 'process/browser',
+    }),
+  ],
 };

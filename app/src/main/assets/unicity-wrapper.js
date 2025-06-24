@@ -10,20 +10,29 @@ const AGGREGATOR_URL = 'https://aggregator-test.mainnet.unicity.network';
  */
 function initializeSdk() {
   try {
-    // Check what's available in UnicitySDK
-    console.log('UnicitySDK available classes:', Object.keys(UnicitySDK || {}));
+    // Check what's available - bundled SDK is at window.unicity
+    console.log('window.unicity available:', !!window.unicity);
+    console.log('window.UnicitySDK available:', !!window.UnicitySDK);
     
-    // Log first few classes to see structure
-    const sdkKeys = Object.keys(UnicitySDK || {});
-    console.log('First 10 SDK classes:', sdkKeys.slice(0, 10));
+    // Use the bundled SDK
+    const sdk = window.unicity || window.UnicitySDK;
+    if (!sdk) {
+      throw new Error('Unicity SDK not found');
+    }
     
-    const { AggregatorClient, StateTransitionClient } = UnicitySDK;
+    // For compatibility, make it available as UnicitySDK too
+    window.UnicitySDK = sdk;
+    
+    console.log('SDK available classes:', Object.keys(sdk || {}));
+    
+    const { AggregatorClient, StateTransitionClient } = sdk;
     if (!AggregatorClient || !StateTransitionClient) {
-      throw new Error('AggregatorClient or StateTransitionClient not found in UnicitySDK');
+      throw new Error('AggregatorClient or StateTransitionClient not found in SDK');
     }
     
     const aggregatorClient = new AggregatorClient(AGGREGATOR_URL);
     sdkClient = new StateTransitionClient(aggregatorClient);
+    console.log('SDK initialized successfully');
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: 'SDK initialized' }));
   } catch (e) {
     console.error('SDK initialization error:', e);
@@ -83,7 +92,7 @@ async function mintToken(identityJson, tokenDataJson) {
       TokenState,
       HashAlgorithm,
       DataHasher
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
     const secret = new Uint8Array(identity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -182,7 +191,7 @@ async function generateReceivingAddress(tokenIdHex, tokenTypeHex, receiverIdenti
       TokenId,
       TokenType,
       HashAlgorithm
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     const receiverIdentity = JSON.parse(receiverIdentityJson);
     
@@ -243,7 +252,7 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
       TransactionData,
       HashAlgorithm,
       DataHasher
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
     const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -319,7 +328,7 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
       Transaction,
       TokenState,
       HashAlgorithm
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     const receiverIdentity = JSON.parse(receiverIdentityJson);
     const transferPackage = JSON.parse(transferPackageJson);
@@ -357,7 +366,7 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
     const token = await tokenFactory.create(transferPackage.token, tokenDataFromJSON);
     
     // Bob receives the commitment from Alice and gets the inclusion proof
-    const { Commitment } = UnicitySDK;
+    const { Commitment } = window.UnicitySDK;
     const commitment = await Commitment.fromJSON(transferPackage.commitment);
     
     console.log('Bob received commitment:', commitment.requestId.toJSON());
@@ -504,7 +513,7 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
     Token,
     HashAlgorithm,
     DataHasher
-  } = UnicitySDK;
+  } = window.UnicitySDK;
   
   const secret = new Uint8Array(identity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
   const nonce = new Uint8Array(identity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -551,7 +560,7 @@ async function generateReceivingAddressDirectly(tokenIdHex, tokenTypeHex, receiv
     TokenId,
     TokenType,
     HashAlgorithm
-  } = UnicitySDK;
+  } = window.UnicitySDK;
   
   const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
   const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -590,7 +599,7 @@ async function createTransferDirectly(senderIdentity, receiverIdentity, tokenJso
       TransactionData,
       DataHasher,
       HexConverter
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     // Generate Bob's address first
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -668,7 +677,7 @@ async function completeTransferDirectly(receiverIdentity, transferPackage) {
       TokenState,
       HashAlgorithm,
       HexConverter
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     console.log('Completing transfer directly...');
     console.log('Transfer package:', JSON.stringify(transferPackage, null, 2));
@@ -752,7 +761,7 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
       TransactionData,
       DataHasher,
       HexConverter
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     const receiverIdentity = JSON.parse(receiverIdentityJson);
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -781,7 +790,7 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     const { 
       TokenFactory,
       PredicateFactory
-    } = UnicitySDK;
+    } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
     const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -915,7 +924,7 @@ class TestTokenData {
  * Utility function to wait for inclusion proof
  */
 async function waitInclusionProof(client, commitment, timeout = 30000) {
-  const { InclusionProofVerificationStatus } = UnicitySDK;
+  const { InclusionProofVerificationStatus } = window.UnicitySDK;
   
   const startTime = Date.now();
   console.log('Waiting for inclusion proof, requestId:', commitment.requestId.toJSON());
@@ -944,5 +953,12 @@ async function waitInclusionProof(client, commitment, timeout = 30000) {
 
 // Initialize SDK when page loads
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('DOMContentLoaded - initializing SDK...');
   initializeSdk();
 });
+
+// Also try to initialize immediately in case DOM is already loaded
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  console.log('Document already loaded - initializing SDK...');
+  initializeSdk();
+}
