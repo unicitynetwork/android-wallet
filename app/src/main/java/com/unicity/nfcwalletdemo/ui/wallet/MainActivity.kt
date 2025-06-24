@@ -645,9 +645,10 @@ class MainActivity : AppCompatActivity() {
         
         // Setup recipient selector
         val recipientSelector = dialogView.findViewById<AutoCompleteTextView>(R.id.recipientSelector)
-        val recipients = listOf("Contact 1", "Contact 2", "Contact 3", "Add new recipient...")
+        val recipients = listOf("Mike G.", "Vlad R.", "Jane D.", "John D.")
         val recipientAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, recipients)
         recipientSelector.setAdapter(recipientAdapter)
+        recipientSelector.dropDownHeight = (resources.displayMetrics.density * 56 * 3.5).toInt()
         
         // Setup send button
         val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
