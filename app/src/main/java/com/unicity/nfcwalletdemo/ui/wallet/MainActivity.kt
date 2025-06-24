@@ -507,6 +507,10 @@ class MainActivity : AppCompatActivity() {
                 runAutomatedTransferTest()
                 true
             }
+            com.unicity.nfcwalletdemo.R.id.action_test_offline_transfer -> {
+                runAutomatedOfflineTransferTest()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -565,6 +569,34 @@ class MainActivity : AppCompatActivity() {
                         }
                     } catch (e: Exception) {
                         Toast.makeText(this@MainActivity, "Failed to start test: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun runAutomatedOfflineTransferTest() {
+        AlertDialog.Builder(this)
+            .setTitle("Automated Offline Transfer Test")
+            .setMessage("This will test the complete offline token transfer flow between two virtual wallets. No network required during transfer. Check logs for detailed output.")
+            .setPositiveButton("Run Test") { _, _ ->
+                Toast.makeText(this, "Starting automated offline transfer test...", Toast.LENGTH_SHORT).show()
+                
+                // Call the JavaScript function through the SDK service
+                lifecycleScope.launch {
+                    try {
+                        viewModel.getSdkService().runAutomatedOfflineTransferTest { result ->
+                            runOnUiThread {
+                                result.onSuccess {
+                                    Toast.makeText(this@MainActivity, "Offline test completed! Check logs.", Toast.LENGTH_LONG).show()
+                                }.onFailure { error ->
+                                    Toast.makeText(this@MainActivity, "Offline test failed: ${error.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "Failed to start offline test: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
             }

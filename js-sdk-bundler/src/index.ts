@@ -1,5 +1,10 @@
 export * from '@unicitylabs/state-transition-sdk';
 
+// Explicitly export offline classes that might not be in the main export
+export { OfflineStateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/OfflineStateTransitionClient.js';
+export { OfflineCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/OfflineCommitment.js';
+export { OfflineTransaction } from '@unicitylabs/state-transition-sdk/lib/transaction/OfflineTransaction.js';
+
 // export * from './ISerializable.js';
 // export * from './StateTransitionClient.js';
 // export * from './hash/createDefaultDataHasherFactory.js';

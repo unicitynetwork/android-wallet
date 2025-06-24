@@ -133,7 +133,7 @@ class WalletRepository(context: Context) {
                 sizeBytes = mintResult.toJson().length
             )
             
-            // Add to wallet
+            // Only add to wallet if minting was successful
             addToken(token)
             
             Result.success(token)
@@ -173,16 +173,14 @@ class WalletRepository(context: Context) {
                         continuation.resume(mintResult)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to parse mint result", e)
-                        // Create fallback result
-                        val fallback = UnicityMintResult(mapOf("error" to "parse_failed"), identity)
-                        continuation.resume(fallback)
+                        // Throw exception instead of creating fallback
+                        continuation.resumeWith(Result.failure(Exception("Failed to parse mint result: ${e.message}", e)))
                     }
                 }
                 result.onFailure { error ->
                     Log.e(TAG, "Failed to mint token", error)
-                    // Create fallback result
-                    val fallback = UnicityMintResult(mapOf("error" to error.message), identity)
-                    continuation.resume(fallback)
+                    // Throw exception instead of creating fallback
+                    continuation.resumeWith(Result.failure(error))
                 }
             }
         }

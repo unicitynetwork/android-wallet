@@ -91,6 +91,64 @@ class UnicitySdkService(context: Context) {
             callback(result)
         }
     }
+
+    fun runAutomatedOfflineTransferTest(callback: (Result<String>) -> Unit) {
+        executeJs("runAutomatedOfflineTransferTest()") { result ->
+            callback(result)
+        }
+    }
+
+    /**
+     * Creates an offline transfer package that can be transmitted via NFC without network
+     */
+    fun createOfflineTransferPackage(
+        senderIdentityJson: String,
+        recipientAddress: String,
+        tokenJson: String,
+        callback: (Result<String>) -> Unit
+    ) {
+        val escapedSenderIdentity = escapeJavaScriptString(senderIdentityJson)
+        val escapedRecipientAddress = escapeJavaScriptString(recipientAddress)
+        val escapedToken = escapeJavaScriptString(tokenJson)
+        
+        executeJs("createOfflineTransferPackage('$escapedSenderIdentity', '$escapedRecipientAddress', '$escapedToken')") { result ->
+            callback(result)
+        }
+    }
+
+    /**
+     * Completes an offline transfer received via NFC
+     */
+    fun completeOfflineTransfer(
+        receiverIdentityJson: String,
+        offlineTransactionJson: String,
+        callback: (Result<String>) -> Unit
+    ) {
+        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
+        val escapedOfflineTransaction = escapeJavaScriptString(offlineTransactionJson)
+        
+        executeJs("completeOfflineTransfer('$escapedReceiverIdentity', '$escapedOfflineTransaction')") { result ->
+            callback(result)
+        }
+    }
+
+    /**
+     * Generates a receiving address for a token type
+     */
+    fun generateReceivingAddress(
+        tokenIdHex: String,
+        tokenTypeHex: String,
+        receiverIdentityJson: String,
+        callback: (Result<String>) -> Unit
+    ) {
+        val escapedTokenId = escapeJavaScriptString(tokenIdHex)
+        val escapedTokenType = escapeJavaScriptString(tokenTypeHex)
+        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
+        
+        executeJs("generateReceivingAddress('$escapedTokenId', '$escapedTokenType', '$escapedReceiverIdentity')") { result ->
+            callback(result)
+        }
+    }
     
     private fun executeJs(script: String, callback: (Result<String>) -> Unit) {
         if (!isInitialized) {

@@ -55,19 +55,28 @@ class ReceiveActivity : AppCompatActivity() {
                         try {
                             // Check if this is a Unicity transfer or demo token
                             val transferData = gson.fromJson(tokenJson, Map::class.java)
-                            if (transferData["type"] == "unicity_transfer") {
-                                // Handle Unicity transfer
-                                lifecycleScope.launch {
-                                    handleUnicityTransfer(transferData)
+                            when (transferData["type"]) {
+                                "unicity_transfer" -> {
+                                    // Handle online Unicity transfer
+                                    lifecycleScope.launch {
+                                        handleUnicityTransfer(transferData)
+                                    }
                                 }
-                            } else {
-                                // Handle demo token
-                                val token = gson.fromJson(tokenJson, Token::class.java)
-                                Log.d("ReceiveActivity", "Demo token received via NFC: ${token.name}")
-                                runOnUiThread {
-                                    viewModel.onTokenReceived(token)
-                                    showSuccessDialog("Received ${token.name} successfully!")
-                                    Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+                                "unicity_offline_transfer" -> {
+                                    // Handle offline Unicity transfer
+                                    lifecycleScope.launch {
+                                        handleOfflineUnicityTransfer(transferData)
+                                    }
+                                }
+                                else -> {
+                                    // Handle demo token
+                                    val token = gson.fromJson(tokenJson, Token::class.java)
+                                    Log.d("ReceiveActivity", "Demo token received via NFC: ${token.name}")
+                                    runOnUiThread {
+                                        viewModel.onTokenReceived(token)
+                                        showSuccessDialog("Received ${token.name} successfully!")
+                                        Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         } catch (e: Exception) {
@@ -287,6 +296,60 @@ class ReceiveActivity : AppCompatActivity() {
     private suspend fun finishUnicityTransfer(receiverIdentityJson: String, transferJson: String): String {
         return kotlin.coroutines.suspendCoroutine { continuation ->
             sdkService.finishTransfer(receiverIdentityJson, transferJson) { result ->
+                result.onSuccess { resultJson ->
+                    continuation.resumeWith(Result.success(resultJson))
+                }
+                result.onFailure { error ->
+                    continuation.resumeWith(Result.failure(error))
+                }
+            }
+        }
+    }
+    
+    private suspend fun handleOfflineUnicityTransfer(transferData: Map<*, *>) {
+        try {
+            Log.d("ReceiveActivity", "Processing offline Unicity transfer")
+            
+            runOnUiThread {
+                binding.tvStatus.text = "Processing offline Unicity transfer..."
+                viewModel.onReceivingToken()
+            }
+            
+            // Extract offline transfer details
+            val tokenName = transferData["token_name"] as? String ?: "Unknown Token"
+            val offlineTransactionJson = transferData["offline_transaction"] as? String ?: ""
+            val receiverIdentityJson = transferData["receiver_identity"] as? String ?: ""
+            
+            if (offlineTransactionJson.isEmpty() || receiverIdentityJson.isEmpty()) {
+                throw Exception("Invalid offline transfer data")
+            }
+            
+            // Use SDK to complete the offline transfer
+            val result = completeOfflineUnicityTransfer(receiverIdentityJson, offlineTransactionJson)
+            
+            // Create Token object from the result
+            val finalToken = createTokenFromUnicityResult(tokenName, result)
+            
+            Log.d("ReceiveActivity", "Offline Unicity token processed: ${finalToken.name}")
+            
+            runOnUiThread {
+                viewModel.onTokenReceived(finalToken)
+                showSuccessDialog("Received ${finalToken.name} successfully via offline transfer!")
+                Toast.makeText(this@ReceiveActivity, "Offline Unicity token received: ${finalToken.name}", Toast.LENGTH_SHORT).show()
+            }
+            
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Failed to process offline Unicity transfer", e)
+            runOnUiThread {
+                viewModel.onError("Failed to process offline Unicity transfer: ${e.message}")
+                Toast.makeText(this@ReceiveActivity, "Failed to receive offline Unicity token: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    private suspend fun completeOfflineUnicityTransfer(receiverIdentityJson: String, offlineTransactionJson: String): String {
+        return kotlin.coroutines.suspendCoroutine { continuation ->
+            sdkService.completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson) { result ->
                 result.onSuccess { resultJson ->
                     continuation.resumeWith(Result.success(resultJson))
                 }

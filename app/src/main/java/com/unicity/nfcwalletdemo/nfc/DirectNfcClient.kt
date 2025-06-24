@@ -298,12 +298,13 @@ class DirectNfcClient(
     
     private suspend fun createUnicityTransfer(token: Token): String {
         return try {
-            // For real Unicity tokens, we need to:
+            // For real Unicity tokens, we create an offline transfer package:
             // 1. Generate a receiver identity
-            // 2. Create a transfer transaction using the SDK
-            // 3. Return the transfer data as JSON
+            // 2. Generate receiving address for the token
+            // 3. Create offline transfer package using the SDK
+            // 4. Return the package as JSON for NFC transmission
             
-            Log.d(TAG, "Creating Unicity transfer for token: ${token.name}")
+            Log.d(TAG, "Creating offline Unicity transfer for token: ${token.name}")
             
             // Generate receiver identity (this should ideally come from the receiver)
             // For now, we'll generate it here for demo purposes
@@ -313,25 +314,33 @@ class DirectNfcClient(
             // The jsonData contains the UnicityMintResult with token and identity
             val senderData = extractSenderData(token)
             
-            // Create transfer using SDK
-            val transferResult = createTransferWithSdk(
+            // Parse token to get ID and type for address generation
+            val tokenData = gson.fromJson(senderData.tokenJson, Map::class.java)
+            val tokenId = tokenData["id"] as? String ?: throw Exception("Token ID not found")
+            val tokenType = tokenData["type"] as? String ?: throw Exception("Token type not found")
+            
+            // Generate receiving address for the receiver
+            val receivingAddress = generateReceivingAddressForToken(tokenId, tokenType, receiverIdentity)
+            
+            // Create offline transfer package using SDK
+            val offlineTransferPackage = createOfflineTransferWithSdk(
                 senderData.senderIdentity,
-                receiverIdentity,
+                receivingAddress,
                 senderData.tokenJson
             )
             
-            // Create transfer package with all necessary data
+            // Create transfer package with all necessary data for NFC
             val transferPackage = mapOf(
-                "type" to "unicity_transfer",
+                "type" to "unicity_offline_transfer",
                 "token_name" to token.name,
-                "transfer_data" to transferResult,
+                "offline_transaction" to offlineTransferPackage,
                 "receiver_identity" to receiverIdentity.toJson()
             )
             
             gson.toJson(transferPackage)
             
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create Unicity transfer", e)
+            Log.e(TAG, "Failed to create offline Unicity transfer", e)
             // Fallback to demo token transfer
             gson.toJson(token)
         }
@@ -391,6 +400,54 @@ class DirectNfcClient(
         }
     }
     
+    private suspend fun generateReceivingAddressForToken(
+        tokenId: String,
+        tokenType: String,
+        receiverIdentity: UnicityIdentity
+    ): String = suspendCancellableCoroutine { continuation ->
+        sdkService.generateReceivingAddress(
+            tokenId,
+            tokenType,
+            receiverIdentity.toJson()
+        ) { result ->
+            result.onSuccess { addressJson ->
+                val addressData = gson.fromJson(addressJson, Map::class.java)
+                val address = addressData["address"] as? String ?: throw Exception("Address not found")
+                continuation.resume(address)
+            }
+            result.onFailure { error ->
+                Log.e(TAG, "Failed to generate receiving address", error)
+                continuation.resume("fallback_address")
+            }
+        }
+    }
+
+    private suspend fun createOfflineTransferWithSdk(
+        senderIdentity: UnicityIdentity,
+        recipientAddress: String,
+        tokenJson: String
+    ): String = suspendCancellableCoroutine { continuation ->
+        sdkService.createOfflineTransferPackage(
+            senderIdentity.toJson(),
+            recipientAddress,
+            tokenJson
+        ) { result ->
+            result.onSuccess { offlineTransactionJson ->
+                continuation.resume(offlineTransactionJson)
+            }
+            result.onFailure { error ->
+                Log.e(TAG, "Failed to create offline transfer with SDK", error)
+                // Return fallback offline transfer data
+                val fallbackTransfer = mapOf(
+                    "error" to "sdk_offline_transfer_failed",
+                    "message" to error.message,
+                    "token" to tokenJson
+                )
+                continuation.resume(gson.toJson(fallbackTransfer))
+            }
+        }
+    }
+
     private suspend fun createTransferWithSdk(
         senderIdentity: UnicityIdentity,
         receiverIdentity: UnicityIdentity,

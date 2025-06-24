@@ -3,6 +3,7 @@ console.log('========== UNICITY WRAPPER LOADED ==========');
 
 // Global variables for SDK components
 let sdkClient = null;
+let offlineClient = null;
 const AGGREGATOR_URL = 'https://aggregator-test.mainnet.unicity.network';
 
 /**
@@ -13,10 +14,12 @@ function initializeSdk() {
     // Check what's available - bundled SDK is at window.unicity
     console.log('window.unicity available:', !!window.unicity);
     console.log('window.UnicitySDK available:', !!window.UnicitySDK);
+    console.log('window keys:', Object.keys(window).filter(key => key.toLowerCase().includes('uni')));
     
     // Use the bundled SDK
     const sdk = window.unicity || window.UnicitySDK;
     if (!sdk) {
+      console.error('No SDK found. Available window properties:', Object.keys(window).slice(0, 20));
       throw new Error('Unicity SDK not found');
     }
     
@@ -24,16 +27,36 @@ function initializeSdk() {
     window.UnicitySDK = sdk;
     
     console.log('SDK available classes:', Object.keys(sdk || {}));
+    console.log('AggregatorClient:', typeof sdk.AggregatorClient);
+    console.log('StateTransitionClient:', typeof sdk.StateTransitionClient);
+    console.log('OfflineStateTransitionClient:', typeof sdk.OfflineStateTransitionClient);
     
-    const { AggregatorClient, StateTransitionClient } = sdk;
+    const { AggregatorClient, StateTransitionClient, OfflineStateTransitionClient } = sdk;
     if (!AggregatorClient || !StateTransitionClient) {
       throw new Error('AggregatorClient or StateTransitionClient not found in SDK');
     }
     
     const aggregatorClient = new AggregatorClient(AGGREGATOR_URL);
     sdkClient = new StateTransitionClient(aggregatorClient);
+    
+    if (OfflineStateTransitionClient) {
+      offlineClient = new OfflineStateTransitionClient(aggregatorClient);
+      console.log('Offline client initialized successfully');
+    } else {
+      console.warn('OfflineStateTransitionClient not available - offline transfers will not work');
+    }
     console.log('SDK initialized successfully');
-    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: 'SDK initialized' }));
+    // Test offline classes availability
+    const offlineClassesAvailable = !!(sdk.OfflineStateTransitionClient && sdk.OfflineTransaction && sdk.OfflineCommitment);
+    console.log('Offline classes available:', offlineClassesAvailable);
+    console.log('OfflineTransaction:', typeof sdk.OfflineTransaction);
+    console.log('OfflineCommitment:', typeof sdk.OfflineCommitment);
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'success', 
+      data: 'SDK initialized',
+      offlineSupport: offlineClassesAvailable
+    }));
   } catch (e) {
     console.error('SDK initialization error:', e);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
@@ -72,7 +95,15 @@ function generateIdentity() {
 async function mintToken(identityJson, tokenDataJson) {
   try {
     if (!sdkClient) {
-      throw new Error('SDK not initialized');
+      console.log('SDK not initialized, attempting to initialize...');
+      initializeSdk();
+      
+      // Wait a bit for initialization
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      if (!sdkClient) {
+        throw new Error('SDK failed to initialize');
+      }
     }
     
     console.log('Attempting to mint real Unicity token...');
@@ -91,7 +122,8 @@ async function mintToken(identityJson, tokenDataJson) {
       Token,
       TokenState,
       HashAlgorithm,
-      DataHasher
+      DataHasher,
+      DataHash
     } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
@@ -117,36 +149,62 @@ async function mintToken(identityJson, tokenDataJson) {
     // Create coin data
     const coinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
     const coinData = new TokenCoinData([[coinId, BigInt(tokenData.amount || 100)]]);
+    console.log('Coin data created:', typeof coinData);
     
     // Create token data
     const testTokenData = new TestTokenData(new TextEncoder().encode(tokenData.data || 'Unicity token'));
+    console.log('Test token data created:', typeof testTokenData);
+    console.log('Test token data properties:', Object.keys(testTokenData));
     
     // Create the token state
     const tokenState = await TokenState.create(predicate, new TextEncoder().encode(tokenData.stateData || 'Token state data'));
+    console.log('Token state created:', typeof tokenState);
     
     // Create address for minting
     const address = await DirectAddress.create(predicate.reference);
+    console.log('Address created:', typeof address);
     
-    // Submit mint transaction
+    // Submit mint transaction - following SDK documentation pattern exactly
     const salt = crypto.getRandomValues(new Uint8Array(32));
-    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-    dataHasher.update(new TextEncoder().encode(tokenData.data || 'default data'));
-    const dataHash = await dataHasher.digest();
+    const stateData = new Uint8Array();  // Empty state data as in documentation
     
-    console.log('Submitting mint transaction...');
-    const mintCommitment = await sdkClient.submitMintTransaction(
-      address,
-      tokenId,
-      tokenType,
-      testTokenData,
-      coinData,
-      salt,
-      dataHash,
-      null
-    );
-    
-    console.log('Waiting for inclusion proof...');
-    const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
+    console.log('Creating state hash following documentation pattern...');
+    try {
+      // Use the exact pattern from SDK documentation
+      const stateHash = await new DataHasher(HashAlgorithm.SHA256).update(stateData).digest();
+      console.log('State hash created successfully:', typeof stateHash);
+      console.log('State hash properties:', Object.keys(stateHash || {}));
+      
+      console.log('Submitting mint transaction...');
+      console.log('Parameters:');
+      console.log('- address:', typeof address);
+      console.log('- tokenId:', typeof tokenId);
+      console.log('- tokenType:', typeof tokenType);
+      console.log('- testTokenData:', typeof testTokenData);
+      console.log('- coinData:', typeof coinData);
+      console.log('- salt:', typeof salt);
+      console.log('- stateHash:', typeof stateHash);
+      
+      const mintCommitment = await sdkClient.submitMintTransaction(
+        address,
+        tokenId,
+        tokenType,
+        testTokenData,
+        coinData,
+        salt,
+        stateHash,
+        null  // proof parameter (null for new mint)
+      );
+      
+      console.log('Mint commitment created successfully');
+      console.log('Waiting for inclusion proof...');
+      const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
+    } catch (mintError) {
+      console.error('Mint transaction failed:', mintError);
+      console.error('Error details:', mintError.message);
+      console.error('Stack trace:', mintError.stack);
+      throw new Error(`Mint transaction failed: ${mintError.message}`);
+    }
     
     console.log('Creating transaction...');
     const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
@@ -301,6 +359,147 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(transferPackage) }));
   } catch (e) {
     console.error('Transfer package creation failed:', e);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
+  }
+}
+
+/**
+ * Creates an offline transfer package that can be transmitted without network
+ * @param {string} senderIdentityJson - The sender's identity
+ * @param {string} recipientAddress - The recipient's address
+ * @param {string} tokenJson - The token to transfer
+ * @returns {Promise<string>} - JSON string containing the offline transaction
+ */
+async function createOfflineTransferPackage(senderIdentityJson, recipientAddress, tokenJson) {
+  try {
+    if (!offlineClient) {
+      throw new Error('Offline SDK client not initialized');
+    }
+    
+    console.log('Creating offline transfer package...');
+    
+    const senderIdentity = JSON.parse(senderIdentityJson);
+    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
+    
+    const { 
+      SigningService, 
+      TokenFactory,
+      PredicateFactory,
+      TransactionData,
+      HashAlgorithm,
+      DataHasher,
+      OfflineTransaction
+    } = window.UnicitySDK;
+    
+    // Convert hex strings back to Uint8Array
+    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Recreate token from JSON
+    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const token = await tokenFactory.fromJSON(parsedTokenData.token || parsedTokenData);
+    
+    // Create sender signing service
+    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
+    
+    // Create transaction data
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
+    dataHasher.update(new TextEncoder().encode('offline token transfer'));
+    const dataHash = await dataHasher.digest();
+    
+    const transactionData = await TransactionData.create(
+      token.state,
+      recipientAddress,
+      salt,
+      dataHash,
+      new TextEncoder().encode('offline transfer'),
+      token.nametagTokens
+    );
+    
+    // Create offline commitment (no network call)
+    const offlineCommitment = await offlineClient.createOfflineCommitment(
+      transactionData,
+      senderSigningService
+    );
+    
+    // Create offline transaction package
+    const offlineTransaction = new OfflineTransaction(offlineCommitment, token);
+    
+    // Serialize to JSON for offline transfer
+    const offlineTransactionJson = offlineTransaction.toJSON();
+    
+    console.log('Offline transfer package created successfully');
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'success', 
+      data: JSON.stringify(offlineTransactionJson)
+    }));
+  } catch (e) {
+    console.error('Offline transfer package creation failed:', e);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
+  }
+}
+
+/**
+ * Completes an offline transfer received from another device
+ * @param {string} receiverIdentityJson - The receiver's identity
+ * @param {string} offlineTransactionJson - The offline transaction package
+ * @returns {Promise<string>} - JSON string containing the updated token
+ */
+async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson) {
+  try {
+    if (!offlineClient || !sdkClient) {
+      throw new Error('SDK clients not initialized');
+    }
+    
+    console.log('Completing offline transfer...');
+    
+    const receiverIdentity = JSON.parse(receiverIdentityJson);
+    const { 
+      SigningService, 
+      MaskedPredicate,
+      TokenState,
+      HashAlgorithm,
+      OfflineTransaction
+    } = window.UnicitySDK;
+    
+    // Deserialize the offline transaction
+    const offlineTransaction = await OfflineTransaction.fromJSON(offlineTransactionJson);
+    
+    // Submit the offline transaction to the network
+    console.log('Submitting offline transaction to network...');
+    const transaction = await offlineClient.submitOfflineTransaction(offlineTransaction.commitment);
+    
+    // Convert receiver identity
+    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Recreate receiver's predicate
+    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+    const recipientPredicate = await MaskedPredicate.create(
+      offlineTransaction.token.id,
+      offlineTransaction.token.type,
+      receiverSigningService,
+      HashAlgorithm.SHA256,
+      receiverNonce
+    );
+    
+    // Complete the transaction
+    const updatedToken = await sdkClient.finishTransaction(
+      offlineTransaction.token,
+      await TokenState.create(recipientPredicate, new TextEncoder().encode('received offline')),
+      transaction
+    );
+    
+    const result = {
+      token: updatedToken.toJSON(),
+      identity: receiverIdentity
+    };
+    
+    console.log('Offline transfer completed successfully!');
+    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
+  } catch (e) {
+    console.error('Offline transfer completion failed:', e);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
@@ -494,6 +693,217 @@ async function runAutomatedTransferTest() {
       message: `Automated transfer test failed: ${error.message}`,
       error: error.stack
     }));
+  }
+}
+
+/**
+ * AUTOMATED OFFLINE TRANSFER TEST - Tests the new offline transfer API
+ * This simulates the complete offline transfer flow without NFC
+ */
+async function runAutomatedOfflineTransferTest() {
+  try {
+    console.log('========================================');
+    console.log('STARTING AUTOMATED OFFLINE TRANSFER TEST');
+    console.log('========================================');
+    
+    if (!sdkClient || !offlineClient) {
+      initializeSdk();
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for SDK to initialize
+    }
+    
+    // Step 1: Create Alice's wallet (sender)
+    console.log('Step 1: Creating Alice\'s wallet...');
+    const aliceSecret = crypto.getRandomValues(new Uint8Array(32));
+    const aliceNonce = crypto.getRandomValues(new Uint8Array(32));
+    const aliceIdentity = {
+      secret: Array.from(aliceSecret).map(b => b.toString(16).padStart(2, '0')).join(''),
+      nonce: Array.from(aliceNonce).map(b => b.toString(16).padStart(2, '0')).join('')
+    };
+    console.log('Alice identity created:', aliceIdentity.nonce.substring(0, 16) + '...');
+    
+    // Step 2: Create Bob's wallet (receiver)  
+    console.log('Step 2: Creating Bob\'s wallet...');
+    const bobSecret = crypto.getRandomValues(new Uint8Array(32));
+    const bobNonce = crypto.getRandomValues(new Uint8Array(32));
+    const bobIdentity = {
+      secret: Array.from(bobSecret).map(b => b.toString(16).padStart(2, '0')).join(''),
+      nonce: Array.from(bobNonce).map(b => b.toString(16).padStart(2, '0')).join('')
+    };
+    console.log('Bob identity created:', bobIdentity.nonce.substring(0, 16) + '...');
+    
+    // Step 3: Alice mints a token
+    console.log('Step 3: Alice mints a token...');
+    const aliceToken = await mintTokenDirectly(aliceIdentity, 'OfflineTestToken', '150', 'Automated offline test token');
+    console.log('Alice minted token successfully, ID:', aliceToken.id);
+    
+    // Step 4: Bob generates receiving address
+    console.log('Step 4: Bob generates receiving address...');
+    const bobReceivingAddress = await generateReceivingAddressDirectly(aliceToken.id, aliceToken.type, bobIdentity);
+    console.log('Bob generated address:', bobReceivingAddress);
+    
+    // Step 5: Alice creates OFFLINE transfer package (no network submission)
+    console.log('Step 5: Alice creates offline transfer package...');
+    const offlineTransferPackage = await createOfflineTransferDirectly(aliceIdentity, bobReceivingAddress, aliceToken);
+    console.log('Alice created offline transfer package with keys:', Object.keys(offlineTransferPackage));
+    
+    // Step 6: Bob completes the offline transfer (submits to network when available)
+    console.log('Step 6: Bob completes the offline transfer...');
+    const completedOfflineTransfer = await completeOfflineTransferDirectly(bobIdentity, offlineTransferPackage);
+    console.log('Bob completed offline transfer successfully!');
+    console.log('Bob\'s token transactions count:', completedOfflineTransfer.token.transactions.length);
+    
+    console.log('========================================');
+    console.log('AUTOMATED OFFLINE TRANSFER TEST COMPLETED SUCCESSFULLY!');
+    console.log('Token successfully transferred from Alice to Bob using offline method');
+    console.log('========================================');
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'success', 
+      message: 'Automated offline transfer test completed successfully',
+      data: {
+        aliceTokenId: aliceToken.id,
+        bobTokenId: completedOfflineTransfer.token.id,
+        offlineTransferPackageKeys: Object.keys(offlineTransferPackage),
+        bobTransactionCount: completedOfflineTransfer.token.transactions.length
+      }
+    }));
+    
+  } catch (error) {
+    console.error('========================================');
+    console.error('AUTOMATED OFFLINE TRANSFER TEST FAILED!');
+    console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('========================================');
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'error', 
+      message: `Automated offline transfer test failed: ${error.message}`,
+      error: error.stack
+    }));
+  }
+}
+
+/**
+ * Direct offline transfer creation that doesn't use Android bridge
+ */
+async function createOfflineTransferDirectly(senderIdentity, recipientAddress, tokenJson) {
+  try {
+    if (!offlineClient) {
+      throw new Error('Offline SDK client not initialized');
+    }
+    
+    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
+    const tokenObj = parsedTokenData.token || parsedTokenData;
+    
+    const { 
+      SigningService, 
+      TokenFactory,
+      PredicateFactory,
+      TransactionData,
+      HashAlgorithm,
+      DataHasher,
+      OfflineTransaction,
+      HexConverter
+    } = window.UnicitySDK;
+    
+    // Create the transfer
+    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(tokenObj, tokenDataFromJSON);
+    
+    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
+    
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
+    dataHasher.update(new TextEncoder().encode('offline token transfer'));
+    const dataHash = await dataHasher.digest();
+    
+    const transactionData = await TransactionData.create(
+      token.state,
+      recipientAddress,
+      salt,
+      dataHash,
+      new TextEncoder().encode('offline transfer'),
+      token.nametagTokens
+    );
+    
+    // Create offline commitment (no network call)
+    const offlineCommitment = await offlineClient.createOfflineCommitment(
+      transactionData,
+      senderSigningService
+    );
+    
+    // Create offline transaction package
+    const offlineTransaction = new OfflineTransaction(offlineCommitment, token);
+    
+    return offlineTransaction.toJSON();
+  } catch (e) {
+    console.error('createOfflineTransferDirectly failed:', e);
+    throw e;
+  }
+}
+
+/**
+ * Direct offline transfer completion that doesn't use Android bridge
+ */
+async function completeOfflineTransferDirectly(receiverIdentity, offlineTransactionJson) {
+  try {
+    if (!offlineClient || !sdkClient) {
+      throw new Error('SDK clients not initialized');
+    }
+    
+    const { 
+      SigningService, 
+      MaskedPredicate,
+      TokenState,
+      HashAlgorithm,
+      OfflineTransaction
+    } = window.UnicitySDK;
+    
+    console.log('Completing offline transfer directly...');
+    
+    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Deserialize the offline transaction
+    const offlineTransaction = await OfflineTransaction.fromJSON(offlineTransactionJson);
+    
+    // Submit the offline transaction to the network
+    console.log('Submitting offline transaction to network...');
+    const transaction = await offlineClient.submitOfflineTransaction(offlineTransaction.commitment);
+    
+    // Recreate receiver's predicate
+    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+    const recipientPredicate = await MaskedPredicate.create(
+      offlineTransaction.token.id,
+      offlineTransaction.token.type,
+      receiverSigningService,
+      HashAlgorithm.SHA256,
+      receiverNonce
+    );
+    
+    // Complete the transaction
+    const updatedToken = await sdkClient.finishTransaction(
+      offlineTransaction.token,
+      await TokenState.create(recipientPredicate, new TextEncoder().encode('received offline')),
+      transaction
+    );
+    
+    return {
+      token: updatedToken.toJSON(),
+      identity: receiverIdentity
+    };
+  } catch (e) {
+    console.error('completeOfflineTransferDirectly failed:', e);
+    throw e;
   }
 }
 
@@ -899,6 +1309,11 @@ class TestTokenData {
     return new Uint8Array(this._data);
   }
   
+  // Add bytes property required by SDK
+  get bytes() {
+    return new Uint8Array(this._data);
+  }
+  
   static fromJSON(data) {
     if (typeof data !== 'string') {
       throw new Error('Invalid test token data');
@@ -951,14 +1366,39 @@ async function waitInclusionProof(client, commitment, timeout = 30000) {
   throw new Error('Timeout waiting for inclusion proof');
 }
 
+// Wait for the SDK to be loaded before initializing
+function waitForSdkAndInitialize() {
+  const maxAttempts = 10;
+  let attempts = 0;
+  
+  function checkAndInit() {
+    attempts++;
+    console.log(`Attempt ${attempts}: Checking for SDK...`);
+    console.log('window.unicity available:', !!window.unicity);
+    
+    if (window.unicity) {
+      console.log('SDK found, initializing...');
+      initializeSdk();
+    } else if (attempts < maxAttempts) {
+      console.log(`SDK not ready yet, waiting... (attempt ${attempts}/${maxAttempts})`);
+      setTimeout(checkAndInit, 500); // Wait 500ms and try again
+    } else {
+      console.error('SDK failed to load after maximum attempts');
+      AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: 'SDK failed to load' }));
+    }
+  }
+  
+  checkAndInit();
+}
+
 // Initialize SDK when page loads
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('DOMContentLoaded - initializing SDK...');
-  initializeSdk();
+  console.log('DOMContentLoaded - waiting for SDK...');
+  waitForSdkAndInitialize();
 });
 
 // Also try to initialize immediately in case DOM is already loaded
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  console.log('Document already loaded - initializing SDK...');
-  initializeSdk();
+  console.log('Document already loaded - waiting for SDK...');
+  waitForSdkAndInitialize();
 }
