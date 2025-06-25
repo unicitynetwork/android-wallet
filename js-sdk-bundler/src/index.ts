@@ -8,6 +8,9 @@ export { OfflineTransaction } from '@unicitylabs/state-transition-sdk/lib/transa
 // Explicitly export transaction classes
 export { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
 
+// Explicitly export deserializer classes
+export { TokenJsonDeserializer } from '@unicitylabs/state-transition-sdk/lib/serializer/token/TokenJsonDeserializer.js';
+
 // export * from './ISerializable.js';
 // export * from './StateTransitionClient.js';
 // export * from './hash/createDefaultDataHasherFactory.js';

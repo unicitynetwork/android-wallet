@@ -4,7 +4,8 @@ console.log('========== UNICITY WRAPPER LOADED ==========');
 // Global variables for SDK components
 let sdkClient = null;
 let offlineClient = null;
-const AGGREGATOR_URL = 'https://aggregator-test.mainnet.unicity.network';
+const AGGREGATOR_URL = 'https://gateway-test.unicity.network';
+console.log('🌐 AGGREGATOR URL:', AGGREGATOR_URL);
 
 /**
  * Initializes the Unicity SDK client
@@ -36,6 +37,7 @@ function initializeSdk() {
       throw new Error('AggregatorClient or StateTransitionClient not found in SDK');
     }
     
+    console.log('🔗 Creating AggregatorClient with URL:', AGGREGATOR_URL);
     const aggregatorClient = new AggregatorClient(AGGREGATOR_URL);
     sdkClient = new StateTransitionClient(aggregatorClient);
     
@@ -213,6 +215,8 @@ async function mintToken(identityJson, tokenDataJson) {
       console.log('MintTransactionData hash:', mintTransactionData.hash);
       
       console.log('Submitting mint transaction...');
+      console.log('🌐 About to call submitMintTransaction with URL:', AGGREGATOR_URL);
+      console.log('🌐 SDK client type:', typeof sdkClient);
       mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
       
       console.log('Mint commitment created successfully');
@@ -222,6 +226,17 @@ async function mintToken(identityJson, tokenDataJson) {
       console.error('Mint transaction failed:', mintError);
       console.error('Error details:', mintError.message);
       console.error('Stack trace:', mintError.stack);
+      
+      if (mintError.message.includes('Failed to fetch')) {
+        console.error('🌐 NETWORK ERROR: Unable to connect to aggregator');
+        console.error('🌐 Aggregator URL:', AGGREGATOR_URL);
+        console.error('🌐 This could be due to:');
+        console.error('   - Network connectivity issues');
+        console.error('   - Aggregator server being down');
+        console.error('   - CORS/security policy blocking the request');
+        console.error('   - Firewall/proxy blocking HTTPS requests');
+      }
+      
       throw new Error(`Mint transaction failed: ${mintError.message}`);
     }
     
@@ -348,7 +363,7 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
     const { 
       SigningService, 
       TokenFactory,
-      PredicateFactory,
+      PredicateJsonFactory,
       TransactionData,
       HashAlgorithm,
       DataHasher
@@ -359,7 +374,7 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
     const token = await tokenFactory.fromJSON(parsedTokenData.token || parsedTokenData);
     
     // Create sender signing service
@@ -426,7 +441,7 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     const { 
       SigningService, 
       TokenFactory,
-      PredicateFactory,
+      PredicateJsonFactory,
       TransactionData,
       HashAlgorithm,
       DataHasher,
@@ -438,7 +453,7 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
     const token = await tokenFactory.fromJSON(parsedTokenData.token || parsedTokenData);
     
     // Create sender signing service
@@ -565,7 +580,7 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
       SigningService, 
       MaskedPredicate, 
       TokenFactory,
-      PredicateFactory,
+      PredicateJsonFactory,
       Transaction,
       TokenState,
       HashAlgorithm
@@ -597,7 +612,7 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Import the token from the transfer package
-    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
     const tokenDataFromJSON = (data) => {
       if (typeof data !== 'string') {
         throw new Error('Invalid token data');
@@ -744,6 +759,8 @@ async function runAutomatedTransferTest() {
  */
 async function runAutomatedOfflineTransferTest() {
   try {
+    console.log('🚀 TEST FUNCTION CALLED - runAutomatedOfflineTransferTest()');
+    console.log('🌐 CURRENT AGGREGATOR URL:', AGGREGATOR_URL);
     console.log('========================================');
     console.log('STARTING AUTOMATED OFFLINE TRANSFER TEST');
     console.log('========================================');
@@ -775,12 +792,13 @@ async function runAutomatedOfflineTransferTest() {
     
     // Step 3: Alice mints a token
     console.log('Step 3: Alice mints a token...');
+    console.log('🌐 About to mint token using URL:', AGGREGATOR_URL);
     const aliceToken = await mintTokenDirectly(aliceIdentity, 'OfflineTestToken', '150', 'Automated offline test token');
-    console.log('Alice minted token successfully, ID:', aliceToken.id);
+    console.log('Alice minted token successfully, ID:', aliceToken.tokenId ? aliceToken.tokenId.toJSON() : 'undefined');
     
     // Step 4: Bob generates receiving address
     console.log('Step 4: Bob generates receiving address...');
-    const bobReceivingAddress = await generateReceivingAddressDirectly(aliceToken.id, aliceToken.type, bobIdentity);
+    const bobReceivingAddress = await generateReceivingAddressDirectly(aliceToken.tokenId, aliceToken.tokenType, bobIdentity);
     console.log('Bob generated address:', bobReceivingAddress);
     
     // Step 5: Alice creates OFFLINE transfer package (no network submission)
@@ -834,13 +852,11 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
       throw new Error('Offline SDK client not initialized');
     }
     
-    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
-    const tokenObj = parsedTokenData.token || parsedTokenData;
+    // Get the actual token object from our token data structure
+    const token = tokenJson.token;
     
     const { 
       SigningService, 
-      TokenFactory,
-      PredicateFactory,
       TransactionData,
       HashAlgorithm,
       DataHasher,
@@ -851,15 +867,6 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
     // Create the transfer
     const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    const tokenFactory = new TokenFactory(new PredicateFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(tokenObj, tokenDataFromJSON);
     
     const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
     
@@ -886,7 +893,9 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
     // Create offline transaction package
     const offlineTransaction = new OfflineTransaction(offlineCommitment, token);
     
-    return offlineTransaction.toJSON();
+    // Use the new SDK method designed specifically for transfer/storage
+    // This properly handles BigInt serialization for NFC transfer
+    return offlineTransaction.toJSONString();
   } catch (e) {
     console.error('createOfflineTransferDirectly failed:', e);
     throw e;
@@ -915,8 +924,9 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    // Deserialize the offline transaction
-    const offlineTransaction = await OfflineTransaction.fromJSON(offlineTransactionJson);
+    // Use the new SDK method designed specifically for transfer/storage deserialization
+    // This properly handles BigInt deserialization from NFC transfer
+    const offlineTransaction = await OfflineTransaction.fromJSONString(offlineTransactionJson);
     
     // Submit the offline transaction to the network
     console.log('Submitting offline transaction to network...');
@@ -1003,7 +1013,17 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
   const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
   
   const token = new Token(tokenState, mintTransaction, [], [], "2.0");
-  return token.toJSON();
+  
+  // Return token in a format suitable for offline transfers
+  // Instead of using toJSON() which breaks BigInt values, we return the token object directly
+  return {
+    token: token,
+    tokenState: tokenState,
+    mintTransaction: mintTransaction,
+    tokenId: tokenId,
+    tokenType: tokenType,
+    predicate: predicate
+  };
 }
 
 /**
@@ -1052,7 +1072,7 @@ async function createTransferDirectly(senderIdentity, receiverIdentity, tokenJso
       TokenType,
       HashAlgorithm,
       TokenFactory,
-      PredicateFactory,
+      PredicateJsonFactory,
       TransactionData,
       DataHasher,
       HexConverter
@@ -1078,7 +1098,7 @@ async function createTransferDirectly(senderIdentity, receiverIdentity, tokenJso
     const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
     const tokenDataFromJSON = (data) => {
       if (typeof data !== 'string') {
         throw new Error('Invalid token data');
@@ -1129,7 +1149,7 @@ async function completeTransferDirectly(receiverIdentity, transferPackage) {
       SigningService, 
       MaskedPredicate, 
       TokenFactory,
-      PredicateFactory,
+      PredicateJsonFactory,
       Commitment,
       TokenState,
       HashAlgorithm,
@@ -1143,7 +1163,7 @@ async function completeTransferDirectly(receiverIdentity, transferPackage) {
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Import the token from the transfer package
-    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
     const tokenDataFromJSON = (data) => {
       if (typeof data !== 'string') {
         throw new Error('Invalid token data');
@@ -1254,7 +1274,7 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const tokenFactory = new TokenFactory(new PredicateFactory());
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
     // Create a simple fromJSON function for the token data
     const tokenDataFromJSON = (data) => {
       if (typeof data !== 'string') {
