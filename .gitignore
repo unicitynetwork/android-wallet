@@ -89,4 +89,6 @@ lint/tmp/
 *.hprof
 .idea
 .claude
+
+.DS_Store
 js-sdk-bundler/node_modules
