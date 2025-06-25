@@ -503,10 +503,6 @@ class MainActivity : AppCompatActivity() {
                 showResetWalletDialog()
                 true
             }
-            com.unicity.nfcwalletdemo.R.id.action_test_transfer -> {
-                runAutomatedTransferTest()
-                true
-            }
             com.unicity.nfcwalletdemo.R.id.action_test_offline_transfer -> {
                 runAutomatedOfflineTransferTest()
                 true
@@ -548,33 +544,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun runAutomatedTransferTest() {
-        AlertDialog.Builder(this)
-            .setTitle("Automated Transfer Test")
-            .setMessage("This will test the complete token transfer flow between two virtual wallets. Check logs for detailed output.")
-            .setPositiveButton("Run Test") { _, _ ->
-                Toast.makeText(this, "Starting automated transfer test...", Toast.LENGTH_SHORT).show()
-                
-                // Call the JavaScript function through the SDK service
-                lifecycleScope.launch {
-                    try {
-                        viewModel.getSdkService().runAutomatedTransferTest { result ->
-                            runOnUiThread {
-                                result.onSuccess {
-                                    Toast.makeText(this@MainActivity, "Test completed! Check logs.", Toast.LENGTH_LONG).show()
-                                }.onFailure { error ->
-                                    Toast.makeText(this@MainActivity, "Test failed: ${error.message}", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(this@MainActivity, "Failed to start test: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
     
     private fun runAutomatedOfflineTransferTest() {
         AlertDialog.Builder(this)
@@ -604,59 +573,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun runMintingDebugTest() {
-        AlertDialog.Builder(this)
-            .setTitle("Minting Debug Test")
-            .setMessage("This will test MintTransactionData creation to debug the minting issue. Check logs for detailed output.")
-            .setPositiveButton("Run Test") { _, _ ->
-                Toast.makeText(this, "Starting minting debug test...", Toast.LENGTH_SHORT).show()
-                
-                lifecycleScope.launch {
-                    try {
-                        viewModel.getSdkService().runMintingDebugTest { result ->
-                            runOnUiThread {
-                                result.onSuccess {
-                                    Toast.makeText(this@MainActivity, "Debug test completed! Check logs.", Toast.LENGTH_LONG).show()
-                                }.onFailure { error ->
-                                    Toast.makeText(this@MainActivity, "Debug test failed: ${error.message}", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(this@MainActivity, "Failed to start debug test: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-    
-    private fun runCompleteMintingTest() {
-        AlertDialog.Builder(this)
-            .setTitle("Complete Minting Test")
-            .setMessage("This will test the complete token minting flow end-to-end. Check logs for detailed output.")
-            .setPositiveButton("Run Test") { _, _ ->
-                Toast.makeText(this, "Starting complete minting test...", Toast.LENGTH_SHORT).show()
-                
-                lifecycleScope.launch {
-                    try {
-                        viewModel.getSdkService().runCompleteMintingTest { result ->
-                            runOnUiThread {
-                                result.onSuccess {
-                                    Toast.makeText(this@MainActivity, "✅ Complete minting test passed! Check logs.", Toast.LENGTH_LONG).show()
-                                }.onFailure { error ->
-                                    Toast.makeText(this@MainActivity, "❌ Complete minting test failed: ${error.message}", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(this@MainActivity, "Failed to start complete test: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
     
     private fun showCurrencyDialog() {
         val currencies = arrayOf("USD", "EUR")
@@ -675,7 +591,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Test Offline Transfer", "Debug Minting", "Test Complete Minting", "About")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Offline Transfer")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -683,11 +599,7 @@ class MainActivity : AppCompatActivity() {
                 when (which) {
                     0 -> showMintTokenDialog()
                     1 -> showResetWalletDialog()
-                    2 -> runAutomatedTransferTest()
-                    3 -> runAutomatedOfflineTransferTest()
-                    4 -> runMintingDebugTest()
-                    5 -> runCompleteMintingTest()
-                    6 -> showAboutDialog()
+                    2 -> runAutomatedOfflineTransferTest()
                 }
             }
             .show()
