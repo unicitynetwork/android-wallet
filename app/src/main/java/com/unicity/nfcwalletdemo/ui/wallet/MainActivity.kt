@@ -604,50 +604,26 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun runTokenMintTest() {
+    private fun runMintingDebugTest() {
         AlertDialog.Builder(this)
-            .setTitle("Token Mint Test")
-            .setMessage("This will test the token minting functionality. Check logs for detailed output.")
+            .setTitle("Minting Debug Test")
+            .setMessage("This will test MintTransactionData creation to debug the minting issue. Check logs for detailed output.")
             .setPositiveButton("Run Test") { _, _ ->
-                Toast.makeText(this, "Starting token mint test...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Starting minting debug test...", Toast.LENGTH_SHORT).show()
                 
                 lifecycleScope.launch {
                     try {
-                        val sdkService = viewModel.getSdkService()
-                        
-                        // Generate identity
-                        sdkService.generateIdentity { identityResult ->
-                            identityResult.onSuccess { identityResponse ->
-                                val identityJson = org.json.JSONObject(identityResponse)
-                                if (identityJson.getString("status") == "success") {
-                                    val identity = identityJson.getString("data")
-                                    
-                                    // Mint token
-                                    val tokenData = """{"amount":100,"data":"Test token from debug menu","stateData":"Initial state"}"""
-                                    sdkService.mintToken(identity, tokenData) { mintResult ->
-                                        runOnUiThread {
-                                            mintResult.onSuccess {
-                                                Toast.makeText(this@MainActivity, "✅ Token minted successfully! Check logs.", Toast.LENGTH_LONG).show()
-                                                Log.d("TokenMintTest", "Token mint success: $it")
-                                            }.onFailure { error ->
-                                                Toast.makeText(this@MainActivity, "❌ Token mint failed: ${error.message}", Toast.LENGTH_LONG).show()
-                                                Log.e("TokenMintTest", "Token mint failed", error)
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    runOnUiThread {
-                                        Toast.makeText(this@MainActivity, "Identity generation failed", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            }.onFailure { error ->
-                                runOnUiThread {
-                                    Toast.makeText(this@MainActivity, "Identity generation failed: ${error.message}", Toast.LENGTH_LONG).show()
+                        viewModel.getSdkService().runMintingDebugTest { result ->
+                            runOnUiThread {
+                                result.onSuccess {
+                                    Toast.makeText(this@MainActivity, "Debug test completed! Check logs.", Toast.LENGTH_LONG).show()
+                                }.onFailure { error ->
+                                    Toast.makeText(this@MainActivity, "Debug test failed: ${error.message}", Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
                     } catch (e: Exception) {
-                        Toast.makeText(this@MainActivity, "Failed to start test: ${e.message}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@MainActivity, "Failed to start debug test: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -672,7 +648,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Test Token Minting", "About")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Debug Minting", "About")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -681,7 +657,7 @@ class MainActivity : AppCompatActivity() {
                     0 -> showMintTokenDialog()
                     1 -> showResetWalletDialog()
                     2 -> runAutomatedTransferTest()
-                    3 -> runTokenMintTest()
+                    3 -> runMintingDebugTest()
                     4 -> showAboutDialog()
                 }
             }

@@ -123,7 +123,8 @@ async function mintToken(identityJson, tokenDataJson) {
       TokenState,
       HashAlgorithm,
       DataHasher,
-      DataHash
+      DataHash,
+      MintTransactionData
     } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
@@ -164,37 +165,50 @@ async function mintToken(identityJson, tokenDataJson) {
     const address = await DirectAddress.create(predicate.reference);
     console.log('Address created:', typeof address);
     
-    // Submit mint transaction - following SDK documentation pattern exactly
+    // Submit mint transaction - using MintTransactionData object
     const salt = crypto.getRandomValues(new Uint8Array(32));
     const stateData = new Uint8Array();  // Empty state data as in documentation
     
-    console.log('Creating state hash following documentation pattern...');
+    console.log('Creating mint transaction data...');
     try {
       // Use the exact pattern from SDK documentation
       const stateHash = await new DataHasher(HashAlgorithm.SHA256).update(stateData).digest();
       console.log('State hash created successfully:', typeof stateHash);
-      console.log('State hash properties:', Object.keys(stateHash || {}));
       
-      console.log('Submitting mint transaction...');
+      // Check if MintTransactionData is available
+      const { MintTransactionData } = window.UnicitySDK;
+      if (!MintTransactionData) {
+        throw new Error('MintTransactionData not available in SDK');
+      }
+      
+      console.log('Creating MintTransactionData...');
       console.log('Parameters:');
-      console.log('- address:', typeof address);
-      console.log('- tokenId:', typeof tokenId);
-      console.log('- tokenType:', typeof tokenType);
-      console.log('- testTokenData:', typeof testTokenData);
-      console.log('- coinData:', typeof coinData);
-      console.log('- salt:', typeof salt);
-      console.log('- stateHash:', typeof stateHash);
+      console.log('- tokenId:', typeof tokenId, tokenId);
+      console.log('- tokenType:', typeof tokenType, tokenType);
+      console.log('- testTokenData:', typeof testTokenData, testTokenData);
+      console.log('- coinData:', typeof coinData, coinData);
+      console.log('- address:', typeof address, address.toJSON());
+      console.log('- salt:', typeof salt, salt);
+      console.log('- stateHash:', typeof stateHash, stateHash);
       
-      const mintCommitment = await sdkClient.submitMintTransaction(
-        address,
+      // Create MintTransactionData using the static create method
+      // MintTransactionData.create(tokenId, tokenType, tokenData, coinData, recipient, salt, dataHash, reason)
+      const mintTransactionData = await MintTransactionData.create(
         tokenId,
         tokenType,
-        testTokenData,
+        testTokenData.bytes,  // Use the raw bytes
         coinData,
+        address.toJSON(),     // Pass the address as a string
         salt,
         stateHash,
-        null  // proof parameter (null for new mint)
+        null  // reason (null for new mint)
       );
+      
+      console.log('MintTransactionData created:', typeof mintTransactionData);
+      console.log('MintTransactionData hash:', mintTransactionData.hash);
+      
+      console.log('Submitting mint transaction...');
+      const mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
       
       console.log('Mint commitment created successfully');
       console.log('Waiting for inclusion proof...');
@@ -941,16 +955,21 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
   dataHasher.update(new TextEncoder().encode('mint token'));
   const dataHash = await dataHasher.digest();
   
-  const mintCommitment = await sdkClient.submitMintTransaction(
-    await DirectAddress.create(predicate.reference),
+  // Create MintTransactionData object
+  const { MintTransactionData } = window.UnicitySDK;
+  const address = await DirectAddress.create(predicate.reference);
+  const mintTransactionData = await MintTransactionData.create(
     tokenId,
     tokenType,
-    testTokenData,
+    testTokenData.bytes,
     coinData,
+    address,
     crypto.getRandomValues(new Uint8Array(32)),
     dataHash,
     null
   );
+  
+  const mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
   
   const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
   const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
@@ -1364,6 +1383,112 @@ async function waitInclusionProof(client, commitment, timeout = 30000) {
   }
   
   throw new Error('Timeout waiting for inclusion proof');
+}
+
+/**
+ * Run automated minting test to debug the issue
+ */
+async function runMintingDebugTest() {
+  try {
+    console.log('========================================');
+    console.log('MINT DEBUGGING TEST STARTED');
+    console.log('========================================');
+    
+    // Check SDK availability
+    console.log('Checking SDK availability...');
+    console.log('window.unicity:', !!window.unicity);
+    console.log('window.UnicitySDK:', !!window.UnicitySDK);
+    
+    const sdk = window.unicity || window.UnicitySDK;
+    if (!sdk) {
+      throw new Error('SDK not available');
+    }
+    
+    // Check required classes
+    console.log('\nChecking required classes:');
+    const requiredClasses = [
+      'SigningService', 'MaskedPredicate', 'DirectAddress', 'TokenId', 
+      'TokenType', 'TokenCoinData', 'CoinId', 'Token', 'TokenState',
+      'HashAlgorithm', 'DataHasher', 'MintTransactionData'
+    ];
+    
+    for (const className of requiredClasses) {
+      console.log(`- ${className}:`, typeof sdk[className]);
+      if (!sdk[className]) {
+        throw new Error(`${className} not found in SDK`);
+      }
+    }
+    
+    // Test minimal minting
+    console.log('\nStarting minimal mint test...');
+    
+    const { 
+      SigningService, DirectAddress, TokenId, TokenType,
+      TokenCoinData, CoinId, HashAlgorithm, DataHasher,
+      MintTransactionData
+    } = sdk;
+    
+    // Create simple test data
+    const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
+    const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
+    const tokenData = new Uint8Array([1, 2, 3, 4, 5]); // Simple test data
+    const coinData = new TokenCoinData([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(100)]]);
+    
+    // Create recipient address
+    const recipientAddress = 'test_address_' + Date.now();
+    
+    // Create salt and data hash
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
+    dataHasher.update(new Uint8Array());
+    const dataHash = await dataHasher.digest();
+    
+    console.log('\nCreating MintTransactionData with:');
+    console.log('- tokenId:', tokenId);
+    console.log('- tokenType:', tokenType);
+    console.log('- tokenData:', tokenData);
+    console.log('- coinData:', coinData);
+    console.log('- recipient:', recipientAddress);
+    console.log('- salt:', salt);
+    console.log('- dataHash:', dataHash);
+    
+    // Create mint transaction data
+    const mintTransactionData = await MintTransactionData.create(
+      tokenId,
+      tokenType,
+      tokenData,
+      coinData,
+      recipientAddress,
+      salt,
+      dataHash,
+      null
+    );
+    
+    console.log('\nMintTransactionData created successfully!');
+    console.log('- type:', typeof mintTransactionData);
+    console.log('- hash:', mintTransactionData.hash);
+    console.log('- tokenId:', mintTransactionData.tokenId);
+    
+    console.log('\n========================================');
+    console.log('MINT DEBUGGING TEST COMPLETED');
+    console.log('Issue appears to be in submitMintTransaction, not MintTransactionData creation');
+    console.log('========================================');
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'success', 
+      message: 'Mint debug test completed',
+      data: 'MintTransactionData creation works correctly'
+    }));
+    
+  } catch (error) {
+    console.error('MINT DEBUG TEST FAILED:', error);
+    console.error('Error stack:', error.stack);
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'error', 
+      message: `Mint debug test failed: ${error.message}`
+    }));
+  }
 }
 
 // Wait for the SDK to be loaded before initializing

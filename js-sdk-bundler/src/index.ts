@@ -5,6 +5,9 @@ export { OfflineStateTransitionClient } from '@unicitylabs/state-transition-sdk/
 export { OfflineCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/OfflineCommitment.js';
 export { OfflineTransaction } from '@unicitylabs/state-transition-sdk/lib/transaction/OfflineTransaction.js';
 
+// Explicitly export transaction classes
+export { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
+
 // export * from './ISerializable.js';
 // export * from './StateTransitionClient.js';
 // export * from './hash/createDefaultDataHasherFactory.js';
