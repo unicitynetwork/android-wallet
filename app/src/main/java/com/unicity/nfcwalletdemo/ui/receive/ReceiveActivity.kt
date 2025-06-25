@@ -51,39 +51,55 @@ class ReceiveActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 "com.unicity.nfcwalletdemo.TOKEN_RECEIVED" -> {
-                    val tokenJson = intent.getStringExtra("token_json")
-                    if (tokenJson != null) {
-                        try {
-                            // Check if this is a Unicity transfer or demo token
-                            val transferData = gson.fromJson(tokenJson, Map::class.java)
-                            when (transferData["type"]) {
-                                "unicity_transfer" -> {
-                                    // Handle online Unicity transfer
-                                    lifecycleScope.launch {
-                                        handleUnicityTransfer(transferData)
+                    // Check if this is the new offline transfer format
+                    val transferType = intent.getStringExtra("transfer_type")
+                    
+                    if (transferType == "unicity_offline_transfer") {
+                        // New offline transfer format from handshake
+                        val tokenName = intent.getStringExtra("token_name") ?: "Unknown Token"
+                        val offlineTransaction = intent.getStringExtra("offline_transaction") ?: ""
+                        
+                        Log.d("ReceiveActivity", "New offline transfer received: $tokenName")
+                        lifecycleScope.launch {
+                            handleNewOfflineTransfer(tokenName, offlineTransaction)
+                        }
+                        
+                    } else {
+                        // Legacy format
+                        val tokenJson = intent.getStringExtra("token_json")
+                        if (tokenJson != null) {
+                            try {
+                                // Check if this is a Unicity transfer or demo token
+                                val transferData = gson.fromJson(tokenJson, Map::class.java)
+                                when (transferData["type"]) {
+                                    "unicity_transfer" -> {
+                                        // Handle online Unicity transfer
+                                        lifecycleScope.launch {
+                                            handleUnicityTransfer(transferData)
+                                        }
+                                    }
+                                    "unicity_offline_transfer" -> {
+                                        // Handle offline Unicity transfer (legacy format)
+                                        lifecycleScope.launch {
+                                            handleOfflineUnicityTransfer(transferData)
+                                        }
+                                    }
+                                    else -> {
+                                        // Handle demo token
+                                        val token = gson.fromJson(tokenJson, Token::class.java)
+                                        Log.d("ReceiveActivity", "Demo token received via NFC: ${token.name}")
+                                        runOnUiThread {
+                                            viewModel.onTokenReceived(token)
+                                            showSuccessDialog("Received ${token.name} successfully!")
+                                            Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
-                                "unicity_offline_transfer" -> {
-                                    // Handle offline Unicity transfer
-                                    lifecycleScope.launch {
-                                        handleOfflineUnicityTransfer(transferData)
-                                    }
+                            } catch (e: Exception) {
+                                Log.e("ReceiveActivity", "Error parsing received token", e)
+                                runOnUiThread {
+                                    Toast.makeText(this@ReceiveActivity, "Error receiving token: ${e.message}", Toast.LENGTH_LONG).show()
                                 }
-                                else -> {
-                                    // Handle demo token
-                                    val token = gson.fromJson(tokenJson, Token::class.java)
-                                    Log.d("ReceiveActivity", "Demo token received via NFC: ${token.name}")
-                                    runOnUiThread {
-                                        viewModel.onTokenReceived(token)
-                                        showSuccessDialog("Received ${token.name} successfully!")
-                                        Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e("ReceiveActivity", "Error parsing received token", e)
-                            runOnUiThread {
-                                Toast.makeText(this@ReceiveActivity, "Error receiving token: ${e.message}", Toast.LENGTH_LONG).show()
                             }
                         }
                     }
@@ -420,6 +436,145 @@ class ReceiveActivity : AppCompatActivity() {
                 }
                 result.onFailure { error ->
                     continuation.resumeWith(Result.failure(error))
+                }
+            }
+        }
+    }
+    
+    /**
+     * Handle new offline transfer format from proper handshake
+     */
+    private suspend fun handleNewOfflineTransfer(tokenName: String, offlineTransactionJson: String) {
+        try {
+            Log.d("ReceiveActivity", "Processing new offline transfer for: $tokenName")
+            
+            runOnUiThread {
+                binding.tvStatus.text = "Processing offline transfer..."
+                viewModel.onReceivingToken()
+            }
+            
+            if (offlineTransactionJson.isEmpty()) {
+                throw Exception("Empty offline transaction data")
+            }
+            
+            // Generate receiver identity for this transfer
+            val receiverIdentity = generateReceiverIdentity()
+            val receiverIdentityJson = gson.toJson(receiverIdentity)
+            
+            Log.d("ReceiveActivity", "Generated receiver identity for offline transfer")
+            
+            // Create pending token immediately
+            val pendingToken = Token(
+                name = tokenName,
+                type = "Unicity Token",
+                status = TokenStatus.PENDING,
+                isOfflineTransfer = true,
+                pendingOfflineData = gson.toJson(mapOf(
+                    "receiverIdentity" to receiverIdentityJson,
+                    "offlineTransaction" to offlineTransactionJson
+                )),
+                unicityAddress = "pending_${System.currentTimeMillis()}",
+                jsonData = offlineTransactionJson,
+                sizeBytes = offlineTransactionJson.length
+            )
+            
+            runOnUiThread {
+                viewModel.onTokenReceived(pendingToken)
+                showSuccessDialog("Received ${pendingToken.name} via offline transfer! Submitting to network...")
+                Toast.makeText(this@ReceiveActivity, "Offline token received: ${pendingToken.name} (submitting...)", Toast.LENGTH_SHORT).show()
+            }
+            
+            // Try to complete the offline transfer in the background
+            var retryCount = 0
+            val maxRetries = 2
+            
+            while (retryCount <= maxRetries) {
+                try {
+                    val result = completeOfflineUnicityTransfer(receiverIdentityJson, offlineTransactionJson)
+                    
+                    // Update token status to confirmed
+                    val confirmedToken = pendingToken.copy(
+                        status = TokenStatus.CONFIRMED,
+                        unicityAddress = "unicity_received_${System.currentTimeMillis()}",
+                        jsonData = result,
+                        sizeBytes = result.length,
+                        pendingOfflineData = null
+                    )
+                    
+                    Log.d("ReceiveActivity", "New offline transfer confirmed: ${confirmedToken.name}")
+                    
+                    runOnUiThread {
+                        viewModel.onTokenReceived(confirmedToken)
+                        Toast.makeText(this@ReceiveActivity, "Token ${confirmedToken.name} confirmed on network!", Toast.LENGTH_SHORT).show()
+                    }
+                    
+                    // Success - exit retry loop
+                    break
+                    
+                } catch (e: Exception) {
+                    retryCount++
+                    Log.e("ReceiveActivity", "Failed to submit new offline transfer (attempt $retryCount)", e)
+                    
+                    if (retryCount <= maxRetries) {
+                        try {
+                            Thread.sleep((2000 * retryCount).toLong()) // Exponential backoff: 2s, 4s
+                        } catch (ie: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                        
+                        runOnUiThread {
+                            Toast.makeText(this@ReceiveActivity, "Retrying network submission (attempt $retryCount)...", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        // Final failure - update token status to failed
+                        val failedToken = pendingToken.copy(
+                            status = TokenStatus.FAILED
+                        )
+                        
+                        runOnUiThread {
+                            viewModel.onTokenReceived(failedToken)
+                            Toast.makeText(this@ReceiveActivity, "Token received but network submission failed. You can retry manually.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e("ReceiveActivity", "Failed to process new offline transfer", e)
+            runOnUiThread {
+                viewModel.onError("Failed to process offline transfer: ${e.message}")
+                Toast.makeText(this@ReceiveActivity, "Failed to receive offline token: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    /**
+     * Generate receiver identity for this device
+     */
+    private suspend fun generateReceiverIdentity(): Map<String, String> {
+        return kotlin.coroutines.suspendCoroutine { continuation ->
+            sdkService.generateIdentity { result ->
+                result.onSuccess { identityJson ->
+                    try {
+                        val identity = gson.fromJson(identityJson, Map::class.java) as Map<String, String>
+                        continuation.resumeWith(Result.success(identity))
+                    } catch (e: Exception) {
+                        Log.e("ReceiveActivity", "Failed to parse receiver identity", e)
+                        // Fallback identity
+                        continuation.resumeWith(Result.success(mapOf(
+                            "secret" to "fallback_receiver_secret", 
+                            "nonce" to "fallback_receiver_nonce"
+                        )))
+                    }
+                }
+                result.onFailure { error ->
+                    Log.e("ReceiveActivity", "Failed to generate receiver identity", error)
+                    // Fallback identity
+                    continuation.resumeWith(Result.success(mapOf(
+                        "secret" to "fallback_receiver_secret", 
+                        "nonce" to "fallback_receiver_nonce"
+                    )))
                 }
             }
         }

@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.google.gson.Gson
 import java.io.ByteArrayOutputStream
+import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 
 class HostCardEmulatorService : HostApduService() {
     
@@ -20,6 +21,19 @@ class HostCardEmulatorService : HostApduService() {
     private var currentChunkIndex = 0
     private var transferMode = "BLE_READY"
     private val gson = Gson()
+    
+    // SDK service for address generation
+    private lateinit var sdkService: UnicitySdkService
+    
+    // Storage for generated receiver addresses
+    private var generatedReceiverAddress: String? = null
+    private var generatedReceiverIdentity: Map<String, String>? = null
+    
+    override fun onCreate() {
+        super.onCreate()
+        sdkService = UnicitySdkService(this)
+        Log.d(TAG, "HostCardEmulatorService created with SDK service")
+    }
     
     companion object {
         // Static variable to receive token from sender
@@ -46,7 +60,7 @@ class HostCardEmulatorService : HostApduService() {
         
         // New commands for proper offline transfer handshake
         private const val CMD_REQUEST_RECEIVER_ADDRESS: Byte = 0x05
-        private const val CMD_SEND_RECEIVER_ADDRESS: Byte = 0x06
+        private const val CMD_GET_RECEIVER_ADDRESS: Byte = 0x06
         private const val CMD_SEND_OFFLINE_TRANSACTION: Byte = 0x07
         
         // Transfer modes
@@ -91,6 +105,10 @@ class HostCardEmulatorService : HostApduService() {
             CMD_REQUEST_RECEIVER_ADDRESS -> {
                 Log.d(TAG, "REQUEST_RECEIVER_ADDRESS command received")
                 return handleReceiverAddressRequest(commandApdu)
+            }
+            CMD_GET_RECEIVER_ADDRESS -> {
+                Log.d(TAG, "GET_RECEIVER_ADDRESS command received")
+                return sendReceiverAddress()
             }
             CMD_SEND_OFFLINE_TRANSACTION -> {
                 Log.d(TAG, "SEND_OFFLINE_TRANSACTION command received")
@@ -386,7 +404,7 @@ class HostCardEmulatorService : HostApduService() {
     // NEW OFFLINE TRANSFER HANDSHAKE HANDLERS
     
     /**
-     * Step 1: Sender requests receiver address for a specific token
+     * Sender requests receiver address for a specific token
      * Handles CMD_REQUEST_RECEIVER_ADDRESS
      */
     private fun handleReceiverAddressRequest(commandApdu: ByteArray): ByteArray {
@@ -431,23 +449,129 @@ class HostCardEmulatorService : HostApduService() {
     }
     
     /**
-     * Step 2: Generate receiver address and prepare to send it back
+     * Generate receiver address and prepare to send it back
      * This is called internally after receiving the token request
      */
     private fun generateReceiverAddressForToken(tokenId: Any, tokenType: Any, tokenName: String) {
-        // TODO: This needs to be implemented to:
-        // 1. Generate a new identity for this device
-        // 2. Create a predicate for the specific token ID and type
-        // 3. Generate the receiving address
-        // 4. Store it for the next NFC query from sender
-        
-        Log.d(TAG, "Generating receiver address for token: $tokenName")
-        // For now, we'll create a placeholder that indicates the proper flow
-        // In a complete implementation, this would call the SDK to generate the address
+        try {
+            Log.d(TAG, "Generating receiver address for token: $tokenName")
+            
+            val tokenIdJson = gson.toJson(tokenId)
+            val tokenTypeJson = gson.toJson(tokenType)
+            
+            Log.d(TAG, "Starting receiver address generation for token ID: $tokenIdJson, Type: $tokenTypeJson")
+            
+            // Generate receiver identity for this device
+            sdkService.generateIdentity { identityResult ->
+                identityResult.onSuccess { identityJson ->
+                    try {
+                        val receiverIdentity = gson.fromJson(identityJson, Map::class.java) as Map<String, String>
+                        generatedReceiverIdentity = receiverIdentity
+                        
+                        Log.d(TAG, "Receiver identity generated successfully")
+                        
+                        // Generate receiving address using the specific token ID and type
+                        sdkService.generateReceivingAddressForOfflineTransfer(
+                            tokenIdJson,
+                            tokenTypeJson, 
+                            gson.toJson(receiverIdentity)
+                        ) { addressResult ->
+                            addressResult.onSuccess { addressResponseJson ->
+                                try {
+                                    val addressResponse = gson.fromJson(addressResponseJson, Map::class.java)
+                                    val receiverAddress = addressResponse["address"] as? String
+                                    
+                                    if (receiverAddress != null) {
+                                        // Store the generated address for sender to retrieve
+                                        generatedReceiverAddress = receiverAddress
+                                        
+                                        Log.d(TAG, "Receiver address generated successfully: $receiverAddress")
+                                        Log.d(TAG, "Receiver address ready for sender retrieval")
+                                        
+                                    } else {
+                                        Log.e(TAG, "No address found in response: $addressResponseJson")
+                                        generatedReceiverAddress = null
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to parse address response", e)
+                                    generatedReceiverAddress = null
+                                }
+                            }
+                            addressResult.onFailure { error ->
+                                Log.e(TAG, "Failed to generate receiving address via SDK", error)
+                                generatedReceiverAddress = null
+                            }
+                        }
+                        
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse receiver identity", e)
+                        generatedReceiverIdentity = null
+                        generatedReceiverAddress = null
+                    }
+                }
+                identityResult.onFailure { error ->
+                    Log.e(TAG, "Failed to generate receiver identity", error)
+                    generatedReceiverIdentity = null
+                    generatedReceiverAddress = null
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in generateReceiverAddressForToken", e)
+            generatedReceiverAddress = null
+            generatedReceiverIdentity = null
+        }
     }
     
     /**
-     * Step 3: Handle offline transaction package from sender
+     * Send the generated receiver address back to sender
+     * Handles CMD_GET_RECEIVER_ADDRESS
+     */
+    private fun sendReceiverAddress(): ByteArray {
+        return try {
+            Log.d(TAG, "Sending receiver address to sender")
+            
+            val address = generatedReceiverAddress
+            if (address != null) {
+                Log.d(TAG, "Returning generated receiver address: $address")
+                
+                // Create response with the receiver address
+                val response = mapOf(
+                    "status" to "success",
+                    "receiver_address" to address,
+                    "receiver_identity" to generatedReceiverIdentity
+                )
+                
+                val responseJson = gson.toJson(response)
+                val responseBytes = responseJson.toByteArray(StandardCharsets.UTF_8)
+                
+                // Return the address data + SW_OK
+                responseBytes + SW_OK
+                
+            } else {
+                Log.e(TAG, "No receiver address available - still generating or failed")
+                
+                // Return "not ready" response
+                val response = mapOf(
+                    "status" to "not_ready",
+                    "message" to "Receiver address still being generated"
+                )
+                
+                val responseJson = gson.toJson(response)
+                val responseBytes = responseJson.toByteArray(StandardCharsets.UTF_8)
+                
+                // Return the not ready response + SW_OK (sender should retry)
+                responseBytes + SW_OK
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending receiver address", e)
+            SW_ERROR
+        }
+    }
+    
+    /**
+     * Handle offline transaction package from sender
      * Handles CMD_SEND_OFFLINE_TRANSACTION
      */
     private fun startOfflineTransactionReceive(commandApdu: ByteArray): ByteArray {
