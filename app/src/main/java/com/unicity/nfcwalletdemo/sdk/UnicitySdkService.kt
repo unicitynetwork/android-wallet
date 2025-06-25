@@ -91,11 +91,6 @@ class UnicitySdkService(context: Context) {
         }
     }
 
-    fun runAutomatedTransferTest(callback: (Result<String>) -> Unit) {
-        executeJs("runAutomatedTransferTest()") { result ->
-            callback(result)
-        }
-    }
 
     fun runAutomatedOfflineTransferTest(callback: (Result<String>) -> Unit) {
         executeJs("runAutomatedOfflineTransferTest()") { result ->
@@ -103,17 +98,6 @@ class UnicitySdkService(context: Context) {
         }
     }
 
-    fun runMintingDebugTest(callback: (Result<String>) -> Unit) {
-        executeJs("runMintingDebugTest()") { result ->
-            callback(result)
-        }
-    }
-
-    fun runCompleteMintingTest(callback: (Result<String>) -> Unit) {
-        executeJs("runCompleteMintingTest()") { result ->
-            callback(result)
-        }
-    }
 
     /**
      * Creates an offline transfer package that can be transmitted via NFC without network
