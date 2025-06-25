@@ -150,6 +150,24 @@ class UnicitySdkService(context: Context) {
             callback(result)
         }
     }
+
+    /**
+     * Generates a receiving address for offline transfers using specific token ID and type
+     */
+    fun generateReceivingAddressForOfflineTransfer(
+        tokenIdJson: String,
+        tokenTypeJson: String,
+        receiverIdentityJson: String,
+        callback: (Result<String>) -> Unit
+    ) {
+        val escapedTokenId = escapeJavaScriptString(tokenIdJson)
+        val escapedTokenType = escapeJavaScriptString(tokenTypeJson)
+        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
+        
+        executeJs("generateReceivingAddressForOfflineTransfer('$escapedTokenId', '$escapedTokenType', '$escapedReceiverIdentity')") { result ->
+            callback(result)
+        }
+    }
     
     private fun executeJs(script: String, callback: (Result<String>) -> Unit) {
         if (!isInitialized) {
