@@ -170,6 +170,11 @@ async function mintToken(identityJson, tokenDataJson) {
     const stateData = new Uint8Array();  // Empty state data as in documentation
     
     console.log('Creating mint transaction data...');
+    
+    // Declare variables outside try-catch for proper scope
+    let mintCommitment;
+    let inclusionProof;
+    
     try {
       // Use the exact pattern from SDK documentation
       const stateHash = await new DataHasher(HashAlgorithm.SHA256).update(stateData).digest();
@@ -208,11 +213,11 @@ async function mintToken(identityJson, tokenDataJson) {
       console.log('MintTransactionData hash:', mintTransactionData.hash);
       
       console.log('Submitting mint transaction...');
-      const mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
+      mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
       
       console.log('Mint commitment created successfully');
       console.log('Waiting for inclusion proof...');
-      const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
+      inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
     } catch (mintError) {
       console.error('Mint transaction failed:', mintError);
       console.error('Error details:', mintError.message);
@@ -221,16 +226,39 @@ async function mintToken(identityJson, tokenDataJson) {
     }
     
     console.log('Creating transaction...');
-    const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
+    console.log('mintCommitment type:', typeof mintCommitment, mintCommitment);
+    console.log('inclusionProof type:', typeof inclusionProof, inclusionProof);
+    console.log('mintCommitment properties:', Object.keys(mintCommitment || {}));
+    console.log('inclusionProof properties:', Object.keys(inclusionProof || {}));
     
-    // Create the final token
+    // Try original approach first - the SDK example shows passing commitment directly
+    console.log('Attempting createTransaction with commitment directly...');
+    let mintTransaction;
+    try {
+      mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
+      console.log('Transaction created successfully with direct approach');
+    } catch (directError) {
+      console.error('Direct approach failed:', directError.message);
+      console.log('Trying destructured approach...');
+      // Alternative: Try destructured approach if direct fails
+      mintTransaction = await sdkClient.createTransaction(
+        { requestId: mintCommitment.requestId, transactionData: mintCommitment.transactionData },
+        inclusionProof
+      );
+      console.log('Transaction created successfully with destructured approach');
+    }
+    
+    // Create the final token - CORRECTED CONSTRUCTOR
+    console.log('Creating final token with correct parameters...');
+    console.log('- tokenState:', typeof tokenState);
+    console.log('- mintTransaction (genesis):', typeof mintTransaction);
+    
     const token = new Token(
-      tokenId,
-      tokenType,
-      testTokenData,
-      coinData,
-      tokenState,
-      [mintTransaction]
+      tokenState,        // 1. state: TokenState
+      mintTransaction,   // 2. genesis: MT (mint transaction)
+      [],               // 3. transactions: Transaction<TransactionData>[] (empty for new token)
+      [],               // 4. nametagTokens: NameTagToken[] (empty for new token)
+      "2.0"             // 5. version: string (optional, defaults to TOKEN_VERSION)
     );
     
     const result = {
@@ -974,7 +1002,7 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
   const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
   const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
   
-  const token = new Token(tokenId, tokenType, testTokenData, coinData, tokenState, [mintTransaction]);
+  const token = new Token(tokenState, mintTransaction, [], [], "2.0");
   return token.toJSON();
 }
 
@@ -1383,6 +1411,58 @@ async function waitInclusionProof(client, commitment, timeout = 30000) {
   }
   
   throw new Error('Timeout waiting for inclusion proof');
+}
+
+/**
+ * Test complete minting flow end-to-end
+ */
+async function runCompleteMintingTest() {
+  try {
+    console.log('========================================');
+    console.log('COMPLETE MINTING TEST STARTED');
+    console.log('========================================');
+    
+    if (!sdkClient) {
+      initializeSdk();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+    // Generate test identity
+    console.log('Generating test identity...');
+    const testSecret = crypto.getRandomValues(new Uint8Array(32));
+    const testNonce = crypto.getRandomValues(new Uint8Array(32));
+    const testIdentity = {
+      secret: Array.from(testSecret).map(b => b.toString(16).padStart(2, '0')).join(''),
+      nonce: Array.from(testNonce).map(b => b.toString(16).padStart(2, '0')).join('')
+    };
+    
+    // Test mintToken function directly
+    console.log('Testing mintToken function with test data...');
+    await mintToken(JSON.stringify(testIdentity), JSON.stringify({
+      amount: 50,
+      data: 'Complete test token',
+      stateData: 'Test state'
+    }));
+    
+    console.log('========================================');
+    console.log('COMPLETE MINTING TEST COMPLETED SUCCESSFULLY');
+    console.log('========================================');
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'success', 
+      message: 'Complete minting test passed',
+      data: 'Full minting flow works correctly'
+    }));
+    
+  } catch (error) {
+    console.error('COMPLETE MINTING TEST FAILED:', error);
+    console.error('Error stack:', error.stack);
+    
+    AndroidBridge.postMessage(JSON.stringify({ 
+      status: 'error', 
+      message: `Complete minting test failed: ${error.message}`
+    }));
+  }
 }
 
 /**

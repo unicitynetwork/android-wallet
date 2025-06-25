@@ -104,6 +104,12 @@ class UnicitySdkService(context: Context) {
         }
     }
 
+    fun runCompleteMintingTest(callback: (Result<String>) -> Unit) {
+        executeJs("runCompleteMintingTest()") { result ->
+            callback(result)
+        }
+    }
+
     /**
      * Creates an offline transfer package that can be transmitted via NFC without network
      */

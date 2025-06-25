@@ -631,6 +631,33 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
+    private fun runCompleteMintingTest() {
+        AlertDialog.Builder(this)
+            .setTitle("Complete Minting Test")
+            .setMessage("This will test the complete token minting flow end-to-end. Check logs for detailed output.")
+            .setPositiveButton("Run Test") { _, _ ->
+                Toast.makeText(this, "Starting complete minting test...", Toast.LENGTH_SHORT).show()
+                
+                lifecycleScope.launch {
+                    try {
+                        viewModel.getSdkService().runCompleteMintingTest { result ->
+                            runOnUiThread {
+                                result.onSuccess {
+                                    Toast.makeText(this@MainActivity, "✅ Complete minting test passed! Check logs.", Toast.LENGTH_LONG).show()
+                                }.onFailure { error ->
+                                    Toast.makeText(this@MainActivity, "❌ Complete minting test failed: ${error.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "Failed to start complete test: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
     private fun showCurrencyDialog() {
         val currencies = arrayOf("USD", "EUR")
         val currentIndex = currencies.indexOf(selectedCurrency)
@@ -648,7 +675,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Debug Minting", "About")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Debug Minting", "Test Complete Minting", "About")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -658,7 +685,8 @@ class MainActivity : AppCompatActivity() {
                     1 -> showResetWalletDialog()
                     2 -> runAutomatedTransferTest()
                     3 -> runMintingDebugTest()
-                    4 -> showAboutDialog()
+                    4 -> runCompleteMintingTest()
+                    5 -> showAboutDialog()
                 }
             }
             .show()
