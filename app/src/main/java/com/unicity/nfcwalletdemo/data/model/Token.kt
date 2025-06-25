@@ -4,6 +4,14 @@ import kotlinx.serialization.Serializable
 import java.util.UUID
 
 @Serializable
+enum class TokenStatus {
+    PENDING,      // Offline transfer received but not submitted to network
+    SUBMITTED,    // Submitted to network, waiting for confirmation
+    CONFIRMED,    // Confirmed on network
+    FAILED        // Network submission failed
+}
+
+@Serializable
 data class Token(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -11,7 +19,11 @@ data class Token(
     val timestamp: Long = System.currentTimeMillis(),
     val unicityAddress: String? = null,
     val jsonData: String? = null,
-    val sizeBytes: Int = 0
+    val sizeBytes: Int = 0,
+    val status: TokenStatus? = TokenStatus.CONFIRMED,
+    val transactionId: String? = null,
+    val isOfflineTransfer: Boolean = false,
+    val pendingOfflineData: String? = null
 ) {
     fun getFormattedSize(): String {
         return when {

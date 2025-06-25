@@ -24,6 +24,7 @@ import com.unicity.nfcwalletdemo.databinding.ActivityReceiveBinding
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorService
 import com.unicity.nfcwalletdemo.ui.wallet.MainActivity
 import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
@@ -324,18 +325,82 @@ class ReceiveActivity : AppCompatActivity() {
                 throw Exception("Invalid offline transfer data")
             }
             
-            // Use SDK to complete the offline transfer
-            val result = completeOfflineUnicityTransfer(receiverIdentityJson, offlineTransactionJson)
-            
-            // Create Token object from the result
-            val finalToken = createTokenFromUnicityResult(tokenName, result)
-            
-            Log.d("ReceiveActivity", "Offline Unicity token processed: ${finalToken.name}")
+            // First, create a pending token to show in UI immediately
+            val pendingToken = Token(
+                name = tokenName,
+                type = "Unicity Token",
+                status = TokenStatus.PENDING,
+                isOfflineTransfer = true,
+                pendingOfflineData = gson.toJson(mapOf(
+                    "receiverIdentity" to receiverIdentityJson,
+                    "offlineTransaction" to offlineTransactionJson
+                )),
+                unicityAddress = "pending_${System.currentTimeMillis()}",
+                jsonData = offlineTransactionJson,
+                sizeBytes = offlineTransactionJson.length
+            )
             
             runOnUiThread {
-                viewModel.onTokenReceived(finalToken)
-                showSuccessDialog("Received ${finalToken.name} successfully via offline transfer!")
-                Toast.makeText(this@ReceiveActivity, "Offline Unicity token received: ${finalToken.name}", Toast.LENGTH_SHORT).show()
+                viewModel.onTokenReceived(pendingToken)
+                showSuccessDialog("Received ${pendingToken.name} via offline transfer! Submitting to network...")
+                Toast.makeText(this@ReceiveActivity, "Offline token received: ${pendingToken.name} (submitting...)", Toast.LENGTH_SHORT).show()
+            }
+            
+            // Now try to complete the offline transfer in the background with auto-retry
+            var retryCount = 0
+            val maxRetries = 2
+            
+            while (retryCount <= maxRetries) {
+                try {
+                    val result = completeOfflineUnicityTransfer(receiverIdentityJson, offlineTransactionJson)
+                    
+                    // Update token status to confirmed
+                    val confirmedToken = pendingToken.copy(
+                        status = TokenStatus.CONFIRMED,
+                        unicityAddress = "unicity_received_${System.currentTimeMillis()}",
+                        jsonData = result,
+                        sizeBytes = result.length,
+                        pendingOfflineData = null
+                    )
+                    
+                    Log.d("ReceiveActivity", "Offline Unicity token confirmed: ${confirmedToken.name}")
+                    
+                    runOnUiThread {
+                        viewModel.onTokenReceived(confirmedToken)
+                        Toast.makeText(this@ReceiveActivity, "Token ${confirmedToken.name} confirmed on network!", Toast.LENGTH_SHORT).show()
+                    }
+                    
+                    // Success - exit retry loop
+                    break
+                    
+                } catch (e: Exception) {
+                    retryCount++
+                    Log.e("ReceiveActivity", "Failed to submit offline transfer to network (attempt $retryCount)", e)
+                    
+                    if (retryCount <= maxRetries) {
+                        // Wait before retrying
+                        try {
+                            Thread.sleep((2000 * retryCount).toLong()) // Exponential backoff: 2s, 4s
+                        } catch (ie: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                        
+                        runOnUiThread {
+                            Toast.makeText(this@ReceiveActivity, "Retrying network submission (attempt $retryCount)...", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        // Final failure - update token status to failed but keep the token
+                        val failedToken = pendingToken.copy(
+                            status = TokenStatus.FAILED
+                        )
+                        
+                        runOnUiThread {
+                            viewModel.onTokenReceived(failedToken)
+                            Toast.makeText(this@ReceiveActivity, "Token received but network submission failed after $maxRetries retries. You can retry manually.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
             }
             
         } catch (e: Exception) {

@@ -89,6 +89,14 @@ class WalletRepository(context: Context) {
         saveWallet(updatedWallet)
     }
     
+    fun updateToken(token: Token) {
+        val currentWallet = _wallet.value ?: return
+        val updatedWallet = currentWallet.copy(
+            tokens = currentWallet.tokens.map { if (it.id == token.id) token else it }
+        )
+        saveWallet(updatedWallet)
+    }
+    
     fun getToken(tokenId: String): Token? {
         return _tokens.value.find { it.id == tokenId }
     }

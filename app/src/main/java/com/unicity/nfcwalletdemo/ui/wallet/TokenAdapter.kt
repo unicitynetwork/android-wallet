@@ -9,13 +9,15 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.databinding.ItemTokenBinding
 import java.text.SimpleDateFormat
 import java.util.*
 
 class TokenAdapter(
     private val onSendClick: (Token) -> Unit,
-    private val onCancelClick: (Token) -> Unit
+    private val onCancelClick: (Token) -> Unit,
+    private val onManualSubmitClick: (Token) -> Unit = {}
 ) : ListAdapter<Token, TokenAdapter.TokenViewHolder>(TokenDiffCallback()) {
     
     private var expandedTokenId: String? = null
@@ -108,6 +110,9 @@ class TokenAdapter(
             }
             binding.tvTokenSize.text = "Size: ${token.getFormattedSize()}"
             
+            // Show token status
+            updateTokenStatus(token)
+            
             // Set up expansion/collapse
             binding.layoutExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
             
@@ -123,6 +128,7 @@ class TokenAdapter(
                 binding.layoutTransferStatus.visibility = View.VISIBLE
                 binding.btnSend.visibility = View.GONE
                 binding.btnCancel.visibility = View.VISIBLE
+                binding.btnManualSubmit.visibility = View.GONE
                 
                 // Check if we have progress info
                 val progress = transferProgress[token.id]
@@ -138,8 +144,25 @@ class TokenAdapter(
                 }
             } else {
                 binding.layoutTransferStatus.visibility = View.GONE
-                binding.btnSend.visibility = View.VISIBLE
-                binding.btnCancel.visibility = View.GONE
+                
+                // Show appropriate buttons based on token status
+                when (token.status ?: TokenStatus.CONFIRMED) {
+                    TokenStatus.PENDING, TokenStatus.FAILED -> {
+                        binding.btnSend.visibility = View.GONE
+                        binding.btnManualSubmit.visibility = View.VISIBLE
+                        binding.btnCancel.visibility = View.GONE
+                    }
+                    TokenStatus.SUBMITTED -> {
+                        binding.btnSend.visibility = View.GONE
+                        binding.btnManualSubmit.visibility = View.GONE
+                        binding.btnCancel.visibility = View.GONE
+                    }
+                    TokenStatus.CONFIRMED -> {
+                        binding.btnSend.visibility = View.VISIBLE
+                        binding.btnManualSubmit.visibility = View.GONE
+                        binding.btnCancel.visibility = View.GONE
+                    }
+                }
             }
             
             // Click listeners
@@ -153,6 +176,43 @@ class TokenAdapter(
             
             binding.btnCancel.setOnClickListener {
                 onCancelClick(token)
+            }
+            
+            binding.btnManualSubmit.setOnClickListener {
+                onManualSubmitClick(token)
+            }
+        }
+        
+        private fun updateTokenStatus(token: Token) {
+            when (token.status ?: TokenStatus.CONFIRMED) {
+                TokenStatus.PENDING -> {
+                    binding.tvTokenStatus.visibility = View.VISIBLE
+                    binding.ivStatusIcon.visibility = View.VISIBLE
+                    binding.tvTokenStatus.text = "Submitting to network..."
+                    binding.tvTokenStatus.setTextColor(binding.root.context.getColor(android.R.color.holo_orange_light))
+                    binding.ivStatusIcon.setImageResource(android.R.drawable.ic_dialog_info)
+                    binding.ivStatusIcon.setColorFilter(binding.root.context.getColor(android.R.color.holo_orange_light))
+                }
+                TokenStatus.SUBMITTED -> {
+                    binding.tvTokenStatus.visibility = View.VISIBLE
+                    binding.ivStatusIcon.visibility = View.VISIBLE
+                    binding.tvTokenStatus.text = "Awaiting confirmation..."
+                    binding.tvTokenStatus.setTextColor(binding.root.context.getColor(android.R.color.holo_blue_light))
+                    binding.ivStatusIcon.setImageResource(android.R.drawable.ic_dialog_info)
+                    binding.ivStatusIcon.setColorFilter(binding.root.context.getColor(android.R.color.holo_blue_light))
+                }
+                TokenStatus.FAILED -> {
+                    binding.tvTokenStatus.visibility = View.VISIBLE
+                    binding.ivStatusIcon.visibility = View.VISIBLE
+                    binding.tvTokenStatus.text = "Submit failed - retry manually"
+                    binding.tvTokenStatus.setTextColor(binding.root.context.getColor(android.R.color.holo_red_light))
+                    binding.ivStatusIcon.setImageResource(android.R.drawable.ic_dialog_alert)
+                    binding.ivStatusIcon.setColorFilter(binding.root.context.getColor(android.R.color.holo_red_light))
+                }
+                TokenStatus.CONFIRMED -> {
+                    binding.tvTokenStatus.visibility = View.GONE
+                    binding.ivStatusIcon.visibility = View.GONE
+                }
             }
         }
         

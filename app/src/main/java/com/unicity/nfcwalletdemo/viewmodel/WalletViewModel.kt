@@ -62,6 +62,12 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
     
+    fun updateToken(token: Token) {
+        viewModelScope.launch {
+            repository.updateToken(token)
+        }
+    }
+    
     suspend fun refreshTokens() {
         repository.refreshTokens()
     }
