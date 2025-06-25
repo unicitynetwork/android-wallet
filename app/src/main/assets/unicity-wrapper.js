@@ -151,7 +151,7 @@ async function mintToken(identityJson, tokenDataJson) {
     
     // Create coin data
     const coinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
-    const coinData = TokenCoinData.create([[coinId, BigInt(tokenData.amount || 100)]]);
+    const coinData = new TokenCoinData([[coinId.toBigInt(), BigInt(tokenData.amount || 100)]]);
     console.log('Coin data created:', typeof coinData);
     
     // Create token data
@@ -943,10 +943,13 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
       receiverNonce
     );
     
-    // Complete the transaction
+    // Complete the transaction - use the existing token state, just update the predicate
+    const existingStateData = offlineTransaction.token.state.data;
+    const updatedTokenState = await TokenState.create(recipientPredicate, existingStateData);
+    
     const updatedToken = await sdkClient.finishTransaction(
       offlineTransaction.token,
-      await TokenState.create(recipientPredicate, new TextEncoder().encode('offline token transfer')),
+      updatedTokenState,
       transaction
     );
     
@@ -984,7 +987,8 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
   const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
   const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
   const testTokenData = new TestTokenData(new TextEncoder().encode(customData));
-  const coinData = TokenCoinData.create([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(amount)]]);
+  const coinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
+  const coinData = new TokenCoinData([[coinId.toBigInt(), BigInt(amount)]]);
   
   const signingService = await SigningService.createFromSecret(secret, nonce);
   const predicate = await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, nonce);
