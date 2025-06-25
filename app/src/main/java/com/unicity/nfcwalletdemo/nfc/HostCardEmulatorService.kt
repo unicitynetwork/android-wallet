@@ -44,6 +44,11 @@ class HostCardEmulatorService : HostApduService() {
         private const val CMD_GET_CHUNK: Byte = 0x03
         private const val CMD_TRANSFER_COMPLETE: Byte = 0x04
         
+        // New commands for proper offline transfer handshake
+        private const val CMD_REQUEST_RECEIVER_ADDRESS: Byte = 0x05
+        private const val CMD_SEND_RECEIVER_ADDRESS: Byte = 0x06
+        private const val CMD_SEND_OFFLINE_TRANSACTION: Byte = 0x07
+        
         // Transfer modes
         const val TRANSFER_MODE_DIRECT = "DIRECT_READY"
         
@@ -82,6 +87,14 @@ class HostCardEmulatorService : HostApduService() {
             CMD_TRANSFER_COMPLETE -> {
                 Log.d(TAG, "TRANSFER_COMPLETE command received")
                 return completeTransfer()
+            }
+            CMD_REQUEST_RECEIVER_ADDRESS -> {
+                Log.d(TAG, "REQUEST_RECEIVER_ADDRESS command received")
+                return handleReceiverAddressRequest(commandApdu)
+            }
+            CMD_SEND_OFFLINE_TRANSACTION -> {
+                Log.d(TAG, "SEND_OFFLINE_TRANSACTION command received")
+                return startOfflineTransactionReceive(commandApdu)
             }
         }
         
@@ -367,6 +380,190 @@ class HostCardEmulatorService : HostApduService() {
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Error starting ReceiveActivity", e)
+        }
+    }
+    
+    // NEW OFFLINE TRANSFER HANDSHAKE HANDLERS
+    
+    /**
+     * Step 1: Sender requests receiver address for a specific token
+     * Handles CMD_REQUEST_RECEIVER_ADDRESS
+     */
+    private fun handleReceiverAddressRequest(commandApdu: ByteArray): ByteArray {
+        return try {
+            Log.d(TAG, "Processing receiver address request")
+            
+            // Extract token request data from APDU
+            val dataStart = 5 // Skip CLA, INS, P1, P2, Lc
+            if (commandApdu.size <= dataStart) {
+                Log.e(TAG, "Invalid receiver address request - no data")
+                return SW_ERROR
+            }
+            
+            val requestData = String(commandApdu.sliceArray(dataStart until commandApdu.size), StandardCharsets.UTF_8)
+            Log.d(TAG, "Received token request: $requestData")
+            
+            // Parse the token request to get token ID and type
+            val tokenRequest = gson.fromJson(requestData, Map::class.java)
+            val tokenId = tokenRequest["token_id"]
+            val tokenType = tokenRequest["token_type"]
+            val tokenName = tokenRequest["token_name"] as? String ?: "Unknown Token"
+            
+            if (tokenId == null || tokenType == null) {
+                Log.e(TAG, "Invalid token request - missing token ID or type")
+                return SW_ERROR
+            }
+            
+            Log.d(TAG, "Token request for: $tokenName (ID: $tokenId, Type: $tokenType)")
+            
+            // Generate receiver identity and address for this specific token
+            // This should be done by the receiver (this device)
+            generateReceiverAddressForToken(tokenId, tokenType, tokenName)
+            
+            // Return OK to indicate we're processing the request
+            // The actual address will be sent in response to a subsequent query
+            SW_OK
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling receiver address request", e)
+            SW_ERROR
+        }
+    }
+    
+    /**
+     * Step 2: Generate receiver address and prepare to send it back
+     * This is called internally after receiving the token request
+     */
+    private fun generateReceiverAddressForToken(tokenId: Any, tokenType: Any, tokenName: String) {
+        // TODO: This needs to be implemented to:
+        // 1. Generate a new identity for this device
+        // 2. Create a predicate for the specific token ID and type
+        // 3. Generate the receiving address
+        // 4. Store it for the next NFC query from sender
+        
+        Log.d(TAG, "Generating receiver address for token: $tokenName")
+        // For now, we'll create a placeholder that indicates the proper flow
+        // In a complete implementation, this would call the SDK to generate the address
+    }
+    
+    /**
+     * Step 3: Handle offline transaction package from sender
+     * Handles CMD_SEND_OFFLINE_TRANSACTION
+     */
+    private fun startOfflineTransactionReceive(commandApdu: ByteArray): ByteArray {
+        return try {
+            Log.d(TAG, "Starting offline transaction receive")
+            
+            // This follows the same chunked transfer pattern as the original direct transfer
+            // but specifically for offline transaction packages
+            
+            if (commandApdu.size < 7) {
+                Log.e(TAG, "Invalid SEND_OFFLINE_TRANSACTION command size: ${commandApdu.size}")
+                return SW_ERROR
+            }
+            
+            // Extract size and first chunk (same pattern as startDirectTransfer)
+            val dataStart = 5
+            expectedTotalSize = ((commandApdu[dataStart].toInt() and 0xFF) shl 8) or 
+                               (commandApdu[dataStart + 1].toInt() and 0xFF)
+            
+            Log.d(TAG, "Starting offline transaction receive, expecting total size: $expectedTotalSize bytes")
+            
+            if (expectedTotalSize > MAX_TRANSFER_SIZE) {
+                Log.e(TAG, "Offline transaction size $expectedTotalSize exceeds maximum allowed $MAX_TRANSFER_SIZE")
+                return SW_ERROR
+            }
+            
+            // Reset buffer for new transfer
+            directTransferBuffer = ByteArrayOutputStream()
+            
+            // Extract first chunk data
+            val firstChunkDataStart = dataStart + 2
+            if (commandApdu.size > firstChunkDataStart) {
+                val firstChunkData = commandApdu.sliceArray(firstChunkDataStart until commandApdu.size)
+                val dataToWrite = if (firstChunkData.size > expectedTotalSize) {
+                    firstChunkData.sliceArray(0 until expectedTotalSize)
+                } else {
+                    firstChunkData
+                }
+                
+                directTransferBuffer.write(dataToWrite)
+                Log.d(TAG, "Received first chunk of offline transaction: ${dataToWrite.size} bytes")
+                
+                broadcastProgress(directTransferBuffer.size(), expectedTotalSize)
+            }
+            
+            // Check if this is a single-chunk transfer
+            if (directTransferBuffer.size() == expectedTotalSize) {
+                return processCompleteOfflineTransaction()
+            }
+            
+            SW_OK
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting offline transaction receive", e)
+            SW_ERROR
+        }
+    }
+    
+    /**
+     * Process complete offline transaction package
+     */
+    private fun processCompleteOfflineTransaction(): ByteArray {
+        return try {
+            Log.d(TAG, "Processing complete offline transaction")
+            
+            val receivedData = directTransferBuffer.toString(StandardCharsets.UTF_8.name())
+            Log.d(TAG, "Received offline transaction data size: ${receivedData.length} characters")
+            
+            // Parse the offline transaction package
+            val transferPackage = gson.fromJson(receivedData, Map::class.java)
+            val transferType = transferPackage["type"] as? String
+            
+            if (transferType == "unicity_offline_transfer") {
+                Log.d(TAG, "Processing Unicity offline transfer")
+                processOfflineUnicityTransfer(transferPackage)
+            } else {
+                Log.w(TAG, "Unknown offline transfer type: $transferType")
+            }
+            
+            // Reset state
+            directTransferBuffer = ByteArrayOutputStream()
+            expectedTotalSize = 0
+            
+            SW_OK
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing complete offline transaction", e)
+            directTransferBuffer = ByteArrayOutputStream()
+            expectedTotalSize = 0
+            SW_ERROR
+        }
+    }
+    
+    /**
+     * Process the offline Unicity transfer package
+     */
+    private fun processOfflineUnicityTransfer(transferPackage: Map<*, *>) {
+        try {
+            val tokenName = transferPackage["token_name"] as? String ?: "Unknown Token"
+            val offlineTransaction = transferPackage["offline_transaction"] as? String ?: ""
+            
+            Log.d(TAG, "Processing offline Unicity transfer for token: $tokenName")
+            
+            // Broadcast the offline transfer to ReceiveActivity for processing
+            val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
+                putExtra("transfer_type", "unicity_offline_transfer")
+                putExtra("token_name", tokenName)
+                putExtra("offline_transaction", offlineTransaction)
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+            
+            Log.d(TAG, "Broadcast sent for offline Unicity transfer")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing offline Unicity transfer", e)
         }
     }
     

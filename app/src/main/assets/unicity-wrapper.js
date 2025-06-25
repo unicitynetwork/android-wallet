@@ -90,6 +90,67 @@ function generateIdentity() {
 }
 
 /**
+ * Generates a receiving address for a specific token type using receiver's identity
+ * This is used by the receiver to create an address that the sender can use for offline transfers
+ * @param {string} tokenIdJson - The token ID to receive
+ * @param {string} tokenTypeJson - The token type to receive  
+ * @param {string} receiverIdentityJson - The receiver's identity
+ */
+async function generateReceivingAddressForOfflineTransfer(tokenIdJson, tokenTypeJson, receiverIdentityJson) {
+  try {
+    if (!sdkClient) {
+      throw new Error('SDK not initialized');
+    }
+    
+    console.log('Generating receiving address for offline transfer...');
+    
+    const { 
+      SigningService, 
+      MaskedPredicate,
+      DirectAddress,
+      TokenId,
+      TokenType,
+      HashAlgorithm
+    } = window.UnicitySDK;
+    
+    const receiverIdentity = JSON.parse(receiverIdentityJson);
+    const tokenId = await TokenId.fromJSON(JSON.parse(tokenIdJson));
+    const tokenType = await TokenType.fromJSON(JSON.parse(tokenTypeJson));
+    
+    // Convert receiver identity
+    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Create receiver's signing service
+    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+    
+    // Create receiver's predicate for this token
+    const receiverPredicate = await MaskedPredicate.create(
+      tokenId,
+      tokenType,
+      receiverSigningService,
+      HashAlgorithm.SHA256,
+      receiverNonce
+    );
+    
+    // Create address from predicate reference
+    const receivingAddress = await DirectAddress.create(receiverPredicate.reference);
+    
+    const result = {
+      address: receivingAddress.toJSON(),
+      predicate: receiverPredicate.toJSON(),
+      identity: receiverIdentity
+    };
+    
+    console.log('Receiving address generated successfully:', receivingAddress.toJSON());
+    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
+  } catch (e) {
+    console.error('Failed to generate receiving address:', e);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
+  }
+}
+
+/**
  * Mints a new token
  * @param {string} identityJson - The stringified JSON of the owner's identity
  * @param {string} tokenDataJson - The stringified JSON of the token's data
@@ -424,7 +485,7 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
  * Creates an offline transfer package that can be transmitted without network
  * @param {string} senderIdentityJson - The sender's identity
  * @param {string} recipientAddress - The recipient's address
- * @param {string} tokenJson - The token to transfer
+ * @param {string} tokenJson - The token to transfer (must be self-contained with transactions)
  * @returns {Promise<string>} - JSON string containing the offline transaction
  */
 async function createOfflineTransferPackage(senderIdentityJson, recipientAddress, tokenJson) {
@@ -452,25 +513,27 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    // Recreate token from JSON
+    // Recreate the Token object from JSON - this should include complete transaction history
     const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const token = await tokenFactory.fromJSON(parsedTokenData.token || parsedTokenData);
+    const token = await tokenFactory.fromJSON(parsedTokenData);
+    
+    console.log('Token reconstructed:', token.id ? token.id.toJSON() : 'undefined', 'transactions:', token.transactions?.length || 0);
     
     // Create sender signing service
     const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
     
-    // Create transaction data
+    // Create transaction data for ownership transfer
     const salt = crypto.getRandomValues(new Uint8Array(32));
     const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-    dataHasher.update(new TextEncoder().encode('offline token transfer'));
+    dataHasher.update(new TextEncoder().encode('offline ownership transfer'));
     const dataHash = await dataHasher.digest();
     
     const transactionData = await TransactionData.create(
-      token.state,
-      recipientAddress,
+      token.state,  // Current token state with current owner predicate
+      recipientAddress,  // New owner's address (from their predicate reference)
       salt,
       dataHash,
-      new TextEncoder().encode('offline transfer'),
+      new TextEncoder().encode('ownership transfer'),
       token.nametagTokens
     );
     
@@ -480,19 +543,20 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
       senderSigningService
     );
     
-    // Create offline transaction package
+    // Create offline transaction package containing the commitment and the complete token
     const offlineTransaction = new OfflineTransaction(offlineCommitment, token);
     
-    // Serialize to JSON for offline transfer
-    const offlineTransactionJson = offlineTransaction.toJSON();
+    // Use BigInt-safe serialization for offline transfer
+    const offlineTransactionJsonString = offlineTransaction.toJSONString();
     
-    console.log('Offline transfer package created successfully');
+    console.log('Offline transfer package created successfully, size:', offlineTransactionJsonString.length);
     AndroidBridge.postMessage(JSON.stringify({ 
       status: 'success', 
-      data: JSON.stringify(offlineTransactionJson)
+      data: offlineTransactionJsonString
     }));
   } catch (e) {
     console.error('Offline transfer package creation failed:', e);
+    console.error('Error stack:', e.stack);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
@@ -509,7 +573,7 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
       throw new Error('SDK clients not initialized');
     }
     
-    console.log('Completing offline transfer...');
+    console.log('Starting offline transfer completion...');
     
     const receiverIdentity = JSON.parse(receiverIdentityJson);
     const { 
@@ -520,18 +584,27 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
       OfflineTransaction
     } = window.UnicitySDK;
     
-    // Deserialize the offline transaction
-    const offlineTransaction = await OfflineTransaction.fromJSON(offlineTransactionJson);
+    // Deserialize the offline transaction using BigInt-safe method
+    console.log('Deserializing offline transaction...');
+    const offlineTransaction = await OfflineTransaction.fromJSONString(offlineTransactionJson);
     
-    // Submit the offline transaction to the network
+    console.log('Offline transaction deserialized:');
+    console.log('- Token ID:', offlineTransaction.token.id ? offlineTransaction.token.id.toJSON() : 'undefined');
+    console.log('- Token type:', offlineTransaction.token.type ? offlineTransaction.token.type.toJSON() : 'undefined');
+    console.log('- Current transactions:', offlineTransaction.token.transactions?.length || 0);
+    
+    // Step 1: Submit the offline transaction to the network
     console.log('Submitting offline transaction to network...');
     const transaction = await offlineClient.submitOfflineTransaction(offlineTransaction.commitment);
+    
+    console.log('Transaction submitted successfully, request ID:', transaction.requestId ? transaction.requestId.toJSON() : 'undefined');
     
     // Convert receiver identity
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    // Recreate receiver's predicate
+    // Step 2: Create receiver's predicate (new owner)
+    console.log('Creating receiver predicate for new ownership...');
     const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
     const recipientPredicate = await MaskedPredicate.create(
       offlineTransaction.token.id,
@@ -541,22 +614,34 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
       receiverNonce
     );
     
-    // Complete the transaction
+    console.log('Receiver predicate created:', recipientPredicate.reference ? recipientPredicate.reference.toJSON() : 'undefined');
+    
+    // Step 3: Create new token state with receiver as owner
+    const newStateData = new TextEncoder().encode('ownership transferred');
+    const newTokenState = await TokenState.create(recipientPredicate, newStateData);
+    
+    // Step 4: Finish the transaction - this updates the Token object with the new transaction
+    console.log('Finishing transaction to update token ownership...');
     const updatedToken = await sdkClient.finishTransaction(
-      offlineTransaction.token,
-      await TokenState.create(recipientPredicate, new TextEncoder().encode('received offline')),
-      transaction
+      offlineTransaction.token,  // Original token with history
+      newTokenState,             // New state with receiver as owner
+      transaction               // The completed transaction
     );
     
+    console.log('Offline transfer completed successfully!');
+    console.log('- Updated token transactions:', updatedToken.transactions?.length || 0);
+    console.log('- New owner predicate:', updatedToken.state?.predicate?.reference ? updatedToken.state.predicate.reference.toJSON() : 'undefined');
+    
+    // Return the updated token as JSON - this now contains the complete transaction history
     const result = {
       token: updatedToken.toJSON(),
       identity: receiverIdentity
     };
     
-    console.log('Offline transfer completed successfully!');
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
     console.error('Offline transfer completion failed:', e);
+    console.error('Error stack:', e.stack);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
