@@ -675,7 +675,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Debug Minting", "Test Complete Minting", "About")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Transfer", "Test Offline Transfer", "Debug Minting", "Test Complete Minting", "About")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -684,9 +684,10 @@ class MainActivity : AppCompatActivity() {
                     0 -> showMintTokenDialog()
                     1 -> showResetWalletDialog()
                     2 -> runAutomatedTransferTest()
-                    3 -> runMintingDebugTest()
-                    4 -> runCompleteMintingTest()
-                    5 -> showAboutDialog()
+                    3 -> runAutomatedOfflineTransferTest()
+                    4 -> runMintingDebugTest()
+                    5 -> runCompleteMintingTest()
+                    6 -> showAboutDialog()
                 }
             }
             .show()
