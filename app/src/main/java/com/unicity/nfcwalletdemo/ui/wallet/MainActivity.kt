@@ -38,9 +38,12 @@ import android.widget.AutoCompleteTextView
 import android.widget.ArrayAdapter
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.model.CryptoCurrency
 import com.unicity.nfcwalletdemo.nfc.DirectNfcClient
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
+import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -53,6 +56,9 @@ class MainActivity : AppCompatActivity() {
     private var currentTransferringCrypto: CryptoCurrency? = null
     private var currentTab = 0 // 0 for Assets, 1 for NFTs
     private var selectedCurrency = "USD"
+    
+    private lateinit var sdkService: UnicitySdkService
+    private val gson = Gson()
     
     // Success dialog properties
     private lateinit var confettiContainer: FrameLayout
@@ -67,6 +73,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        sdkService = UnicitySdkService(this)
         
         setupActionBar()
         setupNfc()
@@ -153,6 +161,9 @@ class MainActivity : AppCompatActivity() {
             },
             onCancelClick = { token ->
                 cancelTokenTransfer(token)
+            },
+            onManualSubmitClick = { token ->
+                manualSubmitOfflineTransfer(token)
             }
         )
         
@@ -1201,5 +1212,80 @@ class MainActivity : AppCompatActivity() {
         Log.d("MainActivity", "Created transfer JSON with amount: $amount")
         Log.d("MainActivity", "Transfer JSON: $jsonData")
         return jsonData
+    }
+    
+    private fun manualSubmitOfflineTransfer(token: Token) {
+        if (!token.isOfflineTransfer || token.pendingOfflineData.isNullOrEmpty()) {
+            Toast.makeText(this, "Token is not an offline transfer or missing data", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        lifecycleScope.launch {
+            try {
+                // Update token status to submitted
+                val submittedToken = token.copy(status = TokenStatus.SUBMITTED)
+                viewModel.updateToken(submittedToken)
+                
+                Toast.makeText(this@MainActivity, "Submitting ${token.name} to network...", Toast.LENGTH_SHORT).show()
+                
+                // Parse the pending offline data
+                val pendingData = gson.fromJson(token.pendingOfflineData, Map::class.java)
+                val receiverIdentityJson = pendingData["receiverIdentity"] as? String ?: ""
+                val offlineTransactionJson = pendingData["offlineTransaction"] as? String ?: ""
+                
+                if (receiverIdentityJson.isEmpty() || offlineTransactionJson.isEmpty()) {
+                    throw Exception("Invalid pending offline data")
+                }
+                
+                // Attempt to complete the offline transfer
+                val result = completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson)
+                
+                // Update token status to confirmed
+                val confirmedToken = submittedToken.copy(
+                    status = TokenStatus.CONFIRMED,
+                    unicityAddress = "unicity_manual_submit_${System.currentTimeMillis()}",
+                    jsonData = result,
+                    sizeBytes = result.length,
+                    pendingOfflineData = null
+                )
+                
+                viewModel.updateToken(confirmedToken)
+                
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Token ${token.name} successfully submitted to network!", Toast.LENGTH_LONG).show()
+                }
+                
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to manually submit offline transfer", e)
+                
+                // Update token status back to failed
+                val failedToken = token.copy(status = TokenStatus.FAILED)
+                viewModel.updateToken(failedToken)
+                
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Failed to submit ${token.name}: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    private suspend fun completeOfflineTransfer(receiverIdentityJson: String, offlineTransactionJson: String): String {
+        return kotlin.coroutines.suspendCoroutine { continuation ->
+            sdkService.completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson) { result ->
+                result.onSuccess { resultJson ->
+                    continuation.resumeWith(Result.success(resultJson))
+                }
+                result.onFailure { error ->
+                    continuation.resumeWith(Result.failure(error))
+                }
+            }
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::sdkService.isInitialized) {
+            sdkService.destroy()
+        }
     }
 }

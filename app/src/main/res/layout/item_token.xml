@@ -58,7 +58,29 @@
                     android:maxLines="1"
                     android:ellipsize="end" />
 
+                <TextView
+                    android:id="@+id/tvTokenStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Status: Pending"
+                    android:textAppearance="@style/TextAppearance.Unicity.Caption"
+                    android:textSize="9sp"
+                    android:textColor="@color/warning"
+                    android:visibility="gone" />
+
             </LinearLayout>
+
+            <!-- Status Icon -->
+            <ImageView
+                android:id="@+id/ivStatusIcon"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginEnd="4dp"
+                android:src="@drawable/ic_nfc_pulse"
+                android:visibility="gone"
+                app:tint="@color/warning" />
 
             <ImageView
                 android:id="@+id/ivExpandIcon"
@@ -171,6 +193,19 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Cancel"
+                    android:visibility="gone"
+                    android:layout_marginEnd="@dimen/margin_sm" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnManualSubmit"
+                    style="@style/Button.Unicity.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Submit"
+                    android:textColor="@color/warning"
+                    app:icon="@drawable/ic_send"
+                    app:iconGravity="textStart"
+                    app:iconTint="@color/warning"
                     android:visibility="gone"
                     android:layout_marginEnd="@dimen/margin_sm" />
 
