@@ -7,16 +7,20 @@
     "build": "webpack"
   },
   "dependencies": {
-      "@unicitylabs/state-transition-sdk": "1.4.7-rc.70f8e20"
+    "@unicitylabs/state-transition-sdk": "1.4.7-rc.70f8e20"
   },
   "devDependencies": {
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.0",
+    "https-browserify": "^1.0.0",
+    "process": "^0.11.10",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.4.5",
+    "url": "^0.11.4",
+    "util": "^0.12.5",
     "webpack": "^5.91.0",
-    "webpack-cli": "^5.1.4",
-    "crypto-browserify": "^3.12.0",
-    "stream-browserify": "^3.0.0",
-    "buffer": "^6.0.3",
-    "process": "^0.11.10"
+    "webpack-cli": "^5.1.4"
   }
 }

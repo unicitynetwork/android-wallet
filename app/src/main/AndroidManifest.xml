@@ -27,6 +27,7 @@
         android:roundIcon="@drawable/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.NFCWalletDemo"
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
         
         <activity
