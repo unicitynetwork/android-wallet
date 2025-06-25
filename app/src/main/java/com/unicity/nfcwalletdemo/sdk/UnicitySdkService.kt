@@ -7,6 +7,7 @@ import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebSettings
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
@@ -32,6 +33,10 @@ class UnicitySdkService(context: Context) {
             allowFileAccessFromFileURLs = false
             allowUniversalAccessFromFileURLs = false
             domStorageEnabled = true
+            // Enable network access
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            cacheMode = WebSettings.LOAD_NO_CACHE
+            setUserAgentString(userAgentString + " UnicityWallet/1.0")
         }
         
         webView.addJavascriptInterface(UnicityJsBridge(), "AndroidBridge")

@@ -2,8 +2,8 @@ const path = require('path');
 const webpack = require('webpack');
 
 module.exports = {
-  // 1. Mode: 'development' creates unminified, debuggable file.
-  mode: 'development',
+  // 1. Mode: 'production' creates an optimized, smaller file.
+  mode: 'production',
 
   // 2. Entry Point: Webpack starts bundling from this file.
   entry: './src/index.ts',
@@ -45,15 +45,7 @@ module.exports = {
     },
   },
 
-  // 6. Optimization: Disable minification for debugging
-  optimization: {
-    minimize: false,
-  },
-
-  // 7. Devtool: Generate source maps for debugging
-  devtool: 'source-map',
-
-  // 8. Plugins: Additional functionality.
+  // 6. Plugins: Additional functionality.
   plugins: [
     new webpack.ProvidePlugin({
       Buffer: ['buffer', 'Buffer'],
