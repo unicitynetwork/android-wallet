@@ -151,7 +151,7 @@ async function mintToken(identityJson, tokenDataJson) {
     
     // Create coin data
     const coinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
-    const coinData = new TokenCoinData([[coinId, BigInt(tokenData.amount || 100)]]);
+    const coinData = TokenCoinData.create([[coinId, BigInt(tokenData.amount || 100)]]);
     console.log('Coin data created:', typeof coinData);
     
     // Create token data
@@ -895,8 +895,9 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
     
     // Use the new SDK method designed specifically for transfer/storage
     // This properly handles BigInt serialization for NFC transfer
-    return offlineTransaction.toJSONString();
+    return JSON.stringify(offlineTransaction.toJSON());
   } catch (e) {
+  console.error(e.stack)
     console.error('createOfflineTransferDirectly failed:', e);
     throw e;
   }
@@ -945,7 +946,7 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
     // Complete the transaction
     const updatedToken = await sdkClient.finishTransaction(
       offlineTransaction.token,
-      await TokenState.create(recipientPredicate, new TextEncoder().encode('received offline')),
+      await TokenState.create(recipientPredicate, new TextEncoder().encode('offline token transfer')),
       transaction
     );
     
@@ -983,11 +984,11 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
   const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
   const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
   const testTokenData = new TestTokenData(new TextEncoder().encode(customData));
-  const coinData = new TokenCoinData([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(amount)]]);
+  const coinData = TokenCoinData.create([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(amount)]]);
   
   const signingService = await SigningService.createFromSecret(secret, nonce);
   const predicate = await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, nonce);
-  const tokenState = await TokenState.create(predicate, new TextEncoder().encode('Default state'));
+  const tokenState = await TokenState.create(predicate, new TextEncoder().encode('mint token'));
   
   const dataHasher = new DataHasher(HashAlgorithm.SHA256);
   dataHasher.update(new TextEncoder().encode('mint token'));
@@ -1029,21 +1030,19 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
 /**
  * Direct address generation that doesn't use Android bridge
  */
-async function generateReceivingAddressDirectly(tokenIdHex, tokenTypeHex, receiverIdentity) {
+async function generateReceivingAddressDirectly(tokenId, tokenType, receiverIdentity) {
   const { 
     SigningService, 
     MaskedPredicate, 
     DirectAddress,
     TokenId,
     TokenType,
-    HashAlgorithm
+    HashAlgorithm,
+    HexConverter
   } = window.UnicitySDK;
   
-  const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-  const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-  
-  const tokenId = new TokenId(tokenIdHex);
-  const tokenType = new TokenType(tokenTypeHex);
+  const receiverSecret = new Uint8Array(HexConverter.decode(receiverIdentity.secret));
+  const receiverNonce = new Uint8Array(HexConverter.decode(receiverIdentity.nonce));
   
   const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
   const recipientPredicate = await MaskedPredicate.create(tokenId, tokenType, receiverSigningService, HashAlgorithm.SHA256, receiverNonce);
@@ -1532,7 +1531,7 @@ async function runMintingDebugTest() {
     const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
     const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
     const tokenData = new Uint8Array([1, 2, 3, 4, 5]); // Simple test data
-    const coinData = new TokenCoinData([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(100)]]);
+    const coinData = TokenCoinData.create([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(100)]]);
     
     // Create recipient address
     const recipientAddress = 'test_address_' + Date.now();
