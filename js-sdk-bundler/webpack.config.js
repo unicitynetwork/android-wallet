@@ -5,10 +5,6 @@ module.exports = {
   // 1. Mode: 'production' creates an optimized, smaller file.
   mode: 'production',
 
-  optimization: {
-      minimize: false, // Disable minification
-    },
-
   // 2. Entry Point: Webpack starts bundling from this file.
   entry: './src/index.ts',
 
