@@ -632,7 +632,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Offline Transfer")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test Offline Transfer", "Test NFC Transfer")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -641,6 +641,7 @@ class MainActivity : AppCompatActivity() {
                     0 -> showMintTokenDialog()
                     1 -> showResetWalletDialog()
                     2 -> runAutomatedOfflineTransferTest()
+                    3 -> startNfcTestTransfer()
                 }
             }
             .show()
@@ -1319,43 +1320,113 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun vibrateConnectionEstablished() {
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
-        vibrator?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Short pulse to indicate connection
-                it.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                it.vibrate(100)
+    private fun startNfcTestTransfer() {
+        checkNfc {
+            Toast.makeText(this, "Starting NFC test transfer...", Toast.LENGTH_SHORT).show()
+            
+            val realNfcTransceiver = nfcAdapter?.let { RealNfcTransceiver(it) }
+            if (realNfcTransceiver == null) {
+                Toast.makeText(this, "NFC not available", Toast.LENGTH_SHORT).show()
+                return@checkNfc
             }
+            
+            val testNfcClient = DirectNfcClient(
+                sdkService = viewModel.getSdkService(),
+                apduTransceiver = realNfcTransceiver,
+                onTransferComplete = {
+                    Log.d("MainActivity", "✅ NFC test transfer completed")
+                    runOnUiThread {
+                        vibrateSuccess()
+                        realNfcTransceiver.disableReaderMode(this)
+                        showSuccessDialog("NFC test successful! Connection is working.")
+                    }
+                },
+                onError = { error ->
+                    Log.e("MainActivity", "NFC test transfer error: $error")
+                    runOnUiThread {
+                        vibrateError()
+                        realNfcTransceiver.disableReaderMode(this)
+                        Toast.makeText(this@MainActivity, "Test failed: $error", Toast.LENGTH_LONG).show()
+                    }
+                },
+                onProgress = { current, total ->
+                    Log.d("MainActivity", "NFC test progress: $current/$total")
+                    runOnUiThread {
+                        if (current == 0 && total == 1) {
+                            vibrateConnectionEstablished()
+                            Toast.makeText(this@MainActivity, "NFC connected! Testing...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            )
+            
+            // Set test mode
+            testNfcClient.setTestMode(true)
+            
+            // Enable NFC reader mode
+            try {
+                realNfcTransceiver.enableReaderMode(this)
+                Log.d("MainActivity", "NFC reader mode enabled for test transfer")
+                
+                // Start the test transfer
+                testNfcClient.startNfcTransfer()
+                Log.d("MainActivity", "NFC test transfer started")
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to enable NFC for test", e)
+                Toast.makeText(this, "Failed to enable NFC: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    private fun vibrateConnectionEstablished() {
+        try {
+            val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+            vibrator?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Short pulse to indicate connection
+                    it.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.vibrate(100)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to vibrate: ${e.message}")
         }
     }
     
     private fun vibrateSuccess() {
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
-        vibrator?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Double pulse for success
-                val pattern = longArrayOf(0, 100, 100, 100)
-                it.vibrate(VibrationEffect.createWaveform(pattern, -1))
-            } else {
-                @Suppress("DEPRECATION")
-                it.vibrate(longArrayOf(0, 100, 100, 100), -1)
+        try {
+            val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+            vibrator?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Double pulse for success
+                    val pattern = longArrayOf(0, 100, 100, 100)
+                    it.vibrate(VibrationEffect.createWaveform(pattern, -1))
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.vibrate(longArrayOf(0, 100, 100, 100), -1)
+                }
             }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to vibrate: ${e.message}")
         }
     }
     
     private fun vibrateError() {
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
-        vibrator?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Long pulse for error
-                it.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                it.vibrate(300)
+        try {
+            val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+            vibrator?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Long pulse for error
+                    it.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.vibrate(300)
+                }
             }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to vibrate: ${e.message}")
         }
     }
     

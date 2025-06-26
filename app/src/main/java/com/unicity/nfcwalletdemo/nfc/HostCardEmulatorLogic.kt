@@ -64,6 +64,10 @@ class HostCardEmulatorLogic(
         private const val CMD_REQUEST_RECEIVER_ADDRESS: Byte = 0x05
         private const val CMD_GET_RECEIVER_ADDRESS: Byte = 0x06
         private const val CMD_SEND_OFFLINE_TRANSACTION: Byte = 0x07
+        
+        // Commands for test mode
+        private const val CMD_TEST_PING: Byte = 0x08
+        private const val CMD_TEST_PONG: Byte = 0x09
 
         // Transfer modes
         const val TRANSFER_MODE_DIRECT = "DIRECT_READY"
@@ -103,6 +107,12 @@ class HostCardEmulatorLogic(
             CMD_SEND_OFFLINE_TRANSACTION -> {
                 Log.d(TAG, "SEND_OFFLINE_TRANSACTION command received")
                 return startOfflineTransactionReceive(commandApdu)
+            }
+            CMD_TEST_PING -> {
+                Log.d(TAG, "TEST_PING command received")
+                // Start ReceiveActivity to show test is in progress
+                startReceiveActivity()
+                return handleTestPing(commandApdu)
             }
         }
 
@@ -813,6 +823,48 @@ class HostCardEmulatorLogic(
             
         } catch (e: Exception) {
             Log.e(TAG, "Error processing offline transaction with SDK", e)
+        }
+    }
+    
+    /**
+     * Handle test PING command - simple echo back with timestamp
+     */
+    private fun handleTestPing(commandApdu: ByteArray): ByteArray {
+        return try {
+            Log.d(TAG, "Processing test PING command")
+            
+            // Extract ping data from APDU
+            val dataStart = 5 // Skip CLA, INS, P1, P2, Lc
+            if (commandApdu.size <= dataStart) {
+                Log.e(TAG, "Invalid PING command - no data")
+                return SW_ERROR
+            }
+            
+            val pingData = commandApdu.sliceArray(dataStart until commandApdu.size)
+            val pingString = String(pingData, StandardCharsets.UTF_8)
+            Log.d(TAG, "Received PING: $pingString")
+            
+            // Notify UI about test transfer
+            val testIntent = Intent("com.unicity.nfcwalletdemo.NFC_TEST_RECEIVED").apply {
+                putExtra("ping_message", pingString)
+                putExtra("timestamp", System.currentTimeMillis())
+                setPackage(context.packageName) // Restrict to our app only
+            }
+            context.sendBroadcast(testIntent)
+            Log.d(TAG, "Broadcast sent for NFC test received")
+            
+            // Create PONG response
+            val pongResponse = "PONG: $pingString (received at ${System.currentTimeMillis()})"
+            val responseBytes = pongResponse.toByteArray(StandardCharsets.UTF_8)
+            
+            Log.d(TAG, "Sending PONG: $pongResponse")
+            
+            // Return response data + SW_OK
+            responseBytes + SW_OK
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling test PING", e)
+            SW_ERROR
         }
     }
 }
