@@ -457,8 +457,10 @@ class ReceiveActivity : AppCompatActivity() {
                 throw Exception("Empty offline transaction data")
             }
             
-            // Generate receiver identity for this transfer
-            val receiverIdentity = generateReceiverIdentity()
+            // Get the receiver identity that was already generated during the handshake
+            // This should match the one used to generate the receiver address
+            val receiverIdentity = HostCardEmulatorService.getGeneratedReceiverIdentity()
+                ?: throw Exception("No receiver identity found - handshake may have failed")
             val receiverIdentityJson = gson.toJson(receiverIdentity)
             
             Log.d("ReceiveActivity", "Generated receiver identity for offline transfer")

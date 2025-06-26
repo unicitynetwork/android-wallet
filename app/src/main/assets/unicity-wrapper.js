@@ -96,7 +96,7 @@ function generateIdentity() {
  * @param {string} tokenTypeJson - The token type to receive  
  * @param {string} receiverIdentityJson - The receiver's identity
  */
-async function generateReceivingAddressForOfflineTransfer(tokenIdJson, tokenTypeJson, receiverIdentityJson) {
+async function generateReceivingAddressForOfflineTransfer(tokenIdString, tokenTypeString, receiverIdentityJson) {
   try {
     if (!sdkClient) {
       throw new Error('SDK not initialized');
@@ -114,8 +114,11 @@ async function generateReceivingAddressForOfflineTransfer(tokenIdJson, tokenType
     } = window.UnicitySDK;
     
     const receiverIdentity = JSON.parse(receiverIdentityJson);
-    const tokenId = await TokenId.fromJSON(JSON.parse(tokenIdJson));
-    const tokenType = await TokenType.fromJSON(JSON.parse(tokenTypeJson));
+    
+    // TokenId and TokenType expect Uint8Array, decode from hex strings
+    const { HexConverter } = window.UnicitySDK;
+    const tokenId = new TokenId(HexConverter.decode(tokenIdString));
+    const tokenType = new TokenType(HexConverter.decode(tokenTypeString));
     
     // Convert receiver identity
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -435,8 +438,8 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const token = await tokenFactory.fromJSON(parsedTokenData.token || parsedTokenData);
+    const tokenDeserializer = new TokenJsonDeserializer(new PredicateJsonFactory());
+    const token = await tokenDeserializer.deserialize(parsedTokenData.token || parsedTokenData);
     
     // Create sender signing service
     const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
@@ -501,7 +504,7 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     
     const { 
       SigningService, 
-      TokenFactory,
+      TokenJsonDeserializer,
       PredicateJsonFactory,
       TransactionData,
       HashAlgorithm,
@@ -514,8 +517,8 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate the Token object from JSON - this should include complete transaction history
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const token = await tokenFactory.fromJSON(parsedTokenData);
+    const tokenDeserializer = new TokenJsonDeserializer(new PredicateJsonFactory());
+    const token = await tokenDeserializer.deserialize(parsedTokenData);
     
     console.log('Token reconstructed:', token.id ? token.id.toJSON() : 'undefined', 'transactions:', token.transactions?.length || 0);
     
@@ -1080,8 +1083,9 @@ async function createTransferDirectly(senderIdentity, receiverIdentity, tokenJso
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    const tokenId = new TokenId(tokenObj.id);
-    const tokenType = new TokenType(tokenObj.type);
+    // TokenId and TokenType expect Uint8Array, decode from hex strings
+    const tokenId = new TokenId(HexConverter.decode(tokenObj.id));
+    const tokenType = new TokenType(HexConverter.decode(tokenObj.type));
     const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
     const recipientPredicate = await MaskedPredicate.create(
       tokenId,
@@ -1243,8 +1247,9 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Create receiver's predicate
-    const tokenId = new TokenId(tokenObj.id);
-    const tokenType = new TokenType(tokenObj.type);
+    // TokenId and TokenType expect Uint8Array, decode from hex strings
+    const tokenId = new TokenId(HexConverter.decode(tokenObj.id));
+    const tokenType = new TokenType(HexConverter.decode(tokenObj.type));
     const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
     const recipientPredicate = await MaskedPredicate.create(
       tokenId,

@@ -35,12 +35,7 @@ class DirectNfcClient(
             0x03.toByte(), 0x04.toByte(), 0x05.toByte(), 0x06.toByte()
         )
         
-        // Commands
-        private const val CMD_START_DIRECT_TRANSFER: Byte = 0x02
-        private const val CMD_GET_CHUNK: Byte = 0x03
-        private const val CMD_TRANSFER_COMPLETE: Byte = 0x04
-        
-        // New commands for proper offline transfer handshake
+        // Commands for offline transfer handshake protocol
         private const val CMD_REQUEST_RECEIVER_ADDRESS: Byte = 0x05
         private const val CMD_GET_RECEIVER_ADDRESS: Byte = 0x06
         private const val CMD_SEND_OFFLINE_TRANSACTION: Byte = 0x07
@@ -139,29 +134,8 @@ class DirectNfcClient(
     
     private suspend fun sendTokenDirectly(isoDep: IsoDep, token: Token) {
         try {
-            // For Unicity tokens, implement the handshake
-            // For other tokens, use existing direct transfer
-            
-            when (token.type) {
-                "Unicity Token" -> {
-                    if (token.jsonData != null) {
-                        // Implement proper offline transfer handshake
-                        sendUnicityTokenWithHandshake(isoDep, token)
-                    } else {
-                        // Demo Unicity token - use direct transfer
-                        sendTokenWithDirectTransfer(isoDep, gson.toJson(token))
-                    }
-                }
-                "Crypto Transfer" -> {
-                    // For crypto transfers, send the crypto data directly
-                    val transferData = token.jsonData ?: gson.toJson(token)
-                    sendTokenWithDirectTransfer(isoDep, transferData)
-                }
-                else -> {
-                    // For other demo tokens, use existing logic
-                    sendTokenWithDirectTransfer(isoDep, gson.toJson(token))
-                }
-            }
+            // All tokens use the proper offline handshake protocol
+            sendUnicityTokenWithHandshake(isoDep, token)
             
         } catch (e: Exception) {
             Log.e(TAG, "Exception in sendTokenDirectly", e)
@@ -302,8 +276,14 @@ class DirectNfcClient(
                 throw Exception("Offline package too large: ${packageBytes.size} bytes")
             }
             
-            // Send using chunked transfer with new command
-            sendDataInChunks(isoDep, packageBytes, CMD_SEND_OFFLINE_TRANSACTION)
+            // Send offline transaction package as single APDU
+            val lc = (packageBytes.size and 0xFF).toByte()
+            val command = byteArrayOf(0x00.toByte(), CMD_SEND_OFFLINE_TRANSACTION, 0x00.toByte(), 0x00.toByte(), lc) + packageBytes
+            
+            val response = isoDep.transceive(command)
+            if (!isResponseOK(response)) {
+                throw Exception("Failed to send offline transaction package")
+            }
             
             Log.d(TAG, "Offline transaction package sent successfully")
             
@@ -313,151 +293,6 @@ class DirectNfcClient(
         }
     }
     
-    /**
-     * Fallback method for direct token transfer (non-handshake)
-     */
-    private suspend fun sendTokenWithDirectTransfer(isoDep: IsoDep, transferData: String) {
-        try {
-            val tokenBytes = transferData.toByteArray(StandardCharsets.UTF_8)
-            
-            Log.d(TAG, "Sending token via direct transfer, size: ${tokenBytes.size} bytes")
-            
-            // Check if token exceeds NFC transfer limits
-            if (tokenBytes.size > MAX_TRANSFER_SIZE) {
-                Log.e(TAG, "Token size ${tokenBytes.size} exceeds maximum NFC transfer size $MAX_TRANSFER_SIZE")
-                withContext(Dispatchers.Main) {
-                    onError("Token too large for NFC transfer (${tokenBytes.size} bytes)")
-                }
-                return
-            }
-            
-            // Send using existing chunked transfer
-            sendDataInChunks(isoDep, tokenBytes, CMD_START_DIRECT_TRANSFER)
-            
-            // Complete transfer
-            Log.d(TAG, "Direct transfer completed, waiting for receiver confirmation...")
-            val completeCommand = byteArrayOf(0x00.toByte(), CMD_TRANSFER_COMPLETE, 0x00.toByte(), 0x00.toByte())
-            val completeResponse = isoDep.transceive(completeCommand)
-            
-            if (isResponseOK(completeResponse)) {
-                Log.d(TAG, "✅ Direct transfer completed successfully!")
-                withContext(Dispatchers.Main) {
-                    onTransferComplete()
-                }
-            } else {
-                Log.e(TAG, "Transfer completion failed")
-                withContext(Dispatchers.Main) {
-                    onError("Failed to complete transfer")
-                }
-            }
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Direct transfer failed", e)
-            withContext(Dispatchers.Main) {
-                onError("Transfer error: ${e.message}")
-            }
-        }
-    }
-    
-    /**
-     * Generic method to send data in chunks with specified command
-     */
-    private suspend fun sendDataInChunks(isoDep: IsoDep, data: ByteArray, startCommand: Byte) {
-        // Split into chunks - first chunk is smaller to accommodate size bytes
-        val chunks = mutableListOf<ByteArray>()
-        val firstChunkDataSize = MAX_COMMAND_DATA_SIZE - 2 // Account for 2-byte size header
-        
-        if (data.size <= firstChunkDataSize) {
-            // Everything fits in first chunk
-            chunks.add(data)
-        } else {
-            // First chunk - exactly firstChunkDataSize bytes
-            chunks.add(data.sliceArray(0 until firstChunkDataSize))
-            var offset = firstChunkDataSize
-            
-            // Remaining chunks - each exactly MAX_COMMAND_DATA_SIZE bytes (except last)
-            while (offset < data.size) {
-                val remaining = data.size - offset
-                val chunkSize = minOf(remaining, MAX_COMMAND_DATA_SIZE)
-                chunks.add(data.sliceArray(offset until offset + chunkSize))
-                offset += chunkSize
-            }
-        }
-        
-        // Verify total size matches
-        val totalChunkData = chunks.sumOf { it.size }
-        if (totalChunkData != data.size) {
-            Log.e(TAG, "Chunk size mismatch: expected ${data.size}, got $totalChunkData")
-            withContext(Dispatchers.Main) {
-                onError("Internal chunking error")
-            }
-            return
-        }
-        
-        Log.d(TAG, "Data split into ${chunks.size} chunks")
-        
-        // Send each chunk
-        for (i in chunks.indices) {
-            val chunk = chunks[i]
-            
-            withContext(Dispatchers.Main) {
-                onProgress(i + 1, chunks.size)
-            }
-            
-            val command = if (i == 0) {
-                // First chunk - build proper APDU with P3 (Lc)
-                val sizeBytes = byteArrayOf(
-                    ((data.size shr 8) and 0xFF).toByte(),
-                    (data.size and 0xFF).toByte()
-                )
-                val dataToSend = sizeBytes + chunk
-                val lc = (dataToSend.size and 0xFF).toByte()
-                byteArrayOf(0x00.toByte(), startCommand, 0x00.toByte(), 0x00.toByte(), lc) + dataToSend
-            } else {
-                // Subsequent chunks - build proper APDU with P3 (Lc)
-                val lc = (chunk.size and 0xFF).toByte()
-                byteArrayOf(0x00.toByte(), CMD_GET_CHUNK, 0x00.toByte(), 0x00.toByte(), lc) + chunk
-            }
-            
-            Log.d(TAG, "Sending chunk ${i + 1}/${chunks.size}, command size: ${command.size}, chunk size: ${chunk.size}")
-            
-            // Check if still connected
-            if (!isoDep.isConnected) {
-                Log.e(TAG, "IsoDep connection lost")
-                withContext(Dispatchers.Main) {
-                    onError("NFC connection lost")
-                }
-                return
-            }
-            
-            val response = try {
-                isoDep.transceive(command)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send chunk ${i + 1}: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    onError("Connection lost during transfer")
-                }
-                return
-            }
-            
-            if (!isResponseOK(response)) {
-                Log.e(TAG, "Failed to send chunk ${i + 1}, response: ${response.toHexString()}")
-                withContext(Dispatchers.Main) {
-                    onError("Failed to send data chunk ${i + 1}")
-                }
-                return
-            }
-            
-            Log.d(TAG, "Chunk ${i + 1} sent successfully")
-            
-            // Small delay between chunks to prevent overwhelming the receiver
-            if (i < chunks.size - 1) {
-                delay(50) // 50ms delay between chunks
-            }
-        }
-        
-        Log.d(TAG, "All chunks sent successfully")
-    }
     
     private fun isResponseOK(response: ByteArray): Boolean {
         return response.size >= 2 && 
