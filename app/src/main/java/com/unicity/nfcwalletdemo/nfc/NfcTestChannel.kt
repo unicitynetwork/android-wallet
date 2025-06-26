@@ -1,11 +1,10 @@
 package com.unicity.nfcwalletdemo.nfc
 
 import android.util.Log
-import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class NfcTestChannel(private val hceService: HostCardEmulatorService) : ApduTransceiver {
+class NfcTestChannel(private val hceLogic: HostCardEmulatorLogic) : ApduTransceiver {
 
     companion object {
         private const val TAG = "NfcTestChannel"
@@ -13,8 +12,8 @@ class NfcTestChannel(private val hceService: HostCardEmulatorService) : ApduTran
 
     override suspend fun transceive(commandApdu: ByteArray): ByteArray = withContext(Dispatchers.IO) {
         Log.d(TAG, "NfcTestChannel: Transceiving APDU: ${commandApdu.toHexString()}")
-        // Directly call the HCE service's processCommandApdu method
-        val responseApdu = hceService.processCommandApdu(commandApdu, null)
+        // Directly call the HCE logic's processCommandApdu method
+        val responseApdu = hceLogic.processCommandApdu(commandApdu, null)
         Log.d(TAG, "NfcTestChannel: Received response APDU: ${responseApdu.toHexString()}")
         responseApdu
     }
