@@ -41,7 +41,17 @@ class RealNfcTransceiver(
             isoDepInstance?.timeout = 30000 // 30 seconds
         }
 
-        isoDepInstance?.transceive(commandApdu) ?: throw Exception("IsoDep not connected")
+        try {
+            return@withContext isoDepInstance?.transceive(commandApdu) ?: throw Exception("IsoDep not connected")
+        } catch (e: SecurityException) {
+            // Tag went out of range during transfer
+            isoDepInstance = null
+            throw e
+        } catch (e: Exception) {
+            // Other errors during transfer
+            Log.e(TAG, "Error during NFC transceive", e)
+            throw e
+        }
     }
 
     override fun onTagDiscovered(tag: Tag?) {
@@ -61,7 +71,21 @@ class RealNfcTransceiver(
     fun disableReaderMode(activity: android.app.Activity) {
         nfcAdapter.disableReaderMode(activity)
         Log.d(TAG, "NFC reader mode disabled")
-        isoDepInstance?.close()
+        
+        // Safely close the ISO-DEP connection
+        val currentInstance = isoDepInstance
+        if (currentInstance != null) {
+            try {
+                if (currentInstance.isConnected) {
+                    currentInstance.close()
+                }
+            } catch (e: SecurityException) {
+                // Tag is already out of date/range, connection already lost
+                Log.w(TAG, "NFC tag already disconnected: ${e.message}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing NFC connection", e)
+            }
+        }
         isoDepInstance = null
     }
 }

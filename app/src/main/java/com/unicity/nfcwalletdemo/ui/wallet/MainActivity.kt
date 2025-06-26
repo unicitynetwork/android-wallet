@@ -46,6 +46,9 @@ import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.Build
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -364,6 +367,9 @@ class MainActivity : AppCompatActivity() {
             onTransferComplete = {
                 Log.d("MainActivity", "✅ NFC transfer completed")
                 runOnUiThread {
+                    // Success vibration
+                    vibrateSuccess()
+                    
                     tokenAdapter.setTransferring(token, false)
                     currentTransferringToken = null
                     viewModel.removeToken(token.id)
@@ -377,15 +383,23 @@ class MainActivity : AppCompatActivity() {
             onError = { error ->
                 Log.e("MainActivity", "NFC transfer error: $error")
                 runOnUiThread {
+                    // Error vibration
+                    vibrateError()
+                    
                     tokenAdapter.setTransferring(token, false)
                     currentTransferringToken = null
                     realNfcTransceiver.disableReaderMode(this) // Use transceiver's disable
-                    Toast.makeText(this@MainActivity, "Transfer failed: $error", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, error, Toast.LENGTH_SHORT).show()
                 }
             },
             onProgress = { current, total ->
                 Log.d("MainActivity", "NFC progress: $current/$total chunks")
                 runOnUiThread {
+                    // Connection established vibration on first progress
+                    if (current == 0 && total == 1) {
+                        vibrateConnectionEstablished()
+                        Toast.makeText(this@MainActivity, "Keep phones touching...", Toast.LENGTH_SHORT).show()
+                    }
                     if (total > 1) {
                         // Update the token's transfer status in the adapter to show progress
                         tokenAdapter.updateTransferProgress(token, current, total)
@@ -1301,6 +1315,46 @@ class MainActivity : AppCompatActivity() {
                 result.onFailure { error ->
                     continuation.resumeWith(Result.failure(error))
                 }
+            }
+        }
+    }
+    
+    private fun vibrateConnectionEstablished() {
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+        vibrator?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Short pulse to indicate connection
+                it.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                it.vibrate(100)
+            }
+        }
+    }
+    
+    private fun vibrateSuccess() {
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+        vibrator?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Double pulse for success
+                val pattern = longArrayOf(0, 100, 100, 100)
+                it.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                it.vibrate(longArrayOf(0, 100, 100, 100), -1)
+            }
+        }
+    }
+    
+    private fun vibrateError() {
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+        vibrator?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Long pulse for error
+                it.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                it.vibrate(300)
             }
         }
     }
