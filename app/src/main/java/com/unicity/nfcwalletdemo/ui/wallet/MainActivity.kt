@@ -41,6 +41,7 @@ import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.model.CryptoCurrency
 import com.unicity.nfcwalletdemo.nfc.DirectNfcClient
+import com.unicity.nfcwalletdemo.nfc.RealNfcTransceiver
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import com.google.gson.Gson
@@ -52,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tokenAdapter: TokenAdapter
     private lateinit var cryptoAdapter: CryptoAdapter
     private var nfcAdapter: NfcAdapter? = null
+    private var realNfcTransceiver: RealNfcTransceiver? = null
     private var currentTransferringToken: Token? = null
     private var currentTransferringCrypto: CryptoCurrency? = null
     private var currentTab = 0 // 0 for Assets, 1 for NFTs
@@ -85,6 +87,8 @@ class MainActivity : AppCompatActivity() {
         setupSuccessDialog()
         setupTestTrigger()
         observeViewModel()
+
+        realNfcTransceiver = nfcAdapter?.let { RealNfcTransceiver(it) }
         
         // Don't load cryptocurrencies here - ViewModel init handles it
     }
@@ -346,15 +350,24 @@ class MainActivity : AppCompatActivity() {
         Log.d("MainActivity", "Starting NFC transfer for token: ${token.name}")
         Toast.makeText(this, "Tap phones together to transfer token", Toast.LENGTH_SHORT).show()
         
+        val realNfcTransceiver = nfcAdapter?.let { RealNfcTransceiver(it) }
+        if (realNfcTransceiver == null) {
+            Toast.makeText(this, "NFC not available or enabled", Toast.LENGTH_SHORT).show()
+            tokenAdapter.setTransferring(token, false)
+            currentTransferringToken = null
+            return
+        }
+
         val directNfcClient = DirectNfcClient(
             sdkService = viewModel.getSdkService(),
+            apduTransceiver = realNfcTransceiver,
             onTransferComplete = {
                 Log.d("MainActivity", "✅ NFC transfer completed")
                 runOnUiThread {
                     tokenAdapter.setTransferring(token, false)
                     currentTransferringToken = null
                     viewModel.removeToken(token.id)
-                    disableNfcTransfer()
+                    realNfcTransceiver.disableReaderMode(this) // Use transceiver's disable
                     
                     // Show success dialog for token transfer
                     showSuccessDialog("${token.name} sent successfully!")
@@ -366,7 +379,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     tokenAdapter.setTransferring(token, false)
                     currentTransferringToken = null
-                    disableNfcTransfer()
+                    realNfcTransceiver.disableReaderMode(this) // Use transceiver's disable
                     Toast.makeText(this@MainActivity, "Transfer failed: $error", Toast.LENGTH_SHORT).show()
                 }
             },
@@ -384,9 +397,8 @@ class MainActivity : AppCompatActivity() {
         directNfcClient.setTokenToSend(token)
         
         // Enable NFC reader mode for direct transfer
-        val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
         try {
-            nfcAdapter!!.enableReaderMode(this, directNfcClient, flags, null)
+            realNfcTransceiver.enableReaderMode(this) // Use transceiver's enable
             Log.d("MainActivity", "NFC reader mode enabled for transfer")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to enable NFC reader mode", e)
@@ -413,7 +425,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun disableNfcTransfer() {
         try {
-            nfcAdapter?.disableReaderMode(this)
+            realNfcTransceiver?.disableReaderMode(this)
             Log.d("MainActivity", "NFC reader mode disabled")
         } catch (e: Exception) {
             Log.e("MainActivity", "Error disabling NFC reader mode", e)
@@ -1136,8 +1148,16 @@ class MainActivity : AppCompatActivity() {
         Log.d("MainActivity", "Starting NFC crypto transfer: EXACT amount = $amount ${crypto.symbol}")
         showNfcWaitingDialog(crypto, amount)
         
+        val realNfcTransceiver = nfcAdapter?.let { RealNfcTransceiver(it) }
+        if (realNfcTransceiver == null) {
+            Toast.makeText(this, "NFC not available or enabled", Toast.LENGTH_SHORT).show()
+            currentTransferringCrypto = null
+            return
+        }
+
         val directNfcClient = DirectNfcClient(
             sdkService = viewModel.getSdkService(),
+            apduTransceiver = realNfcTransceiver,
             onTransferComplete = {
                 Log.d("MainActivity", "✅ NFC crypto transfer completed")
                 runOnUiThread {
@@ -1146,7 +1166,7 @@ class MainActivity : AppCompatActivity() {
                     val newBalance = crypto.balance - amount
                     Log.d("MainActivity", "Deducting from sender: ${crypto.balance} - $amount = $newBalance")
                     viewModel.updateCryptoBalance(crypto.id, newBalance)
-                    disableNfcTransfer()
+                    realNfcTransceiver.disableReaderMode(this) // Use transceiver's disable
                     
                     // Show success dialog for crypto transfer
                     showSuccessDialog("Sent $amount ${crypto.symbol} successfully!")
@@ -1158,7 +1178,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     hideNfcWaitingDialog()
                     currentTransferringCrypto = null
-                    disableNfcTransfer()
+                    realNfcTransceiver.disableReaderMode(this) // Use transceiver's disable
                     Toast.makeText(this@MainActivity, "Crypto transfer failed: $error", Toast.LENGTH_SHORT).show()
                 }
             },
@@ -1185,9 +1205,8 @@ class MainActivity : AppCompatActivity() {
         directNfcClient.setCryptoToSend(cryptoTransferToken)
         
         // Enable NFC reader mode for crypto transfer
-        val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
         try {
-            nfcAdapter!!.enableReaderMode(this, directNfcClient, flags, null)
+            realNfcTransceiver.enableReaderMode(this) // Use transceiver's enable
             Log.d("MainActivity", "NFC reader mode enabled for crypto transfer")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to enable NFC reader mode for crypto", e)
