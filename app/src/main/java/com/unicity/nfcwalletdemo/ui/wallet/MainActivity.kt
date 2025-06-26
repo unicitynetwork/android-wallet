@@ -400,6 +400,10 @@ class MainActivity : AppCompatActivity() {
         try {
             realNfcTransceiver.enableReaderMode(this) // Use transceiver's enable
             Log.d("MainActivity", "NFC reader mode enabled for transfer")
+            
+            // Start the NFC transfer process
+            directNfcClient.startNfcTransfer()
+            Log.d("MainActivity", "NFC transfer started")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to enable NFC reader mode", e)
             tokenAdapter.setTransferring(token, false)
