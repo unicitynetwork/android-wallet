@@ -7,9 +7,8 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.CancellableContinuation
 import kotlin.coroutines.resume
-import kotlin.coroutines.CancellableContinuation
 
 class RealNfcTransceiver(
     private val nfcAdapter: NfcAdapter,
@@ -17,7 +16,7 @@ class RealNfcTransceiver(
 ) : ApduTransceiver, NfcAdapter.ReaderCallback {
 
     private var isoDepInstance: IsoDep? = null
-    private var tagDiscoveredContinuation: kotlin.coroutines.CancellableContinuation<Tag>? = null
+    private var tagDiscoveredContinuation: CancellableContinuation<Tag>? = null
 
     companion object {
         private const val TAG = "RealNfcTransceiver"
