@@ -26,6 +26,10 @@ class HostCardEmulatorLogic(
     // Storage for generated receiver addresses
     private var generatedReceiverAddress: String? = null
     private var generatedReceiverIdentity: Map<String, String>? = null
+    
+    // Offline transaction chunked receiving state
+    private var offlineTransactionBuffer = ByteArrayOutputStream()
+    private var isReceivingOfflineTransaction = false
 
     companion object {
         private const val TAG = "HostCardEmulatorLogic"
@@ -556,37 +560,78 @@ class HostCardEmulatorLogic(
 
     /**
      * Handle offline transaction package from sender
-     * Handles CMD_SEND_OFFLINE_TRANSACTION
+     * Handles CMD_SEND_OFFLINE_TRANSACTION with chunked data support
      */
     private fun startOfflineTransactionReceive(commandApdu: ByteArray): ByteArray {
         return try {
-            Log.d(TAG, "Receiving offline transaction package")
+            Log.d(TAG, "Receiving offline transaction chunk")
 
-            // Extract offline transaction data from APDU
-            val dataStart = 5 // Skip CLA, INS, P1, P2, Lc
-            if (commandApdu.size <= dataStart) {
-                Log.e(TAG, "Invalid offline transaction - no data")
+            if (commandApdu.size < 5) {
+                Log.e(TAG, "Invalid offline transaction APDU - too short")
                 return SW_ERROR
             }
 
-            val offlineTransactionData = String(commandApdu.sliceArray(dataStart until commandApdu.size), StandardCharsets.UTF_8)
-            Log.d(TAG, "Received offline transaction data size: ${offlineTransactionData.length} characters")
+            val p1 = commandApdu[2] // First chunk indicator
+            val p2 = commandApdu[3] // Last chunk indicator
+            val lc = commandApdu[4].toInt() and 0xFF
 
-            // Parse the offline transaction package
-            val transferPackage = gson.fromJson(offlineTransactionData, Map::class.java)
-            val transferType = transferPackage["type"] as? String
+            // Extract chunk data from APDU
+            val dataStart = 5
+            if (commandApdu.size < dataStart + lc) {
+                Log.e(TAG, "Invalid offline transaction APDU - data length mismatch")
+                return SW_ERROR
+            }
 
-            if (transferType == "unicity_offline_transfer") {
-                Log.d(TAG, "Processing Unicity offline transfer")
-                processOfflineUnicityTransfer(transferPackage)
-            } else {
-                Log.w(TAG, "Unknown offline transfer type: $transferType")
+            val chunkData = commandApdu.sliceArray(dataStart until dataStart + lc)
+            
+            // Handle first chunk
+            if (p1 == 0x00.toByte()) {
+                Log.d(TAG, "Starting offline transaction receive, first chunk size: ${chunkData.size}")
+                offlineTransactionBuffer = ByteArrayOutputStream()
+                isReceivingOfflineTransaction = true
+            }
+            
+            if (!isReceivingOfflineTransaction) {
+                Log.e(TAG, "Received continuation chunk without starting transaction")
+                return SW_ERROR
+            }
+
+            // Append chunk data
+            offlineTransactionBuffer.write(chunkData)
+            Log.d(TAG, "Received chunk: ${chunkData.size} bytes, total buffered: ${offlineTransactionBuffer.size()}")
+
+            // Handle last chunk
+            if (p2 == 0x01.toByte()) {
+                Log.d(TAG, "Received final chunk, processing complete offline transaction")
+                
+                val completeOfflineTransactionData = String(offlineTransactionBuffer.toByteArray(), StandardCharsets.UTF_8)
+                Log.d(TAG, "Complete offline transaction data size: ${completeOfflineTransactionData.length} characters")
+
+                try {
+                    // Parse the complete offline transaction package
+                    val transferPackage = gson.fromJson(completeOfflineTransactionData, Map::class.java)
+                    Log.d(TAG, "Successfully parsed offline transaction package")
+                    
+                    // Process the offline transaction using the SDK
+                    processOfflineTransactionWithSdk(completeOfflineTransactionData)
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse offline transaction data", e)
+                    Log.e(TAG, "Data snippet: ${completeOfflineTransactionData.take(200)}...")
+                }
+
+                // Reset state
+                offlineTransactionBuffer = ByteArrayOutputStream()
+                isReceivingOfflineTransaction = false
             }
 
             SW_OK
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error receiving offline transaction", e)
+            Log.e(TAG, "Error receiving offline transaction chunk", e)
+            // Reset state on error
+            offlineTransactionBuffer = ByteArrayOutputStream()
+            isReceivingOfflineTransaction = false
             SW_ERROR
         }
     }
@@ -649,6 +694,57 @@ class HostCardEmulatorLogic(
 
         } catch (e: Exception) {
             Log.e(TAG, "Error processing offline Unicity transfer", e)
+        }
+    }
+    
+    /**
+     * Process offline transaction package using SDK
+     */
+    private fun processOfflineTransactionWithSdk(offlineTransactionData: String) {
+        try {
+            Log.d(TAG, "Processing offline transaction with SDK")
+            
+            val receiverIdentity = generatedReceiverIdentity
+            if (receiverIdentity == null) {
+                Log.e(TAG, "No receiver identity available for processing offline transaction")
+                return
+            }
+            
+            Log.d(TAG, "Using receiver identity for offline transaction processing")
+            
+            // Complete the offline transaction using the SDK
+            sdkService.completeOfflineTransfer(
+                gson.toJson(receiverIdentity),
+                offlineTransactionData
+            ) { result: Result<String> ->
+                result.onSuccess { processedTokenJson: String ->
+                    Log.d(TAG, "Offline transaction processed successfully by SDK")
+                    
+                    // Broadcast the processed token to ReceiveActivity
+                    val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
+                        putExtra("transfer_type", "unicity_offline_processed")
+                        putExtra("processed_token", processedTokenJson)
+                        setPackage(context.packageName)
+                    }
+                    context.sendBroadcast(intent)
+                    
+                    Log.d(TAG, "Broadcast sent for processed offline transaction")
+                }
+                result.onFailure { error: Throwable ->
+                    Log.e(TAG, "Failed to process offline transaction with SDK", error)
+                    
+                    // Broadcast error to ReceiveActivity
+                    val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
+                        putExtra("transfer_type", "unicity_offline_error")
+                        putExtra("error_message", error.message ?: "Unknown error")
+                        setPackage(context.packageName)
+                    }
+                    context.sendBroadcast(intent)
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing offline transaction with SDK", e)
         }
     }
 }

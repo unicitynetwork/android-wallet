@@ -242,16 +242,39 @@ class DirectNfcClient(
                 throw Exception("Offline package too large: ${packageBytes.size} bytes")
             }
             
-            // Send offline transaction package as single APDU
-            val lc = (packageBytes.size and 0xFF).toByte()
-            val command = byteArrayOf(0x00.toByte(), CMD_SEND_OFFLINE_TRANSACTION, 0x00.toByte(), 0x00.toByte(), lc) + packageBytes
+            Log.d(TAG, "Package size: ${packageBytes.size} bytes, chunking into multiple APDUs")
             
-            val response = apduTransceiver.transceive(command)
-            if (!isResponseOK(response)) {
-                throw Exception("Failed to send offline transaction package")
+            // Send package in chunks due to APDU size limitations
+            var offset = 0
+            var chunkIndex = 0
+            val totalChunks = (packageBytes.size + MAX_COMMAND_DATA_SIZE - 1) / MAX_COMMAND_DATA_SIZE
+            
+            while (offset < packageBytes.size) {
+                val remainingBytes = packageBytes.size - offset
+                val chunkSize = minOf(remainingBytes, MAX_COMMAND_DATA_SIZE)
+                val chunk = packageBytes.sliceArray(offset until offset + chunkSize)
+                
+                Log.d(TAG, "Sending chunk ${chunkIndex + 1}/$totalChunks, size: $chunkSize bytes")
+                
+                // Create APDU with proper extended length format
+                val p1 = if (chunkIndex == 0) 0x00.toByte() else 0x01.toByte() // First chunk vs continuation
+                val p2 = if (offset + chunkSize >= packageBytes.size) 0x01.toByte() else 0x00.toByte() // Last chunk indicator
+                
+                val command = byteArrayOf(0x00.toByte(), CMD_SEND_OFFLINE_TRANSACTION, p1, p2, chunkSize.toByte()) + chunk
+                
+                val response = apduTransceiver.transceive(command)
+                if (!isResponseOK(response)) {
+                    throw Exception("Failed to send offline transaction chunk ${chunkIndex + 1}")
+                }
+                
+                offset += chunkSize
+                chunkIndex++
+                
+                // Small delay between chunks
+                delay(10)
             }
             
-            Log.d(TAG, "Offline transaction package sent successfully")
+            Log.d(TAG, "Offline transaction package sent successfully in $totalChunks chunks")
             
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send offline transaction package", e)
@@ -287,11 +310,30 @@ class DirectNfcClient(
             Log.d(TAG, "Extracted sender data successfully")
             
             val parsedTokenData = gson.fromJson(senderData.tokenJson, Map::class.java)
+            
+            // Extract token ID and type from the nested genesis structure
+            val tokenId = try {
+                val genesis = parsedTokenData["genesis"] as? Map<*, *>
+                val genesisData = genesis?.get("data") as? Map<*, *>
+                genesisData?.get("tokenId") ?: parsedTokenData["id"] // Fallback to direct id
+            } catch (e: Exception) {
+                parsedTokenData["id"] // Fallback to direct id
+            }
+            
+            val tokenType = try {
+                val genesis = parsedTokenData["genesis"] as? Map<*, *>
+                val genesisData = genesis?.get("data") as? Map<*, *>
+                genesisData?.get("tokenType") ?: parsedTokenData["type"] // Fallback to direct type
+            } catch (e: Exception) {
+                parsedTokenData["type"] // Fallback to direct type
+            }
+            
+            Log.d(TAG, "Extracted token ID: $tokenId, token type: $tokenType")
 
             // Create a minimal request with only the necessary data
             val tokenRequest = mapOf(
-                "token_id" to parsedTokenData["id"],
-                "token_type" to parsedTokenData["type"],
+                "token_id" to tokenId,
+                "token_type" to tokenType,
                 "token_name" to token.name
             )
             
