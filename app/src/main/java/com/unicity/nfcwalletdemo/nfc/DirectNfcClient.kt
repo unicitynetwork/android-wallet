@@ -1,14 +1,10 @@
 package com.unicity.nfcwalletdemo.nfc
 
-import android.nfc.NfcAdapter
-import android.nfc.Tag
-import android.nfc.tech.IsoDep
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
-import com.unicity.nfcwalletdemo.sdk.UnicityTransferResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
@@ -17,13 +13,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.resume
+import com.unicity.nfcwalletdemo.nfc.ApduTransceiver
 
 class DirectNfcClient(
     private val sdkService: UnicitySdkService,
+    private val apduTransceiver: ApduTransceiver,
     private val onTransferComplete: () -> Unit,
     private val onError: (String) -> Unit,
     private val onProgress: (Int, Int) -> Unit // current chunk, total chunks
-) : NfcAdapter.ReaderCallback {
+) {
     
     companion object {
         private const val TAG = "DirectNfcClient"
@@ -62,12 +60,7 @@ class DirectNfcClient(
         Log.d(TAG, "Crypto token set for NFC transfer: ${cryptoToken.name}")
     }
     
-    override fun onTagDiscovered(tag: Tag?) {
-        Log.d(TAG, "✅ NFC TAG DISCOVERED for transfer!")
-        tag?.let { processDirectTransfer(it) }
-    }
-    
-    private fun processDirectTransfer(tag: Tag) {
+    fun startNfcTransfer() {
         val token = tokenToSend
         if (token == null) {
             Log.e(TAG, "No token set for transfer")
@@ -77,33 +70,11 @@ class DirectNfcClient(
         
         // Launch coroutine to handle the entire transfer process
         CoroutineScope(Dispatchers.IO).launch {
-            var isoDep: IsoDep? = null
             try {
-                isoDep = IsoDep.get(tag)
-                if (isoDep == null) {
-                    Log.e(TAG, "IsoDep not supported")
-                    withContext(Dispatchers.Main) {
-                        onError("NFC card does not support IsoDep")
-                    }
-                    return@launch
-                }
-                
-                Log.d(TAG, "Connecting to IsoDep...")
-                isoDep.connect()
-                
-                // Set a longer timeout for the connection
-                isoDep.timeout = 30000 // 30 seconds - much longer for stability
-                
-                // Check if extended length APDUs are supported
-                val maxTransceiveLength = isoDep.maxTransceiveLength
-                Log.d(TAG, "IsoDep connected successfully")
-                Log.d(TAG, "Timeout: ${isoDep.timeout}ms, Max transceive length: $maxTransceiveLength")
-                
-                // If extended APDUs are supported, we could use larger chunks
-                // But for compatibility, we'll stick with standard APDU size
+                Log.d(TAG, "Starting NFC transfer...")
                 
                 // Select AID
-                val selectResponse = isoDep.transceive(SELECT_AID)
+                val selectResponse = apduTransceiver.transceive(SELECT_AID)
                 if (!isResponseOK(selectResponse)) {
                     Log.e(TAG, "SELECT AID failed")
                     withContext(Dispatchers.Main) {
@@ -114,28 +85,21 @@ class DirectNfcClient(
                 Log.d(TAG, "SELECT AID successful")
                 
                 // Send token directly
-                sendTokenDirectly(isoDep, token)
+                sendTokenDirectly(token)
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Exception in direct transfer", e)
                 withContext(Dispatchers.Main) {
                     onError("Transfer failed: ${e.message}")
                 }
-            } finally {
-                try {
-                    isoDep?.close()
-                    Log.d(TAG, "IsoDep connection closed")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error closing IsoDep", e)
-                }
             }
         }
     }
     
-    private suspend fun sendTokenDirectly(isoDep: IsoDep, token: Token) {
+    private suspend fun sendTokenDirectly(token: Token) {
         try {
             // All tokens use the proper offline handshake protocol
-            sendUnicityTokenWithHandshake(isoDep, token)
+            sendUnicityTokenWithHandshake(token)
             
         } catch (e: Exception) {
             Log.e(TAG, "Exception in sendTokenDirectly", e)
@@ -148,13 +112,15 @@ class DirectNfcClient(
     /**
      * Implements the offline transfer handshake for Unicity tokens
      */
-    private suspend fun sendUnicityTokenWithHandshake(isoDep: IsoDep, token: Token) {
+    private suspend fun sendUnicityTokenWithHandshake(token: Token) {
         try {
             Log.d(TAG, "Starting Unicity token handshake for: ${token.name}")
             
-            // Request receiver address
-            val tokenRequest = createUnicityTransfer(token)
-            val receiverAddress = requestReceiverAddress(isoDep, tokenRequest)
+            // Create a request for the receiver's address
+            val tokenRequest = createTokenTransferRequest(token)
+            
+            // Request receiver address from the other device
+            val receiverAddress = requestReceiverAddress(tokenRequest)
             
             if (receiverAddress.isEmpty()) {
                 throw Exception("Failed to get receiver address")
@@ -166,7 +132,7 @@ class DirectNfcClient(
             val offlineTransactionPackage = createOfflineTransferPackageWithReceiverAddress(token, receiverAddress)
             
             // Send offline transaction package to receiver
-            sendOfflineTransactionPackage(isoDep, offlineTransactionPackage)
+            sendOfflineTransactionPackage(offlineTransactionPackage)
             
             Log.d(TAG, "✅ Unicity offline transfer completed successfully!")
             withContext(Dispatchers.Main) {
@@ -184,7 +150,7 @@ class DirectNfcClient(
     /**
      * Request receiver address for the token
      */
-    private suspend fun requestReceiverAddress(isoDep: IsoDep, tokenRequest: String): String {
+    private suspend fun requestReceiverAddress(tokenRequest: String): String {
         return try {
             Log.d(TAG, "Requesting receiver address...")
             
@@ -194,7 +160,7 @@ class DirectNfcClient(
             
             Log.d(TAG, "Sending address request, size: ${requestBytes.size} bytes")
             
-            val response = isoDep.transceive(command)
+            val response = apduTransceiver.transceive(command)
             if (!isResponseOK(response)) {
                 throw Exception("Receiver address request failed")
             }
@@ -203,7 +169,7 @@ class DirectNfcClient(
             
             // Wait for receiver to generate address and then query for it
             var retryCount = 0
-            val maxRetries = 10 // Allow 10 retries over 5 seconds
+            val maxRetries = 30 // Allow 30 retries over 15 seconds
             
             while (retryCount < maxRetries) {
                 delay(500) // Wait 500ms between queries
@@ -212,7 +178,7 @@ class DirectNfcClient(
                 
                 // Query for the generated address using CMD_GET_RECEIVER_ADDRESS
                 val queryCommand = byteArrayOf(0x00.toByte(), CMD_GET_RECEIVER_ADDRESS, 0x00.toByte(), 0x00.toByte())
-                val queryResponse = isoDep.transceive(queryCommand)
+                val queryResponse = apduTransceiver.transceive(queryCommand)
                 
                 if (isResponseOK(queryResponse)) {
                     // Remove the SW_OK bytes (last 2 bytes) to get the actual response data
@@ -265,7 +231,7 @@ class DirectNfcClient(
     /**
      * Send offline transaction package to receiver
      */
-    private suspend fun sendOfflineTransactionPackage(isoDep: IsoDep, offlinePackage: String) {
+    private suspend fun sendOfflineTransactionPackage(offlinePackage: String) {
         try {
             Log.d(TAG, "Sending offline transaction package...")
             
@@ -280,7 +246,7 @@ class DirectNfcClient(
             val lc = (packageBytes.size and 0xFF).toByte()
             val command = byteArrayOf(0x00.toByte(), CMD_SEND_OFFLINE_TRANSACTION, 0x00.toByte(), 0x00.toByte(), lc) + packageBytes
             
-            val response = isoDep.transceive(command)
+            val response = apduTransceiver.transceive(command)
             if (!isResponseOK(response)) {
                 throw Exception("Failed to send offline transaction package")
             }
@@ -304,12 +270,12 @@ class DirectNfcClient(
         return joinToString("") { "%02x".format(it) }
     }
     
-    private suspend fun createUnicityTransfer(token: Token): String {
+    private suspend fun createTokenTransferRequest(token: Token): String {
         return try {
             // This function will be called by sendTokenDirectly after receiver provides their address
             // It should NOT generate receiver identity - that's the receiver's job!
             
-            Log.d(TAG, "Creating offline Unicity transfer for token: ${token.name}")
+            Log.d(TAG, "Creating token transfer request for token: ${token.name}")
             
             if (token.jsonData.isNullOrEmpty()) {
                 Log.e(TAG, "Token has no jsonData - cannot create offline transfer")
@@ -320,28 +286,13 @@ class DirectNfcClient(
             val senderData = extractSenderData(token)
             Log.d(TAG, "Extracted sender data successfully")
             
-            // Parse the token JSON to get the actual token data structure
-            val parsedTokenData = try {
-                // The jsonData should contain the complete Token structure from mint result
-                val mintResult = gson.fromJson(token.jsonData, Map::class.java)
-                val tokenData = mintResult["token"] as? Map<*, *> 
-                    ?: throw Exception("Token data not found in mint result")
-                
-                Log.d(TAG, "Token data keys: ${tokenData.keys}")
-                tokenData
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to parse token data from jsonData", e)
-                throw Exception("Invalid token data structure: ${e.message}")
-            }
-            
-            // In the proper implementation, this will receive the receiver's address from NFC handshake
+            val parsedTokenData = gson.fromJson(senderData.tokenJson, Map::class.java)
+
+            // Create a minimal request with only the necessary data
             val tokenRequest = mapOf(
-                "type" to "token_transfer_request",
-                "token_name" to token.name,
                 "token_id" to parsedTokenData["id"],
                 "token_type" to parsedTokenData["type"],
-                "sender_data" to senderData.senderIdentity.toJson(),
-                "token_data" to gson.toJson(parsedTokenData)
+                "token_name" to token.name
             )
             
             Log.d(TAG, "Created token transfer request for handshake")
@@ -461,13 +412,7 @@ class DirectNfcClient(
                 gson.toJson(tokenData)
             ) { result ->
                 result.onSuccess { offlineTransactionJson ->
-                    // Create the final transfer package for NFC
-                    val transferPackage = mapOf(
-                        "type" to "unicity_offline_transfer",
-                        "token_name" to token.name,
-                        "offline_transaction" to offlineTransactionJson
-                    )
-                    continuation.resume(gson.toJson(transferPackage))
+                    continuation.resume(offlineTransactionJson)
                 }
                 result.onFailure { error ->
                     Log.e(TAG, "Failed to create offline transfer with SDK", error)

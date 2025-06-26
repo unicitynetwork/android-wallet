@@ -25,7 +25,7 @@ import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
 import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
-import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorService
+import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorLogic
 import com.unicity.nfcwalletdemo.ui.wallet.MainActivity
 import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
@@ -141,7 +141,7 @@ class ReceiveActivity : AppCompatActivity() {
             viewModel.onNfcDetected()
             
             // Set to direct NFC mode
-            HostCardEmulatorService.currentTransferMode = HostCardEmulatorService.TRANSFER_MODE_DIRECT
+            HostCardEmulatorLogic.currentTransferMode = HostCardEmulatorLogic.TRANSFER_MODE_DIRECT
             Toast.makeText(this, "Ready to receive token", Toast.LENGTH_SHORT).show()
         }
     }
@@ -459,7 +459,7 @@ class ReceiveActivity : AppCompatActivity() {
             
             // Get the receiver identity that was already generated during the handshake
             // This should match the one used to generate the receiver address
-            val receiverIdentity = HostCardEmulatorService.getGeneratedReceiverIdentity()
+            val receiverIdentity = HostCardEmulatorLogic.getGeneratedReceiverIdentity()
                 ?: throw Exception("No receiver identity found - handshake may have failed")
             val receiverIdentityJson = gson.toJson(receiverIdentity)
             
@@ -729,7 +729,7 @@ class ReceiveActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         // Reset transfer mode when leaving
-        HostCardEmulatorService.currentTransferMode = HostCardEmulatorService.TRANSFER_MODE_DIRECT
+        HostCardEmulatorLogic.currentTransferMode = HostCardEmulatorLogic.TRANSFER_MODE_DIRECT
         sdkService.destroy()
     }
 }
