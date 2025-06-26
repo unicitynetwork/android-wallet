@@ -117,6 +117,16 @@ class ReceiveActivity : AppCompatActivity() {
                         viewModel.onReceivingProgress(currentBytes, totalBytes)
                     }
                 }
+                "com.unicity.nfcwalletdemo.NFC_TEST_RECEIVED" -> {
+                    val pingMessage = intent.getStringExtra("ping_message") ?: "Unknown"
+                    val timestamp = intent.getLongExtra("timestamp", 0)
+                    
+                    Log.d("ReceiveActivity", "NFC test received: $pingMessage at $timestamp")
+                    runOnUiThread {
+                        Toast.makeText(this@ReceiveActivity, "NFC Test Received: $pingMessage", Toast.LENGTH_LONG).show()
+                        showSuccessDialog("NFC Test Success!\n\nReceived: $pingMessage")
+                    }
+                }
             }
         }
     }
@@ -231,6 +241,7 @@ class ReceiveActivity : AppCompatActivity() {
             addAction("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
             addAction("com.unicity.nfcwalletdemo.CRYPTO_RECEIVED")
             addAction("com.unicity.nfcwalletdemo.TRANSFER_PROGRESS")
+            addAction("com.unicity.nfcwalletdemo.NFC_TEST_RECEIVED")
         }
         
         // For Android 14+ (API 34+), we need to specify RECEIVER_NOT_EXPORTED

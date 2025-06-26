@@ -39,6 +39,10 @@ class DirectNfcClient(
         private const val CMD_GET_RECEIVER_ADDRESS: Byte = 0x06
         private const val CMD_SEND_OFFLINE_TRANSACTION: Byte = 0x07
         
+        // Commands for test mode
+        private const val CMD_TEST_PING: Byte = 0x08
+        private const val CMD_TEST_PONG: Byte = 0x09
+        
         // Maximum APDU command size (minus header and Lc)
         // Using smaller chunks for better stability across different devices
         // Some devices have issues with larger APDUs
@@ -50,6 +54,7 @@ class DirectNfcClient(
     
     private var tokenToSend: Token? = null
     private val gson = Gson()
+    private var isTestMode = false
     
     fun setTokenToSend(token: Token) {
         tokenToSend = token
@@ -61,7 +66,18 @@ class DirectNfcClient(
         Log.d(TAG, "Crypto token set for NFC transfer: ${cryptoToken.name}")
     }
     
+    fun setTestMode(enabled: Boolean) {
+        isTestMode = enabled
+        Log.d(TAG, "Test mode set to: $enabled")
+    }
+    
     fun startNfcTransfer() {
+        if (isTestMode) {
+            Log.d(TAG, "Starting NFC test transfer")
+            startTestTransfer()
+            return
+        }
+        
         val token = tokenToSend
         if (token == null) {
             Log.e(TAG, "No token set for transfer")
@@ -163,6 +179,69 @@ class DirectNfcClient(
             Log.e(TAG, "Exception in sendTokenDirectly", e)
             withContext(Dispatchers.Main) {
                 onError("Transfer error: ${e.message}")
+            }
+        }
+    }
+    
+    private fun startTestTransfer() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Log.d(TAG, "Starting simple NFC test transfer...")
+                
+                // Notify progress
+                withContext(Dispatchers.Main) {
+                    onProgress(0, 1)
+                }
+                
+                // Wait for connection to stabilize
+                delay(500)
+                
+                // Test 1: Simple SELECT AID
+                Log.d(TAG, "Test 1: Sending SELECT AID...")
+                val selectResponse = apduTransceiver.transceive(SELECT_AID)
+                if (!isResponseOK(selectResponse)) {
+                    throw Exception("Failed to select application")
+                }
+                Log.d(TAG, "✅ SELECT AID successful")
+                
+                // Test 2: Send PING command with test data
+                Log.d(TAG, "Test 2: Sending PING...")
+                val testData = "Hello NFC Test ${System.currentTimeMillis()}".toByteArray(StandardCharsets.UTF_8)
+                val pingCommand = byteArrayOf(0x00.toByte(), CMD_TEST_PING, 0x00.toByte(), 0x00.toByte(), testData.size.toByte()) + testData
+                
+                val pingResponse = apduTransceiver.transceive(pingCommand)
+                if (!isResponseOK(pingResponse)) {
+                    throw Exception("PING failed")
+                }
+                
+                // Extract response data (remove SW_OK)
+                val responseData = pingResponse.sliceArray(0 until pingResponse.size - 2)
+                val responseString = String(responseData, StandardCharsets.UTF_8)
+                Log.d(TAG, "✅ PING successful, response: $responseString")
+                
+                // Test 3: Send another PING to verify stability
+                Log.d(TAG, "Test 3: Sending second PING...")
+                delay(100)
+                val testData2 = "Test 2 at ${System.currentTimeMillis()}".toByteArray(StandardCharsets.UTF_8)
+                val pingCommand2 = byteArrayOf(0x00.toByte(), CMD_TEST_PING, 0x00.toByte(), 0x00.toByte(), testData2.size.toByte()) + testData2
+                
+                val pingResponse2 = apduTransceiver.transceive(pingCommand2)
+                if (!isResponseOK(pingResponse2)) {
+                    throw Exception("Second PING failed")
+                }
+                Log.d(TAG, "✅ Second PING successful")
+                
+                // All tests passed
+                Log.d(TAG, "✅ All NFC tests passed!")
+                withContext(Dispatchers.Main) {
+                    onTransferComplete()
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Test transfer failed", e)
+                withContext(Dispatchers.Main) {
+                    onError("Test failed: ${e.message}")
+                }
             }
         }
     }
