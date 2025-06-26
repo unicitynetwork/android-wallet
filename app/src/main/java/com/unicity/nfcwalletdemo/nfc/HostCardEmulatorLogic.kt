@@ -523,18 +523,27 @@ class HostCardEmulatorLogic(
             if (address != null) {
                 Log.d(TAG, "Returning generated receiver address: $address")
 
-                // Create response with the receiver address
+                // Create response with the receiver address only
+                // Do NOT include receiver_identity as it makes the response too large for NFC
                 val response = mapOf(
                     "status" to "success",
-                    "receiver_address" to address,
-                    "receiver_identity" to generatedReceiverIdentity
+                    "receiver_address" to address
                 )
 
                 val responseJson = gson.toJson(response)
                 val responseBytes = responseJson.toByteArray(StandardCharsets.UTF_8)
-
-                // Return the address data + SW_OK
-                responseBytes + SW_OK
+                
+                // Check response size to ensure it fits in APDU
+                Log.d(TAG, "Response size: ${responseBytes.size} bytes")
+                if (responseBytes.size > 250) {
+                    Log.e(TAG, "Response too large: ${responseBytes.size} bytes, using minimal format")
+                    // If still too large, just send the address
+                    val minimalResponse = mapOf("address" to address)
+                    val minimalJson = gson.toJson(minimalResponse)
+                    minimalJson.toByteArray(StandardCharsets.UTF_8) + SW_OK
+                } else {
+                    responseBytes + SW_OK
+                }
 
             } else {
                 Log.e(TAG, "No receiver address available - still generating or failed")
@@ -598,7 +607,7 @@ class HostCardEmulatorLogic(
 
             // Append chunk data
             offlineTransactionBuffer.write(chunkData)
-            Log.d(TAG, "Received chunk: ${chunkData.size} bytes, total buffered: ${offlineTransactionBuffer.size()}")
+            Log.d(TAG, "Received chunk: ${chunkData.size} bytes, total buffered: ${offlineTransactionBuffer.size()}, p1=${p1.toInt() and 0xFF}, p2=${p2.toInt() and 0xFF}")
 
             // Handle last chunk
             if (p2 == 0x01.toByte()) {
@@ -611,6 +620,10 @@ class HostCardEmulatorLogic(
                     // Parse the complete offline transaction package
                     val transferPackage = gson.fromJson(completeOfflineTransactionData, Map::class.java)
                     Log.d(TAG, "Successfully parsed offline transaction package")
+                    
+                    // Log the structure to understand what we received
+                    Log.d(TAG, "Transfer package keys: ${transferPackage.keys}")
+                    Log.d(TAG, "First 500 chars of data: ${completeOfflineTransactionData.take(500)}")
                     
                     // Process the offline transaction using the SDK
                     processOfflineTransactionWithSdk(completeOfflineTransactionData)
@@ -712,10 +725,65 @@ class HostCardEmulatorLogic(
             
             Log.d(TAG, "Using receiver identity for offline transaction processing")
             
-            // Complete the offline transaction using the SDK
-            sdkService.completeOfflineTransfer(
-                gson.toJson(receiverIdentity),
+            // Extract the actual transaction data from the SDK response format
+            val actualTransactionData = try {
+                // First parse: Extract from SDK response wrapper {"status":"success","data":"..."}
+                val responseJson = gson.fromJson(offlineTransactionData, Map::class.java)
+                val status = responseJson["status"] as? String
+                
+                if (status == "success") {
+                    val dataString = responseJson["data"] as? String
+                    if (dataString != null) {
+                        Log.d(TAG, "Extracted transaction data from SDK response wrapper")
+                        // The data field contains the actual offline transaction JSON as a string
+                        dataString
+                    } else {
+                        Log.w(TAG, "No 'data' field in success response, using full response")
+                        offlineTransactionData
+                    }
+                } else {
+                    Log.w(TAG, "Response status is not success: $status, using original data")
+                    offlineTransactionData
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse as SDK response format, using original data", e)
                 offlineTransactionData
+            }
+            
+            Log.d(TAG, "Transaction data length: ${actualTransactionData.length}")
+            Log.d(TAG, "Transaction data preview: ${actualTransactionData.take(500)}...")
+            
+            // Check if the transaction data is double-encoded JSON
+            val finalTransactionData = try {
+                // Try to parse it as JSON to see if it's a stringified JSON
+                val parsed = gson.fromJson(actualTransactionData, Map::class.java)
+                Log.d(TAG, "Transaction data appears to be valid JSON, using as-is")
+                actualTransactionData
+            } catch (e: Exception) {
+                // Not valid JSON, might be double-encoded
+                Log.w(TAG, "Transaction data is not valid JSON, checking if it's escaped")
+                actualTransactionData
+            }
+            
+            // Complete the offline transaction using the SDK
+            // receiverIdentity is already a Map<String, String>, convert it to JSON
+            val receiverIdentityJson = gson.toJson(receiverIdentity)
+            Log.d(TAG, "Receiver identity JSON: ${receiverIdentityJson.take(100)}...")
+            
+            // Log the full transaction data to understand its structure
+            try {
+                val transactionObj = gson.fromJson(actualTransactionData, Map::class.java)
+                Log.d(TAG, "Transaction object keys: ${transactionObj.keys}")
+                if (transactionObj.containsKey("commitment")) {
+                    Log.d(TAG, "Found commitment in transaction data")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse transaction data for inspection", e)
+            }
+            
+            sdkService.completeOfflineTransfer(
+                receiverIdentityJson,
+                finalTransactionData
             ) { result: Result<String> ->
                 result.onSuccess { processedTokenJson: String ->
                     Log.d(TAG, "Offline transaction processed successfully by SDK")

@@ -1,5 +1,6 @@
 package com.unicity.nfcwalletdemo.nfc
 
+import android.nfc.TagLostException
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
@@ -70,27 +71,84 @@ class DirectNfcClient(
         
         // Launch coroutine to handle the entire transfer process
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                Log.d(TAG, "Starting NFC transfer...")
-                
-                // Select AID
-                val selectResponse = apduTransceiver.transceive(SELECT_AID)
-                if (!isResponseOK(selectResponse)) {
-                    Log.e(TAG, "SELECT AID failed")
-                    withContext(Dispatchers.Main) {
-                        onError("Failed to select application")
+            var retryCount = 0
+            val maxRetries = 5
+            
+            // Notify user to keep phones touching
+            withContext(Dispatchers.Main) {
+                onProgress(0, 1)
+            }
+            
+            while (retryCount < maxRetries) {
+                try {
+                    Log.d(TAG, "NFC transfer attempt ${retryCount + 1}/$maxRetries")
+                    
+                    // Longer delay for first attempt to ensure stable connection
+                    if (retryCount == 0) {
+                        Log.d(TAG, "Initial stabilization delay...")
+                        delay(1000) // 1 second initial delay
+                        
+                        // Test connection with a simple SELECT AID
+                        Log.d(TAG, "Testing NFC connection...")
+                        val testResponse = apduTransceiver.transceive(SELECT_AID)
+                        if (!isResponseOK(testResponse)) {
+                            throw Exception("Connection test failed")
+                        }
+                        Log.d(TAG, "Connection test successful")
+                    } else {
+                        // Progressive delay between retries
+                        val retryDelay = 500L * retryCount
+                        Log.d(TAG, "Retry delay: ${retryDelay}ms")
+                        delay(retryDelay)
                     }
-                    return@launch
-                }
-                Log.d(TAG, "SELECT AID successful")
-                
-                // Send token directly
-                sendTokenDirectly(token)
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Exception in direct transfer", e)
-                withContext(Dispatchers.Main) {
-                    onError("Transfer failed: ${e.message}")
+                    
+                    // Re-select AID for actual transfer
+                    Log.d(TAG, "Selecting application...")
+                    val selectResponse = apduTransceiver.transceive(SELECT_AID)
+                    if (!isResponseOK(selectResponse)) {
+                        throw Exception("Failed to select application")
+                    }
+                    Log.d(TAG, "SELECT AID successful")
+                    
+                    // Send token directly
+                    sendTokenDirectly(token)
+                    
+                    // If successful, exit the retry loop
+                    break
+                    
+                } catch (e: TagLostException) {
+                    retryCount++
+                    if (retryCount < maxRetries) {
+                        Log.w(TAG, "Tag lost (attempt $retryCount), will retry...")
+                        withContext(Dispatchers.Main) {
+                            onError("Connection lost - Keep phones firmly touching!")
+                        }
+                    } else {
+                        Log.e(TAG, "Tag lost after $maxRetries attempts", e)
+                        withContext(Dispatchers.Main) {
+                            onError("Transfer failed. Try holding phones together longer.")
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    if (e.message?.contains("out of date") == true) {
+                        retryCount++
+                        if (retryCount < maxRetries) {
+                            Log.w(TAG, "Tag out of date, retrying...")
+                        } else {
+                            Log.e(TAG, "Tag connection unstable", e)
+                            withContext(Dispatchers.Main) {
+                                onError("Connection unstable. Try again with phones touching firmly.")
+                            }
+                        }
+                    } else {
+                        throw e
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Exception in direct transfer", e)
+                    withContext(Dispatchers.Main) {
+                        onError("Transfer failed: ${e.message}")
+                    }
+                    break // Don't retry for other exceptions
                 }
             }
         }
