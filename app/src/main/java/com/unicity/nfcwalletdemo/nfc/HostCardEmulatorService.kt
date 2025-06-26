@@ -42,6 +42,16 @@ class HostCardEmulatorService : HostApduService() {
         var currentTransferMode: String = "BLE_READY"
         private const val TAG = "HostCardEmulatorService"
         
+        // Static storage for generated receiver identity during handshake
+        private var generatedReceiverIdentityStatic: Map<String, String>? = null
+        
+        /**
+         * Get the receiver identity that was generated during the handshake
+         */
+        fun getGeneratedReceiverIdentity(): Map<String, String>? {
+            return generatedReceiverIdentityStatic
+        }
+        
         // AID for our application
         private val SELECT_AID = byteArrayOf(
             0x00.toByte(), 0xA4.toByte(), 0x04.toByte(), 0x00.toByte(),
@@ -53,12 +63,7 @@ class HostCardEmulatorService : HostApduService() {
         private val SW_OK = byteArrayOf(0x90.toByte(), 0x00.toByte())
         private val SW_ERROR = byteArrayOf(0x6F.toByte(), 0x00.toByte())
         
-        // Commands
-        private const val CMD_START_DIRECT_TRANSFER: Byte = 0x02
-        private const val CMD_GET_CHUNK: Byte = 0x03
-        private const val CMD_TRANSFER_COMPLETE: Byte = 0x04
-        
-        // New commands for proper offline transfer handshake
+        // Commands for offline transfer handshake protocol
         private const val CMD_REQUEST_RECEIVER_ADDRESS: Byte = 0x05
         private const val CMD_GET_RECEIVER_ADDRESS: Byte = 0x06
         private const val CMD_SEND_OFFLINE_TRANSACTION: Byte = 0x07
@@ -83,27 +88,15 @@ class HostCardEmulatorService : HostApduService() {
         // Check if this is a SELECT AID command
         if (isSelectAidCommand(commandApdu)) {
             Log.d(TAG, "SELECT AID command received")
-            // Start ReceiveActivity when sender taps
-            startReceiveActivity()
             return SW_OK
         }
         
-        // Check command type
+        // Check command type - only proper offline handshake protocol supported
         when (commandApdu[1]) {
-            CMD_START_DIRECT_TRANSFER -> {
-                Log.d(TAG, "START_DIRECT_TRANSFER command received")
-                return startDirectTransfer(commandApdu)
-            }
-            CMD_GET_CHUNK -> {
-                Log.d(TAG, "GET_CHUNK command received")
-                return getNextChunk(commandApdu)
-            }
-            CMD_TRANSFER_COMPLETE -> {
-                Log.d(TAG, "TRANSFER_COMPLETE command received")
-                return completeTransfer()
-            }
             CMD_REQUEST_RECEIVER_ADDRESS -> {
                 Log.d(TAG, "REQUEST_RECEIVER_ADDRESS command received")
+                // Start ReceiveActivity for offline handshake protocol
+                startReceiveActivity()
                 return handleReceiverAddressRequest(commandApdu)
             }
             CMD_GET_RECEIVER_ADDRESS -> {
@@ -423,12 +416,23 @@ class HostCardEmulatorService : HostApduService() {
             
             // Parse the token request to get token ID and type
             val tokenRequest = gson.fromJson(requestData, Map::class.java)
-            val tokenId = tokenRequest["token_id"]
-            val tokenType = tokenRequest["token_type"]
             val tokenName = tokenRequest["token_name"] as? String ?: "Unknown Token"
             
+            // Extract token data from the nested JSON string
+            val tokenDataString = tokenRequest["token_data"] as? String
+            if (tokenDataString == null) {
+                Log.e(TAG, "Invalid token request - missing token_data")
+                return SW_ERROR
+            }
+            
+            val tokenData = gson.fromJson(tokenDataString, Map::class.java)
+            val genesis = tokenData["genesis"] as? Map<*, *>
+            val genesisData = genesis?.get("data") as? Map<*, *>
+            val tokenId = genesisData?.get("tokenId")
+            val tokenType = genesisData?.get("tokenType")
+            
             if (tokenId == null || tokenType == null) {
-                Log.e(TAG, "Invalid token request - missing token ID or type")
+                Log.e(TAG, "Invalid token request - missing token ID or type in genesis data")
                 return SW_ERROR
             }
             
@@ -456,10 +460,10 @@ class HostCardEmulatorService : HostApduService() {
         try {
             Log.d(TAG, "Generating receiver address for token: $tokenName")
             
-            val tokenIdJson = gson.toJson(tokenId)
-            val tokenTypeJson = gson.toJson(tokenType)
+            val tokenIdString = tokenId.toString()
+            val tokenTypeString = tokenType.toString()
             
-            Log.d(TAG, "Starting receiver address generation for token ID: $tokenIdJson, Type: $tokenTypeJson")
+            Log.d(TAG, "Starting receiver address generation for token ID: $tokenIdString, Type: $tokenTypeString")
             
             // Generate receiver identity for this device
             sdkService.generateIdentity { identityResult ->
@@ -467,13 +471,14 @@ class HostCardEmulatorService : HostApduService() {
                     try {
                         val receiverIdentity = gson.fromJson(identityJson, Map::class.java) as Map<String, String>
                         generatedReceiverIdentity = receiverIdentity
+                        generatedReceiverIdentityStatic = receiverIdentity // Store in static for ReceiveActivity
                         
                         Log.d(TAG, "Receiver identity generated successfully")
                         
                         // Generate receiving address using the specific token ID and type
                         sdkService.generateReceivingAddressForOfflineTransfer(
-                            tokenIdJson,
-                            tokenTypeJson, 
+                            tokenIdString,
+                            tokenTypeString, 
                             gson.toJson(receiverIdentity)
                         ) { addressResult ->
                             addressResult.onSuccess { addressResponseJson ->
@@ -576,56 +581,33 @@ class HostCardEmulatorService : HostApduService() {
      */
     private fun startOfflineTransactionReceive(commandApdu: ByteArray): ByteArray {
         return try {
-            Log.d(TAG, "Starting offline transaction receive")
+            Log.d(TAG, "Receiving offline transaction package")
             
-            // This follows the same chunked transfer pattern as the original direct transfer
-            // but specifically for offline transaction packages
-            
-            if (commandApdu.size < 7) {
-                Log.e(TAG, "Invalid SEND_OFFLINE_TRANSACTION command size: ${commandApdu.size}")
+            // Extract offline transaction data from APDU
+            val dataStart = 5 // Skip CLA, INS, P1, P2, Lc
+            if (commandApdu.size <= dataStart) {
+                Log.e(TAG, "Invalid offline transaction - no data")
                 return SW_ERROR
             }
             
-            // Extract size and first chunk (same pattern as startDirectTransfer)
-            val dataStart = 5
-            expectedTotalSize = ((commandApdu[dataStart].toInt() and 0xFF) shl 8) or 
-                               (commandApdu[dataStart + 1].toInt() and 0xFF)
+            val offlineTransactionData = String(commandApdu.sliceArray(dataStart until commandApdu.size), StandardCharsets.UTF_8)
+            Log.d(TAG, "Received offline transaction data size: ${offlineTransactionData.length} characters")
             
-            Log.d(TAG, "Starting offline transaction receive, expecting total size: $expectedTotalSize bytes")
+            // Parse the offline transaction package
+            val transferPackage = gson.fromJson(offlineTransactionData, Map::class.java)
+            val transferType = transferPackage["type"] as? String
             
-            if (expectedTotalSize > MAX_TRANSFER_SIZE) {
-                Log.e(TAG, "Offline transaction size $expectedTotalSize exceeds maximum allowed $MAX_TRANSFER_SIZE")
-                return SW_ERROR
-            }
-            
-            // Reset buffer for new transfer
-            directTransferBuffer = ByteArrayOutputStream()
-            
-            // Extract first chunk data
-            val firstChunkDataStart = dataStart + 2
-            if (commandApdu.size > firstChunkDataStart) {
-                val firstChunkData = commandApdu.sliceArray(firstChunkDataStart until commandApdu.size)
-                val dataToWrite = if (firstChunkData.size > expectedTotalSize) {
-                    firstChunkData.sliceArray(0 until expectedTotalSize)
-                } else {
-                    firstChunkData
-                }
-                
-                directTransferBuffer.write(dataToWrite)
-                Log.d(TAG, "Received first chunk of offline transaction: ${dataToWrite.size} bytes")
-                
-                broadcastProgress(directTransferBuffer.size(), expectedTotalSize)
-            }
-            
-            // Check if this is a single-chunk transfer
-            if (directTransferBuffer.size() == expectedTotalSize) {
-                return processCompleteOfflineTransaction()
+            if (transferType == "unicity_offline_transfer") {
+                Log.d(TAG, "Processing Unicity offline transfer")
+                processOfflineUnicityTransfer(transferPackage)
+            } else {
+                Log.w(TAG, "Unknown offline transfer type: $transferType")
             }
             
             SW_OK
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting offline transaction receive", e)
+            Log.e(TAG, "Error receiving offline transaction", e)
             SW_ERROR
         }
     }
