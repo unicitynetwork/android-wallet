@@ -5,10 +5,11 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
 ## 🚀 Current Implementation
 
 **Token Type**: Real Unicity Protocol tokens with cryptographic signatures  
-**Transfer Method**: NFC-only direct transfer using Android HCE  
-**SDK Integration**: Full Unicity State Transition SDK with blockchain commitments  
-**Transfer Speed**: 1-60 seconds depending on token size  
-**User Experience**: True "single tap" - no pairing, no secondary connections
+**Transfer Method**: NFC-only offline transfer using Android HCE  
+**SDK Integration**: Full Unicity State Transition SDK with offline transfer support  
+**Transfer Protocol**: Multi-phase handshake with receiver address generation  
+**Transfer Speed**: 3-60 seconds depending on token size (includes handshake)  
+**User Experience**: Hold phones together during entire transfer
 
 ## ✨ Features
 
@@ -77,25 +78,55 @@ Data Layer (Models/Storage)
 
 ## 📡 NFC Transfer Flow
 
-### Sending a Token
+### Offline Transfer Protocol (Real Unicity Tokens)
+The app implements a sophisticated offline transfer protocol for real Unicity tokens:
+
+#### Sending a Token
 1. User taps "Send Token" and expands token card
 2. User taps sending device to receiving device
-3. `DirectNfcClient` establishes NFC connection using IsoDep
-4. Token data is chunked and sent via APDU commands
-5. Transfer completes with success confirmation
+3. `DirectNfcClient` establishes NFC connection and waits for stabilization
+4. **Handshake Phase**:
+   - Sender requests receiver to generate a new cryptographic address
+   - Receiver generates identity (secret + nonce) and derives address
+   - Receiver sends address back to sender
+5. **Transfer Phase**:
+   - Sender creates offline transaction using receiver's address
+   - Transaction package is chunked and sent via APDU commands
+   - Receiver saves the offline transaction and broadcasts to UI
+6. **Completion Phase**:
+   - Receiver processes offline transaction with SDK
+   - Token is added to receiver's wallet
+   - Success confirmation shown on both devices
 
-### Receiving a Token
+#### Receiving a Token
 1. `HostCardEmulatorService` activates when NFC field detected
-2. Service receives APDU commands and reconstructs token data
-3. Progress broadcasts update UI in real-time
-4. Completed token is saved to wallet
-5. Success confirmation sent back to sender
+2. **Address Generation**:
+   - Receives token transfer request with token metadata
+   - Generates new cryptographic identity via SDK
+   - Returns receiver address to sender
+3. **Transaction Reception**:
+   - Receives offline transaction chunks
+   - Reconstructs complete transaction package
+   - Saves to SharedPreferences for persistence
+4. **Processing**:
+   - `ReceiveActivity` catches broadcast or finds saved transfer
+   - Completes offline transfer using SDK
+   - Updates wallet with new token
 
 ### Technical Details
 - **Protocol**: Custom APDU commands over NFC-A/ISO 14443 Type A
-- **Chunk Size**: ~250 bytes per APDU (limited by NFC specs)
-- **Buffer Limit**: ~37KB total transfer size (Android HCE limitation)
-- **Timeout**: 30 seconds per transfer attempt
+- **Commands**:
+  - `CMD_SELECT_AID (0xA4)`: Initial application selection
+  - `CMD_REQUEST_RECEIVER_ADDRESS (0x05)`: Request receiver to generate address
+  - `CMD_GET_RECEIVER_ADDRESS (0x06)`: Query for generated address
+  - `CMD_SEND_OFFLINE_TRANSACTION (0x07)`: Send transaction chunks
+  - `CMD_TEST_PING (0x08)`: Test mode for debugging
+- **Chunk Size**: 200 bytes per APDU (conservative for stability)
+- **Buffer Limit**: ~36KB total transfer size (Android HCE limitation)
+- **Timeouts**: 
+  - 30 seconds for address generation
+  - Connection stabilization delays between operations
+- **Persistence**: Transfers saved to SharedPreferences to survive app restarts
 
 ## 🧪 Testing
 
@@ -127,9 +158,12 @@ adb shell am start -n com.unicity.nfcwalletdemo/.ui.wallet.MainActivity
 6. **Reverse**: Test transfer from Device B back to Device A
 
 #### Common Issues
-- **"Tag was lost"**: Devices moved apart during transfer - keep steady contact
-- **"Failed to send"**: Retry with slower, more deliberate tap
+- **"Tag was lost"**: Devices moved apart during transfer - keep steady contact for entire duration
+- **"NFC connection lost"**: Connection interrupted - retry with phones held more firmly together
+- **"Failed to get receiver address"**: Handshake failed - ensure receiver app is open and active
+- **"State data is not part of transaction"**: SDK processing error - check token format and retry
 - **App crashes**: Check logs for specific errors
+- **Transfer succeeds but token doesn't appear**: Check receiver's wallet after a few seconds (processing delay)
 
 ## 📊 Token Size Performance
 
@@ -157,6 +191,8 @@ The app uses the Unicity State Transition SDK to create real cryptographic token
 - **MaskedPredicate**: Privacy-preserving ownership predicates
 - **StateTransitionClient**: Blockchain interaction
 - **InclusionProof**: Proof of blockchain commitment
+- **Offline Transfer**: Create and complete offline transactions without internet
+- **Identity Generation**: Create new cryptographic identities for receiving tokens
 
 ## 🏭 Production Checklist
 
@@ -190,30 +226,105 @@ The app uses the Unicity State Transition SDK to create real cryptographic token
 ```
 app/src/main/
 ├── java/com/unicity/nfcwalletdemo/
-│   ├── data/           # Models and repositories
-│   ├── nfc/            # NFC transfer implementation
-│   ├── sdk/            # Unicity SDK integration
-│   ├── ui/             # Activities and adapters
-│   ├── utils/          # Utility classes
-│   └── viewmodel/      # MVVM ViewModels
+│   ├── data/                    # Data layer
+│   │   ├── api/                 # API interfaces
+│   │   │   └── CryptoPriceApi.kt
+│   │   ├── model/               # Data models
+│   │   │   ├── Token.kt         # Unicity token model
+│   │   │   ├── TransferRequest.kt
+│   │   │   ├── TransferResponse.kt
+│   │   │   └── Wallet.kt
+│   │   ├── repository/          # Data repositories
+│   │   │   └── WalletRepository.kt
+│   │   └── service/             # Services
+│   │       └── CryptoPriceService.kt
+│   ├── model/                   # Domain models
+│   │   └── CryptoCurrency.kt
+│   ├── nfc/                     # NFC implementation
+│   │   ├── ApduTransceiver.kt   # APDU command interface
+│   │   ├── DirectNfcClient.kt   # Sender implementation
+│   │   ├── HostCardEmulatorLogic.kt # Receiver logic
+│   │   ├── HostCardEmulatorService.kt # HCE service
+│   │   ├── NfcTestChannel.kt    # Test mode support
+│   │   └── RealNfcTransceiver.kt # NFC transceiver
+│   ├── sdk/                     # Unicity SDK integration
+│   │   ├── UnicitySdkService.kt # WebView bridge service
+│   │   └── UnicityTokenData.kt  # SDK data models
+│   ├── ui/                      # UI layer
+│   │   ├── receive/
+│   │   │   └── ReceiveActivity.kt # Token receiving UI
+│   │   ├── send/
+│   │   │   └── SendActivity.kt  # Legacy send activity
+│   │   └── wallet/
+│   │       ├── AssetDialogAdapter.kt
+│   │       ├── CryptoAdapter.kt
+│   │       ├── MainActivity.kt  # Main wallet UI
+│   │       └── TokenAdapter.kt  # Token list adapter
+│   ├── utils/                   # Utilities
+│   │   └── PermissionUtils.kt
+│   └── viewmodel/               # ViewModels
+│       ├── ReceiveViewModel.kt
+│       ├── SendViewModel.kt
+│       └── WalletViewModel.kt
 ├── assets/
-│   ├── bridge.html     # WebView bridge HTML
-│   ├── unicity-sdk.js  # Unicity SDK bundle
-│   └── unicity-wrapper.js # SDK JavaScript wrapper
+│   ├── bridge.html              # WebView bridge HTML
+│   ├── unicity-sdk.js           # Bundled Unicity SDK
+│   ├── unicity-sdk.js.map       # Source map
+│   └── unicity-wrapper.js       # JavaScript wrapper
 └── res/
-    ├── drawable/       # Icons and graphics
-    ├── layout/         # XML layouts
-    ├── values/         # Colors, strings, styles
-    └── xml/            # App configuration
+    ├── drawable/                # Icons and graphics
+    ├── layout/                  # XML layouts
+    │   ├── activity_main.xml
+    │   ├── activity_receive.xml
+    │   ├── dialog_mint_token.xml
+    │   ├── item_crypto.xml
+    │   └── item_token.xml
+    ├── values/                  # Resources
+    │   ├── colors.xml
+    │   ├── strings.xml
+    │   ├── styles.xml
+    │   └── themes.xml
+    └── xml/                     # Configuration
+        └── apduservice.xml      # HCE service config
 ```
 
 ### Key Files
-- `HostCardEmulatorService.kt`: NFC receiving logic
-- `DirectNfcClient.kt`: NFC sending logic  
+
+#### NFC Transfer Core
+- `DirectNfcClient.kt`: Handles sending tokens via NFC
+  - Implements offline transfer handshake protocol
+  - Manages connection stability and retries
+  - Chunks data into APDU commands
+- `HostCardEmulatorLogic.kt`: Processes incoming NFC commands
+  - Generates receiver addresses on demand
+  - Handles chunked data reception
+  - Saves transfers to SharedPreferences
+- `HostCardEmulatorService.kt`: Android HCE service wrapper
+- `ApduTransceiver.kt`: Interface for APDU communication
+- `RealNfcTransceiver.kt`: IsoDep NFC implementation
+
+#### UI Components
 - `MainActivity.kt`: Main wallet interface
-- `ReceiveActivity.kt`: Transfer receiving UI
-- `UnicitySdkService.kt`: SDK WebView bridge
-- `unicity-wrapper.js`: SDK JavaScript interface
+  - Token list with expandable cards
+  - Settings menu with test options
+  - NFC transfer initiation
+- `ReceiveActivity.kt`: Token receiving UI
+  - Shows transfer progress
+  - Handles offline transfer processing
+  - Manages success/error states
+- `TokenAdapter.kt`: RecyclerView adapter for token list
+
+#### SDK Integration
+- `UnicitySdkService.kt`: WebView-based SDK bridge
+  - Manages JavaScript interface
+  - Handles SDK method calls
+  - Processes offline transfers
+- `unicity-wrapper.js`: JavaScript wrapper for SDK
+- `bridge.html`: WebView container for SDK
+
+#### Data Layer
+- `WalletRepository.kt`: Token storage and SDK operations
+- `Token.kt`: Unicity token data model
 - `apduservice.xml`: HCE service configuration
 
 ### Build Commands
@@ -235,10 +346,13 @@ app/src/main/
 
 ### Design Decisions
 - **Real Unicity tokens**: Full SDK integration for genuine blockchain tokens
+- **Offline transfer protocol**: Receiver generates unique address for each transfer
 - **WebView bridge**: Enables TypeScript SDK usage in Android app
 - **NFC-only approach**: Bluetooth pairing proved unreliable on modern Android
 - **Direct HCE**: Eliminates need for backend servers during transfer
-- **Chunked transfers**: Works within NFC APDU size limitations
+- **Chunked transfers**: Works within NFC APDU size limitations (200 bytes/chunk)
+- **Connection stability**: Added delays between operations to prevent "tag lost" errors
+- **Persistence layer**: SharedPreferences ensure transfers survive app lifecycle changes
 - **Material Design**: Provides modern, accessible user interface
 
 ### Limitations
