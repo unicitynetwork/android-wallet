@@ -844,10 +844,20 @@ class HostCardEmulatorLogic(
             val pingString = String(pingData, StandardCharsets.UTF_8)
             Log.d(TAG, "Received PING: $pingString")
             
+            // Save test result to SharedPreferences for persistence
+            val timestamp = System.currentTimeMillis()
+            val prefs = context.getSharedPreferences("nfc_test_results", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putString("last_test_ping", pingString)
+                putLong("last_test_time", timestamp)
+                apply()
+            }
+            Log.d(TAG, "Saved test result to SharedPreferences")
+            
             // Notify UI about test transfer
             val testIntent = Intent("com.unicity.nfcwalletdemo.NFC_TEST_RECEIVED").apply {
                 putExtra("ping_message", pingString)
-                putExtra("timestamp", System.currentTimeMillis())
+                putExtra("timestamp", timestamp)
                 setPackage(context.packageName) // Restrict to our app only
             }
             context.sendBroadcast(testIntent)

@@ -125,6 +125,11 @@ class ReceiveActivity : AppCompatActivity() {
                     runOnUiThread {
                         Toast.makeText(this@ReceiveActivity, "NFC Test Received: $pingMessage", Toast.LENGTH_LONG).show()
                         showSuccessDialog("NFC Test Success!\n\nReceived: $pingMessage")
+                        
+                        // Navigate back to MainActivity after showing success
+                        binding.root.postDelayed({
+                            navigateToMainActivity()
+                        }, 3500) // Wait slightly longer than success dialog auto-dismiss
                     }
                 }
             }
@@ -236,6 +241,9 @@ class ReceiveActivity : AppCompatActivity() {
         super.onResume()
         // HCE is automatically enabled when the service is declared in manifest
         
+        // Check for recent test results from SharedPreferences
+        checkForRecentTestResults()
+        
         // Register broadcast receiver for NFC transfers and progress
         val filter = IntentFilter().apply {
             addAction("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
@@ -262,6 +270,29 @@ class ReceiveActivity : AppCompatActivity() {
             unregisterReceiver(tokenReceiver)
         } catch (e: Exception) {
             Log.e("ReceiveActivity", "Error unregistering receiver", e)
+        }
+    }
+    
+    private fun checkForRecentTestResults() {
+        val prefs = getSharedPreferences("nfc_test_results", Context.MODE_PRIVATE)
+        val lastTestTime = prefs.getLong("last_test_time", 0)
+        val currentTime = System.currentTimeMillis()
+        
+        // Check if there was a test in the last 5 seconds
+        if (lastTestTime > 0 && (currentTime - lastTestTime) < 5000) {
+            val pingMessage = prefs.getString("last_test_ping", "Unknown") ?: "Unknown"
+            
+            // Clear the saved test result
+            prefs.edit().clear().apply()
+            
+            Log.d("ReceiveActivity", "Found recent NFC test: $pingMessage")
+            Toast.makeText(this, "NFC Test Received: $pingMessage", Toast.LENGTH_LONG).show()
+            showSuccessDialog("NFC Test Success!\n\nReceived: $pingMessage")
+            
+            // Navigate back to MainActivity after showing success
+            binding.root.postDelayed({
+                navigateToMainActivity()
+            }, 3500) // Wait slightly longer than success dialog auto-dismiss
         }
     }
     
