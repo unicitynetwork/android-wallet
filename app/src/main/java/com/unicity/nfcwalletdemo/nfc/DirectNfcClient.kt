@@ -15,6 +15,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.resume
 import com.unicity.nfcwalletdemo.nfc.ApduTransceiver
+import com.unicity.nfcwalletdemo.nfc.TokenTransferRequest
+import com.unicity.nfcwalletdemo.nfc.ReceiverAddressResponse
+import com.unicity.nfcwalletdemo.nfc.OfflineTransactionPackage
+import com.unicity.nfcwalletdemo.nfc.TestPingMessage
 
 class DirectNfcClient(
     private val sdkService: UnicitySdkService,
@@ -210,7 +214,11 @@ class DirectNfcClient(
                 
                 // Test 2: Send PING command with test data
                 Log.d(TAG, "Test 2: Sending PING...")
-                val testData = "Hello NFC Test ${System.currentTimeMillis()}".toByteArray(StandardCharsets.UTF_8)
+                val testPing = TestPingMessage(
+                    message = "Hello NFC Test",
+                    timestamp = System.currentTimeMillis()
+                )
+                val testData = gson.toJson(testPing).toByteArray(StandardCharsets.UTF_8)
                 val pingCommand = byteArrayOf(0x00.toByte(), CMD_TEST_PING, 0x00.toByte(), 0x00.toByte(), testData.size.toByte()) + testData
                 
                 val pingResponse = apduTransceiver.transceive(pingCommand)
@@ -228,7 +236,11 @@ class DirectNfcClient(
                 
                 // Test 3: Send another PING to verify stability
                 Log.d(TAG, "Test 3: Sending second PING...")
-                val testData2 = "Test 2 at ${System.currentTimeMillis()}".toByteArray(StandardCharsets.UTF_8)
+                val testPing2 = TestPingMessage(
+                    message = "Test 2",
+                    timestamp = System.currentTimeMillis()
+                )
+                val testData2 = gson.toJson(testPing2).toByteArray(StandardCharsets.UTF_8)
                 val pingCommand2 = byteArrayOf(0x00.toByte(), CMD_TEST_PING, 0x00.toByte(), 0x00.toByte(), testData2.size.toByte()) + testData2
                 
                 val pingResponse2 = apduTransceiver.transceive(pingCommand2)
@@ -329,52 +341,50 @@ class DirectNfcClient(
      * Request receiver address for the token
      */
     private suspend fun requestReceiverAddress(tokenRequest: String): String {
-        return try {
+        try {
             Log.d(TAG, "Requesting receiver address...")
-            
+
             val requestBytes = tokenRequest.toByteArray(StandardCharsets.UTF_8)
             val lc = (requestBytes.size and 0xFF).toByte()
             val command = byteArrayOf(0x00.toByte(), CMD_REQUEST_RECEIVER_ADDRESS, 0x00.toByte(), 0x00.toByte(), lc) + requestBytes
-            
+
             Log.d(TAG, "Sending address request, size: ${requestBytes.size} bytes")
-            
+
             val response = apduTransceiver.transceive(command)
             if (!isResponseOK(response)) {
                 throw Exception("Receiver address request failed")
             }
-            
+
             Log.d(TAG, "Address request sent successfully, waiting for receiver to generate address...")
-            
+
             // Wait for receiver to generate address and then query for it
             var retryCount = 0
             val maxRetries = 30 // Allow 30 retries over 15 seconds
-            
+
             while (retryCount < maxRetries) {
                 delay(500) // Wait 500ms between queries
-                
+
                 Log.d(TAG, "Querying for generated receiver address (attempt ${retryCount + 1})")
-                
+
                 // Query for the generated address using CMD_GET_RECEIVER_ADDRESS
                 val queryCommand = byteArrayOf(0x00.toByte(), CMD_GET_RECEIVER_ADDRESS, 0x00.toByte(), 0x00.toByte())
                 val queryResponse = apduTransceiver.transceive(queryCommand)
-                
+
                 if (isResponseOK(queryResponse)) {
                     // Remove the SW_OK bytes (last 2 bytes) to get the actual response data
                     val responseData = queryResponse.sliceArray(0 until queryResponse.size - 2)
                     val responseJson = String(responseData, StandardCharsets.UTF_8)
-                    
+
                     Log.d(TAG, "Received address response: $responseJson")
-                    
+
                     try {
-                        val response = gson.fromJson(responseJson, Map::class.java)
-                        val status = response["status"] as? String
-                        
-                        when (status) {
+                        val response = gson.fromJson(responseJson, ReceiverAddressResponse::class.java)
+
+                        when (response.status) {
                             "success" -> {
-                                val receiverAddress = response["receiver_address"] as? String
-                                if (receiverAddress != null) {
-                                    Log.d(TAG, "Receiver address obtained: $receiverAddress")
-                                    return receiverAddress
+                                if (response.receiver_address != null) {
+                                    Log.d(TAG, "Receiver address obtained: ${response.receiver_address}")
+                                    return response.receiver_address
                                 } else {
                                     throw Exception("No receiver address in success response")
                                 }
@@ -384,8 +394,11 @@ class DirectNfcClient(
                                 retryCount++
                                 continue
                             }
+                            "error" -> {
+                                throw Exception("Receiver reported error: ${response.error}")
+                            }
                             else -> {
-                                throw Exception("Unknown status in address response: $status")
+                                throw Exception("Unknown status in address response: ${response.status}")
                             }
                         }
                     } catch (e: Exception) {
@@ -397,9 +410,9 @@ class DirectNfcClient(
                     retryCount++
                 }
             }
-            
+
             throw Exception("Timeout waiting for receiver address after $maxRetries attempts")
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Failed to request receiver address", e)
             throw e
@@ -413,14 +426,24 @@ class DirectNfcClient(
         try {
             Log.d(TAG, "Sending offline transaction package...")
             
-            val packageBytes = offlinePackage.toByteArray(StandardCharsets.UTF_8)
+            // Wrap the offline transaction in the expected format
+            val token = tokenToSend ?: throw Exception("No token set for transfer")
+            val transferPackage = OfflineTransactionPackage(
+                token_name = token.name,
+                offline_transaction = offlinePackage
+            )
+            val wrappedPackageJson = gson.toJson(transferPackage)
+            
+            Log.d(TAG, "Wrapped offline package with token name: ${token.name}")
+            
+            val packageBytes = wrappedPackageJson.toByteArray(StandardCharsets.UTF_8)
             
             // Check size limits
             if (packageBytes.size > MAX_TRANSFER_SIZE) {
                 throw Exception("Offline package too large: ${packageBytes.size} bytes")
             }
             
-            Log.d(TAG, "Package size: ${packageBytes.size} bytes, chunking into multiple APDUs")
+            Log.d(TAG, "Wrapped package size: ${packageBytes.size} bytes, chunking into multiple APDUs")
             
             // Send package in chunks due to APDU size limitations
             var offset = 0
@@ -511,10 +534,10 @@ class DirectNfcClient(
             Log.d(TAG, "Extracted token ID: $tokenId, token type: $tokenType")
 
             // Create a minimal request with only the necessary data
-            val tokenRequest = mapOf(
-                "token_id" to tokenId,
-                "token_type" to tokenType,
-                "token_name" to token.name
+            val tokenRequest = TokenTransferRequest(
+                token_id = tokenId.toString(),
+                token_type = tokenType.toString(),
+                token_name = token.name
             )
             
             Log.d(TAG, "Created token transfer request for handshake")
