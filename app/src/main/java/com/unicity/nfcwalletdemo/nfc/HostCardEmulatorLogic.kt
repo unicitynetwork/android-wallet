@@ -10,6 +10,11 @@ import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
+import com.unicity.nfcwalletdemo.nfc.TokenTransferRequest
+import com.unicity.nfcwalletdemo.nfc.ReceiverAddressResponse
+import com.unicity.nfcwalletdemo.nfc.OfflineTransactionPackage
+import com.unicity.nfcwalletdemo.nfc.TestPingMessage
+import com.unicity.nfcwalletdemo.nfc.TestPongResponse
 
 class HostCardEmulatorLogic(
     private val context: Context,
@@ -429,22 +434,18 @@ class HostCardEmulatorLogic(
             Log.d(TAG, "Received token request: $requestData")
 
             // Parse the token request to get token ID and type
-            val tokenRequest = gson.fromJson(requestData, Map::class.java)
-            val tokenName = tokenRequest["token_name"] as? String ?: "Unknown Token"
-
-            val tokenId = tokenRequest["token_id"]
-            val tokenType = tokenRequest["token_type"]
-
-            if (tokenId == null || tokenType == null) {
-                Log.e(TAG, "Invalid token request - missing token ID or type in genesis data")
+            val tokenRequest = try {
+                gson.fromJson(requestData, TokenTransferRequest::class.java)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse token transfer request", e)
                 return SW_ERROR
             }
 
-            Log.d(TAG, "Token request for: $tokenName (ID: $tokenId, Type: $tokenType)")
+            Log.d(TAG, "Token request for: ${tokenRequest.token_name} (ID: ${tokenRequest.token_id}, Type: ${tokenRequest.token_type})")
 
             // Generate receiver identity and address for this specific token
             // This should be done by the receiver (this device)
-            generateReceiverAddressForToken(tokenId, tokenType, tokenName)
+            generateReceiverAddressForToken(tokenRequest.token_id, tokenRequest.token_type, tokenRequest.token_name)
 
             // Return OK to indicate we're processing the request
             // The actual address will be sent in response to a subsequent query
@@ -460,12 +461,12 @@ class HostCardEmulatorLogic(
      * Generate receiver address and prepare to send it back
      * This is called internally after receiving the token request
      */
-    private fun generateReceiverAddressForToken(tokenId: Any, tokenType: Any, tokenName: String) {
+    private fun generateReceiverAddressForToken(tokenId: String, tokenType: String, tokenName: String) {
         try {
             Log.d(TAG, "Generating receiver address for token: $tokenName")
 
-            val tokenIdString = tokenId.toString()
-            val tokenTypeString = tokenType.toString()
+            val tokenIdString = tokenId
+            val tokenTypeString = tokenType
 
             Log.d(TAG, "Starting receiver address generation for token ID: $tokenIdString, Type: $tokenTypeString")
 
@@ -546,9 +547,9 @@ class HostCardEmulatorLogic(
 
                 // Create response with the receiver address only
                 // Do NOT include receiver_identity as it makes the response too large for NFC
-                val response = mapOf(
-                    "status" to "success",
-                    "receiver_address" to address
+                val response = ReceiverAddressResponse(
+                    status = "success",
+                    receiver_address = address
                 )
 
                 val responseJson = gson.toJson(response)
@@ -570,9 +571,9 @@ class HostCardEmulatorLogic(
                 Log.e(TAG, "No receiver address available - still generating or failed")
 
                 // Return "not ready" response
-                val response = mapOf(
-                    "status" to "not_ready",
-                    "message" to "Receiver address still being generated"
+                val response = ReceiverAddressResponse(
+                    status = "not_ready",
+                    error = "Receiver address still being generated"
                 )
 
                 val responseJson = gson.toJson(response)
@@ -647,7 +648,7 @@ class HostCardEmulatorLogic(
                     Log.d(TAG, "First 500 chars of data: ${completeOfflineTransactionData.take(500)}")
                     
                     // Process the offline Unicity transfer package
-                    processOfflineUnicityTransfer(transferPackage)
+                    processOfflineUnicityTransfer(completeOfflineTransactionData)
                     
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse offline transaction data", e)
@@ -680,15 +681,27 @@ class HostCardEmulatorLogic(
             val receivedData = directTransferBuffer.toString(StandardCharsets.UTF_8.name())
             Log.d(TAG, "Received offline transaction data size: ${receivedData.length} characters")
 
-            // Parse the offline transaction package
-            val transferPackage = gson.fromJson(receivedData, Map::class.java)
-            val transferType = transferPackage["type"] as? String
-
-            if (transferType == "unicity_offline_transfer") {
-                Log.d(TAG, "Processing Unicity offline transfer")
-                processOfflineUnicityTransfer(transferPackage)
-            } else {
-                Log.w(TAG, "Unknown offline transfer type: $transferType")
+            // Try to parse as OfflineTransactionPackage first
+            try {
+                val transferPackage = gson.fromJson(receivedData, OfflineTransactionPackage::class.java)
+                Log.d(TAG, "Successfully parsed as OfflineTransactionPackage, processing...")
+                processOfflineUnicityTransfer(receivedData)
+            } catch (e: Exception) {
+                // Fall back to old format with type field
+                Log.w(TAG, "Failed to parse as OfflineTransactionPackage, trying legacy format", e)
+                val transferPackage = gson.fromJson(receivedData, Map::class.java)
+                val transferType = transferPackage["type"] as? String
+                
+                if (transferType == "unicity_offline_transfer") {
+                    Log.d(TAG, "Processing legacy Unicity offline transfer")
+                    // For legacy format, we need to extract the data differently
+                    val tokenName = transferPackage["token_name"] as? String ?: "Unknown Token"
+                    val offlineTransaction = transferPackage["offline_transaction"] as? String ?: ""
+                    val newPackage = OfflineTransactionPackage(tokenName, offlineTransaction)
+                    processOfflineUnicityTransfer(gson.toJson(newPackage))
+                } else {
+                    Log.w(TAG, "Unknown offline transfer type: $transferType")
+                }
             }
 
             // Reset state
@@ -708,20 +721,25 @@ class HostCardEmulatorLogic(
     /**
      * Process the offline Unicity transfer package
      */
-    private fun processOfflineUnicityTransfer(transferPackage: Map<*, *>) {
+    private fun processOfflineUnicityTransfer(transferPackageJson: String) {
         try {
-            val tokenName = transferPackage["token_name"] as? String ?: "Unknown Token"
-            val offlineTransaction = transferPackage["offline_transaction"] as? String ?: ""
+            // Parse the transfer package
+            val transferPackage = try {
+                gson.fromJson(transferPackageJson, OfflineTransactionPackage::class.java)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse offline transaction package", e)
+                return
+            }
 
-            Log.d(TAG, "Processing offline Unicity transfer for token: $tokenName")
+            Log.d(TAG, "Processing offline Unicity transfer for token: ${transferPackage.token_name}")
 
             // Save offline transfer to SharedPreferences for persistence
             val timestamp = System.currentTimeMillis()
             val prefs = context.getSharedPreferences("nfc_token_transfers", Context.MODE_PRIVATE)
             prefs.edit().apply {
-                putString("last_offline_transaction", offlineTransaction)
+                putString("last_offline_transaction", transferPackage.offline_transaction)
                 putLong("last_offline_time", timestamp)
-                putString("last_offline_token_name", tokenName)
+                putString("last_offline_token_name", transferPackage.token_name)
                 putString("last_transfer_type", "unicity_offline_transfer")
                 apply()
             }
@@ -730,8 +748,8 @@ class HostCardEmulatorLogic(
             // Broadcast the offline transfer to ReceiveActivity for processing
             val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
                 putExtra("transfer_type", "unicity_offline_transfer")
-                putExtra("token_name", tokenName)
-                putExtra("offline_transaction", offlineTransaction)
+                putExtra("token_name", transferPackage.token_name)
+                putExtra("offline_transaction", transferPackage.offline_transaction)
                 setPackage(context.packageName)
             }
             context.sendBroadcast(intent)
@@ -864,14 +882,24 @@ class HostCardEmulatorLogic(
             }
             
             val pingData = commandApdu.sliceArray(dataStart until commandApdu.size)
-            val pingString = String(pingData, StandardCharsets.UTF_8)
-            Log.d(TAG, "Received PING: $pingString")
+            val pingJson = String(pingData, StandardCharsets.UTF_8)
+            Log.d(TAG, "Received PING JSON: $pingJson")
+            
+            // Parse the ping message
+            val pingMessage = try {
+                gson.fromJson(pingJson, TestPingMessage::class.java)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse ping message", e)
+                return SW_ERROR
+            }
+            
+            Log.d(TAG, "Parsed PING: ${pingMessage.message} at ${pingMessage.timestamp}")
             
             // Save test result to SharedPreferences for persistence
             val timestamp = System.currentTimeMillis()
             val prefs = context.getSharedPreferences("nfc_test_results", Context.MODE_PRIVATE)
             prefs.edit().apply {
-                putString("last_test_ping", pingString)
+                putString("last_test_ping", pingMessage.message)
                 putLong("last_test_time", timestamp)
                 apply()
             }
@@ -879,16 +907,20 @@ class HostCardEmulatorLogic(
             
             // Notify UI about test transfer
             val testIntent = Intent("com.unicity.nfcwalletdemo.NFC_TEST_RECEIVED").apply {
-                putExtra("ping_message", pingString)
-                putExtra("timestamp", timestamp)
+                putExtra("ping_message", pingMessage.message)
+                putExtra("timestamp", pingMessage.timestamp)
                 setPackage(context.packageName) // Restrict to our app only
             }
             context.sendBroadcast(testIntent)
             Log.d(TAG, "Broadcast sent for NFC test received")
             
             // Create PONG response
-            val pongResponse = "PONG: $pingString (received at ${System.currentTimeMillis()})"
-            val responseBytes = pongResponse.toByteArray(StandardCharsets.UTF_8)
+            val pongResponse = TestPongResponse(
+                original_message = pingMessage.message,
+                response_message = "PONG received",
+                timestamp = System.currentTimeMillis()
+            )
+            val responseBytes = gson.toJson(pongResponse).toByteArray(StandardCharsets.UTF_8)
             
             Log.d(TAG, "Sending PONG: $pongResponse")
             
