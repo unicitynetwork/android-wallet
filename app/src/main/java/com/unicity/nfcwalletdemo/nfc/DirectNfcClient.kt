@@ -532,25 +532,6 @@ class DirectNfcClient(
         }
     }
     
-    private suspend fun generateReceiverIdentity(): UnicityIdentity = 
-        suspendCancellableCoroutine { continuation ->
-            sdkService.generateIdentity { result ->
-                result.onSuccess { identityJson ->
-                    try {
-                        val identity = UnicityIdentity.fromJson(identityJson)
-                        continuation.resume(identity)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to parse receiver identity", e)
-                        continuation.resume(UnicityIdentity("receiver_secret", "receiver_nonce"))
-                    }
-                }
-                result.onFailure { error ->
-                    Log.e(TAG, "Failed to generate receiver identity", error)
-                    continuation.resume(UnicityIdentity("fallback_receiver_secret", "fallback_receiver_nonce"))
-                }
-            }
-        }
-    
     private data class SenderData(
         val senderIdentity: UnicityIdentity,
         val tokenJson: String
@@ -583,28 +564,6 @@ class DirectNfcClient(
                 UnicityIdentity("error_secret", "error_nonce"),
                 "{\"error\": \"failed_to_parse_token\"}"
             )
-        }
-    }
-    
-    private suspend fun generateReceivingAddressForOfflineTransfer(
-        tokenIdJson: String,
-        tokenTypeJson: String,
-        receiverIdentity: UnicityIdentity
-    ): String = suspendCancellableCoroutine { continuation ->
-        sdkService.generateReceivingAddressForOfflineTransfer(
-            tokenIdJson,
-            tokenTypeJson,
-            receiverIdentity.toJson()
-        ) { result ->
-            result.onSuccess { addressJson ->
-                val addressData = gson.fromJson(addressJson, Map::class.java)
-                val address = addressData["address"] as? String ?: throw Exception("Address not found")
-                continuation.resume(address)
-            }
-            result.onFailure { error ->
-                Log.e(TAG, "Failed to generate receiving address for offline transfer", error)
-                continuation.resume("fallback_address")
-            }
         }
     }
 
@@ -650,58 +609,6 @@ class DirectNfcClient(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create offline transfer package", e)
             continuation.resume(gson.toJson(mapOf("error" to e.message)))
-        }
-    }
-
-    private suspend fun createOfflineTransferWithSdk(
-        senderIdentity: UnicityIdentity,
-        recipientAddress: String,
-        tokenJson: String
-    ): String = suspendCancellableCoroutine { continuation ->
-        sdkService.createOfflineTransferPackage(
-            senderIdentity.toJson(),
-            recipientAddress,
-            tokenJson
-        ) { result ->
-            result.onSuccess { offlineTransactionJson ->
-                continuation.resume(offlineTransactionJson)
-            }
-            result.onFailure { error ->
-                Log.e(TAG, "Failed to create offline transfer with SDK", error)
-                // Return fallback offline transfer data
-                val fallbackTransfer = mapOf(
-                    "error" to "sdk_offline_transfer_failed",
-                    "message" to error.message,
-                    "token" to tokenJson
-                )
-                continuation.resume(gson.toJson(fallbackTransfer))
-            }
-        }
-    }
-
-    private suspend fun createTransferWithSdk(
-        senderIdentity: UnicityIdentity,
-        receiverIdentity: UnicityIdentity,
-        tokenJson: String
-    ): String = suspendCancellableCoroutine { continuation ->
-        sdkService.createTransfer(
-            senderIdentity.toJson(),
-            receiverIdentity.toJson(),
-            tokenJson
-        ) { result ->
-            result.onSuccess { transferJson ->
-                continuation.resume(transferJson)
-            }
-            result.onFailure { error ->
-                Log.e(TAG, "Failed to create transfer with SDK", error)
-                // Return fallback transfer data
-                val fallbackTransfer = mapOf(
-                    "error" to "sdk_transfer_failed",
-                    "message" to error.message,
-                    "token" to tokenJson
-                )
-                continuation.resume(gson.toJson(fallbackTransfer))
-            }
         }
     }
 }
