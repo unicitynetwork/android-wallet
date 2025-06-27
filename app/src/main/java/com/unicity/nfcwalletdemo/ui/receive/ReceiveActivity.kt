@@ -244,6 +244,9 @@ class ReceiveActivity : AppCompatActivity() {
         // Check for recent test results from SharedPreferences
         checkForRecentTestResults()
         
+        // Check for recent token transfers from SharedPreferences
+        checkForRecentTokenTransfers()
+        
         // Register broadcast receiver for NFC transfers and progress
         val filter = IntentFilter().apply {
             addAction("com.unicity.nfcwalletdemo.TOKEN_RECEIVED")
@@ -293,6 +296,65 @@ class ReceiveActivity : AppCompatActivity() {
             binding.root.postDelayed({
                 navigateToMainActivity()
             }, 3500) // Wait slightly longer than success dialog auto-dismiss
+        }
+    }
+    
+    private fun checkForRecentTokenTransfers() {
+        val prefs = getSharedPreferences("nfc_token_transfers", Context.MODE_PRIVATE)
+        val lastTokenTime = prefs.getLong("last_token_time", 0)
+        val lastOfflineTime = prefs.getLong("last_offline_time", 0)
+        val currentTime = System.currentTimeMillis()
+        
+        // Check for recent regular token transfer (within 5 seconds)
+        if (lastTokenTime > 0 && (currentTime - lastTokenTime) < 5000) {
+            val tokenJson = prefs.getString("last_token_json", null)
+            val tokenName = prefs.getString("last_token_name", "Unknown")
+            
+            // Clear the saved token transfer
+            prefs.edit().apply {
+                remove("last_token_json")
+                remove("last_token_time")
+                remove("last_token_name")
+                apply()
+            }
+            
+            if (tokenJson != null) {
+                Log.d("ReceiveActivity", "Found recent token transfer: $tokenName")
+                // Process the token transfer
+                lifecycleScope.launch {
+                    try {
+                        val token = gson.fromJson(tokenJson, Token::class.java)
+                        viewModel.onTokenReceived(token)
+                        showSuccessDialog("Received ${token.name} successfully!")
+                        Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Log.e("ReceiveActivity", "Error processing saved token transfer", e)
+                    }
+                }
+            }
+        }
+        
+        // Check for recent offline transfer (within 5 seconds)
+        else if (lastOfflineTime > 0 && (currentTime - lastOfflineTime) < 5000) {
+            val offlineTransaction = prefs.getString("last_offline_transaction", null)
+            val tokenName = prefs.getString("last_offline_token_name", "Unknown") ?: "Unknown"
+            val transferType = prefs.getString("last_transfer_type", "")
+            
+            // Clear the saved offline transfer
+            prefs.edit().apply {
+                remove("last_offline_transaction")
+                remove("last_offline_time")
+                remove("last_offline_token_name")
+                remove("last_transfer_type")
+                apply()
+            }
+            
+            if (offlineTransaction != null && transferType == "unicity_offline_transfer") {
+                Log.d("ReceiveActivity", "Found recent offline transfer: $tokenName")
+                lifecycleScope.launch {
+                    handleNewOfflineTransfer(tokenName, offlineTransaction)
+                }
+            }
         }
     }
     

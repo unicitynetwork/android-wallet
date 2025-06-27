@@ -270,8 +270,15 @@ class DirectNfcClient(
         try {
             Log.d(TAG, "Starting Unicity token handshake for: ${token.name}")
             
+            // Wait for connection to stabilize (same as test transfer)
+            Log.d(TAG, "Waiting for NFC connection to stabilize...")
+            delay(1000)
+            
             // Create a request for the receiver's address
             val tokenRequest = createTokenTransferRequest(token)
+            
+            // Small delay before first command
+            delay(200)
             
             // Request receiver address from the other device
             val receiverAddress = requestReceiverAddress(tokenRequest)
@@ -282,8 +289,14 @@ class DirectNfcClient(
             
             Log.d(TAG, "Received address from receiver: $receiverAddress")
             
+            // Delay before creating offline transaction
+            delay(300)
+            
             // Create offline transaction package with receiver's address
             val offlineTransactionPackage = createOfflineTransferPackageWithReceiverAddress(token, receiverAddress)
+            
+            // Delay before sending transaction package
+            delay(200)
             
             // Send offline transaction package to receiver
             sendOfflineTransactionPackage(offlineTransactionPackage)
@@ -295,8 +308,19 @@ class DirectNfcClient(
             
         } catch (e: Exception) {
             Log.e(TAG, "Failed Unicity handshake: ${e.message}", e)
+            val errorMessage = when (e) {
+                is android.nfc.TagLostException -> {
+                    "NFC connection lost. Please keep phones together and try again."
+                }
+                is java.io.IOException -> {
+                    "NFC communication error. Please try again."
+                }
+                else -> {
+                    "Offline transfer failed: ${e.message}"
+                }
+            }
             withContext(Dispatchers.Main) {
-                onError("Offline transfer failed: ${e.message}")
+                onError(errorMessage)
             }
         }
     }
@@ -424,8 +448,10 @@ class DirectNfcClient(
                 offset += chunkSize
                 chunkIndex++
                 
-                // Small delay between chunks
-                delay(10)
+                // Delay between chunks to avoid overwhelming the connection
+                if (chunkIndex < totalChunks) {
+                    delay(50) // Increased delay for stability
+                }
             }
             
             Log.d(TAG, "Offline transaction package sent successfully in $totalChunks chunks")

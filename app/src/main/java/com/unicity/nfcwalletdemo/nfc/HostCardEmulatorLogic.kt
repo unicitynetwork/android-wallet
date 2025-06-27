@@ -290,6 +290,17 @@ class HostCardEmulatorLogic(
 
             Log.d(TAG, "Token successfully received via direct NFC: ${receivedToken.name}")
 
+            // Save token transfer to SharedPreferences for persistence
+            val timestamp = System.currentTimeMillis()
+            val prefs = context.getSharedPreferences("nfc_token_transfers", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putString("last_token_json", tokenJson)
+                putLong("last_token_time", timestamp)
+                putString("last_token_name", receivedToken.name)
+                apply()
+            }
+            Log.d(TAG, "Saved token transfer to SharedPreferences")
+
             // Notify ReceiveActivity with local broadcast for safety
             val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
                 putExtra("token_json", tokenJson)
@@ -635,8 +646,8 @@ class HostCardEmulatorLogic(
                     Log.d(TAG, "Transfer package keys: ${transferPackage.keys}")
                     Log.d(TAG, "First 500 chars of data: ${completeOfflineTransactionData.take(500)}")
                     
-                    // Process the offline transaction using the SDK
-                    processOfflineTransactionWithSdk(completeOfflineTransactionData)
+                    // Process the offline Unicity transfer package
+                    processOfflineUnicityTransfer(transferPackage)
                     
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse offline transaction data", e)
@@ -703,6 +714,18 @@ class HostCardEmulatorLogic(
             val offlineTransaction = transferPackage["offline_transaction"] as? String ?: ""
 
             Log.d(TAG, "Processing offline Unicity transfer for token: $tokenName")
+
+            // Save offline transfer to SharedPreferences for persistence
+            val timestamp = System.currentTimeMillis()
+            val prefs = context.getSharedPreferences("nfc_token_transfers", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putString("last_offline_transaction", offlineTransaction)
+                putLong("last_offline_time", timestamp)
+                putString("last_offline_token_name", tokenName)
+                putString("last_transfer_type", "unicity_offline_transfer")
+                apply()
+            }
+            Log.d(TAG, "Saved offline transfer to SharedPreferences")
 
             // Broadcast the offline transfer to ReceiveActivity for processing
             val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
