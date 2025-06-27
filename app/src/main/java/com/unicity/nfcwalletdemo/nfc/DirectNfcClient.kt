@@ -193,8 +193,9 @@ class DirectNfcClient(
                     onProgress(0, 1)
                 }
                 
-                // Wait for connection to stabilize
-                delay(500)
+                // Wait for connection to stabilize (increased delay)
+                Log.d(TAG, "Waiting for NFC connection to stabilize...")
+                delay(1000)
                 
                 // Test 1: Simple SELECT AID
                 Log.d(TAG, "Test 1: Sending SELECT AID...")
@@ -203,6 +204,9 @@ class DirectNfcClient(
                     throw Exception("Failed to select application")
                 }
                 Log.d(TAG, "✅ SELECT AID successful")
+                
+                // Small delay between commands
+                delay(200)
                 
                 // Test 2: Send PING command with test data
                 Log.d(TAG, "Test 2: Sending PING...")
@@ -219,9 +223,11 @@ class DirectNfcClient(
                 val responseString = String(responseData, StandardCharsets.UTF_8)
                 Log.d(TAG, "✅ PING successful, response: $responseString")
                 
+                // Longer delay before second test
+                delay(300)
+                
                 // Test 3: Send another PING to verify stability
                 Log.d(TAG, "Test 3: Sending second PING...")
-                delay(100)
                 val testData2 = "Test 2 at ${System.currentTimeMillis()}".toByteArray(StandardCharsets.UTF_8)
                 val pingCommand2 = byteArrayOf(0x00.toByte(), CMD_TEST_PING, 0x00.toByte(), 0x00.toByte(), testData2.size.toByte()) + testData2
                 
@@ -239,8 +245,19 @@ class DirectNfcClient(
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Test transfer failed", e)
+                val errorMessage = when (e) {
+                    is android.nfc.TagLostException -> {
+                        "NFC connection lost. Please keep phones together and try again."
+                    }
+                    is java.io.IOException -> {
+                        "NFC communication error. Please try again."
+                    }
+                    else -> {
+                        "Test failed: ${e.message}"
+                    }
+                }
                 withContext(Dispatchers.Main) {
-                    onError("Test failed: ${e.message}")
+                    onError(errorMessage)
                 }
             }
         }
