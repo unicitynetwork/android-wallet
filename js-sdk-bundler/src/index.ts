@@ -11,10 +11,6 @@ export { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/trans
 // Explicitly export deserializer classes
 export { TokenJsonDeserializer } from '@unicitylabs/state-transition-sdk/lib/serializer/token/TokenJsonDeserializer.js';
 
-// export * from './ISerializable.js';
-// export * from './StateTransitionClient.js';
-// export * from './hash/createDefaultDataHasherFactory.js';
-
 // Commons exports - Signing
 export { SigningService } from '@unicitylabs/commons/lib/signing/SigningService.js';
 export { Signature } from '@unicitylabs/commons/lib/signing/Signature.js';
