@@ -1,7 +1,6 @@
 package com.unicity.nfcwalletdemo
 
 import com.google.gson.Gson
-import com.unicity.nfcwalletdemo.sdk.UnicityMintResult
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
 import org.junit.Test
 import org.junit.Assert.*

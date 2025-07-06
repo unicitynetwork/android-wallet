@@ -2,7 +2,9 @@ package com.unicity.nfcwalletdemo
 
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 import org.junit.Assert.*
 import java.io.File
@@ -40,10 +42,10 @@ class TokenSerializationUnitTest {
             assertEquals("File content should match token JSON data", token.jsonData, jsonFromFile)
             
             // Parse and verify JSON structure
-            val parsedJson = JSONObject(jsonFromFile)
-            assertEquals("test123", parsedJson.getString("id"))
-            assertEquals("fungible", parsedJson.getString("type"))
-            assertEquals("serialization test", parsedJson.getString("data"))
+            val parsedJson = Json.parseToJsonElement(jsonFromFile).jsonObject
+            assertEquals("test123", parsedJson["id"]?.jsonPrimitive?.content)
+            assertEquals("fungible", parsedJson["type"]?.jsonPrimitive?.content)
+            assertEquals("serialization test", parsedJson["data"]?.jsonPrimitive?.content)
             
         } finally {
             // Cleanup
@@ -99,37 +101,37 @@ class TokenSerializationUnitTest {
             val restoredJson = tempFile.readText()
             
             // Parse both JSONs and compare structure
-            val originalParsed = JSONObject(complexTokenJson)
-            val restoredParsed = JSONObject(restoredJson)
+            val originalParsed = Json.parseToJsonElement(complexTokenJson).jsonObject
+            val restoredParsed = Json.parseToJsonElement(restoredJson).jsonObject
             
             // Verify key fields
             assertEquals(
-                originalParsed.getString("id"),
-                restoredParsed.getString("id")
+                originalParsed["id"]?.jsonPrimitive?.content,
+                restoredParsed["id"]?.jsonPrimitive?.content
             )
             assertEquals(
-                originalParsed.getString("type"),
-                restoredParsed.getString("type")
+                originalParsed["type"]?.jsonPrimitive?.content,
+                restoredParsed["type"]?.jsonPrimitive?.content
             )
             assertEquals(
-                originalParsed.getString("data"),
-                restoredParsed.getString("data")
+                originalParsed["data"]?.jsonPrimitive?.content,
+                restoredParsed["data"]?.jsonPrimitive?.content
             )
             
             // Verify nested structures
-            val originalState = originalParsed.getJSONObject("state")
-            val restoredState = restoredParsed.getJSONObject("state")
+            val originalState = originalParsed["state"]?.jsonObject
+            val restoredState = restoredParsed["state"]?.jsonObject
             assertEquals(
-                originalState.getString("data"),
-                restoredState.getString("data")
+                originalState?.get("data")?.jsonPrimitive?.content,
+                restoredState?.get("data")?.jsonPrimitive?.content
             )
             
             // Verify genesis
-            val originalGenesis = originalParsed.getJSONObject("genesis")
-            val restoredGenesis = restoredParsed.getJSONObject("genesis")
+            val originalGenesis = originalParsed["genesis"]?.jsonObject
+            val restoredGenesis = restoredParsed["genesis"]?.jsonObject
             assertEquals(
-                originalGenesis.getJSONObject("data").getString("recipient"),
-                restoredGenesis.getJSONObject("data").getString("recipient")
+                originalGenesis?.get("data")?.jsonObject?.get("recipient")?.jsonPrimitive?.content,
+                restoredGenesis?.get("data")?.jsonObject?.get("recipient")?.jsonPrimitive?.content
             )
             
         } finally {
@@ -154,8 +156,8 @@ class TokenSerializationUnitTest {
             assertEquals("{}", content)
             
             // Verify it can be parsed as valid JSON
-            val json = JSONObject(content)
-            assertTrue("Empty JSON should have no keys", json.length() == 0)
+            val json = Json.parseToJsonElement(content).jsonObject
+            assertTrue("Empty JSON should have no keys", json.isEmpty())
             
         } finally {
             tempFile.delete()

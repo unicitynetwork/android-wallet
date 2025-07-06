@@ -7,6 +7,14 @@ plugins {
 android {
     namespace = "com.unicity.nfcwalletdemo"
     compileSdk = 34
+    
+    testOptions {
+        unitTests {
+            // This makes Android SDK methods available in unit tests
+            // by returning default values when Android classes are used
+            isReturnDefaultValues = true
+        }
+    }
 
     defaultConfig {
         applicationId = "com.unicity.nfcwalletdemo"
