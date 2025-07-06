@@ -1489,7 +1489,7 @@ async function waitInclusionProof(client, commitment, timeout = 30000) {
       const inclusionProof = await client.getInclusionProof(commitment);
       console.log('Got inclusion proof, verifying...');
       
-      if ((await inclusionProof.verify(commitment.requestId.toBigInt())) === InclusionProofVerificationStatus.OK) {
+      if ((await inclusionProof.verify(commitment.requestId)) === InclusionProofVerificationStatus.OK) {
         console.log('Inclusion proof verified successfully');
         return inclusionProof;
       }
