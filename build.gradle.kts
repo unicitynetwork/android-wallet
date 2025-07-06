@@ -28,4 +28,18 @@ tasks.register<com.github.gradle.node.npm.task.NpmTask>("bundleJsSdk") {
 
     // Corresponds to the "build": "webpack" script in your js-sdk-bundler/package.json
     npmCommand.set(listOf("run", "build"))
+    
+    // Configure inputs and outputs for incremental builds
+    inputs.files(
+        fileTree("js-sdk-bundler/src"),
+        file("js-sdk-bundler/package.json"),
+        file("js-sdk-bundler/package-lock.json"),
+        file("js-sdk-bundler/webpack.config.js"),
+        file("js-sdk-bundler/tsconfig.json")
+    )
+    
+    outputs.file("app/src/main/assets/unicity-sdk.js")
+    
+    // Only run if inputs have changed
+    outputs.upToDateWhen { true }
 }
