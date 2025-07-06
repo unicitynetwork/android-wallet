@@ -6,7 +6,7 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
 
 **Token Type**: Real Unicity Protocol tokens with cryptographic signatures  
 **Transfer Method**: NFC-only offline transfer using Android HCE  
-**SDK Integration**: Full Unicity State Transition SDK with offline transfer support  
+**SDK Integration**: Unicity State Transition SDK v1.4.7 with offline transfer support  
 **Transfer Protocol**: Multi-phase handshake with receiver address generation  
 **Transfer Speed**: 3-60 seconds depending on token size (includes handshake)  
 **User Experience**: Hold phones together during entire transfer
@@ -38,17 +38,25 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
    cd nfc-wallet-demo
    ```
 
-2. **Open in Android Studio**
+2. **Install Java 17** (required for Android development)
+   ```bash
+   brew install openjdk@17  # macOS
+   # or use your system's package manager
+   ```
+
+3. **Open in Android Studio**
    - Import the project
    - Sync Gradle dependencies
+   - Ensure Java 17 is selected in project structure
 
-3. **Build and install**
+4. **Build and install**
    ```bash
+   export JAVA_HOME=$(/usr/libexec/java_home -v 17)  # macOS
    ./gradlew assembleDebug
    adb install app/build/outputs/apk/debug/app-debug.apk
    ```
 
-4. **Test on two NFC devices**
+5. **Test on two NFC devices**
    - Install on both devices
    - Enable NFC in device settings
    - Open app on both devices
@@ -189,9 +197,11 @@ The app uses the Unicity State Transition SDK to create real cryptographic token
 ### Key SDK Features Used
 - **SigningService**: Cryptographic signatures for token ownership
 - **MaskedPredicate**: Privacy-preserving ownership predicates
-- **StateTransitionClient**: Blockchain interaction
-- **InclusionProof**: Proof of blockchain commitment
-- **Offline Transfer**: Create and complete offline transactions without internet
+- **StateTransitionClient**: Blockchain interaction (no separate offline client)
+- **InclusionProof**: Proof of blockchain commitment with direct verification
+- **Commitment**: Standard commitment class for offline transfers
+- **CommitmentJsonSerializer**: JSON serialization for offline transfer packages
+- **TokenFactory**: Token reconstruction from JSON data
 - **Identity Generation**: Create new cryptographic identities for receiving tokens
 
 ## 🏭 Production Checklist
@@ -268,9 +278,8 @@ app/src/main/
 │       └── WalletViewModel.kt
 ├── assets/
 │   ├── bridge.html              # WebView bridge HTML
-│   ├── unicity-sdk.js           # Bundled Unicity SDK
-│   ├── unicity-sdk.js.map       # Source map
-│   └── unicity-wrapper.js       # JavaScript wrapper
+│   ├── unicity-sdk.js           # Bundled Unicity SDK v1.4.7
+│   └── unicity-wrapper.js       # JavaScript wrapper (updated for SDK v1.4.7)
 └── res/
     ├── drawable/                # Icons and graphics
     ├── layout/                  # XML layouts
@@ -375,6 +384,21 @@ app/src/main/
 5. **Transfer tokens** by tapping devices together
 6. **Reset wallet** using menu → "Reset Wallet" if needed
 
+## 📦 Dependencies
+
+### Android Dependencies
+- Android Gradle Plugin: 8.11.0
+- Kotlin: 1.9.0
+- Gradle: 8.13
+- Target SDK: 34 (Android 14)
+- Min SDK: 24 (Android 7.0)
+
+### JavaScript Dependencies
+- @unicitylabs/state-transition-sdk: 1.4.7-rc.7cec668
+- @unicitylabs/commons: 2.4.0-rc.24d6a7c
+- Node.js: 20.14.0 (managed by Gradle)
+- Webpack: 5.99.9
+
 **Version**: 2.0.0  
-**Last Updated**: June 2025  
+**Last Updated**: July 2025  
 **License**: MIT
