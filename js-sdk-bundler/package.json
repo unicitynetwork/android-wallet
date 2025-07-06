@@ -7,7 +7,7 @@
     "build": "webpack"
   },
   "dependencies": {
-    "@unicitylabs/state-transition-sdk": "1.4.7-rc.70f8e20"
+    "@unicitylabs/state-transition-sdk": "1.4.7-rc.7cec668"
   },
   "devDependencies": {
     "buffer": "^6.0.3",

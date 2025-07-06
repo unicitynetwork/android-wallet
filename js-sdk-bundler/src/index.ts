@@ -1,15 +1,16 @@
 export * from '@unicitylabs/state-transition-sdk';
 
-// Explicitly export offline classes that might not be in the main export
-export { OfflineStateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/OfflineStateTransitionClient.js';
-export { OfflineCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/OfflineCommitment.js';
-export { OfflineTransaction } from '@unicitylabs/state-transition-sdk/lib/transaction/OfflineTransaction.js';
-
 // Explicitly export transaction classes
 export { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
+export { Commitment } from '@unicitylabs/state-transition-sdk/lib/transaction/Commitment.js';
 
-// Explicitly export deserializer classes
-export { TokenJsonDeserializer } from '@unicitylabs/state-transition-sdk/lib/serializer/token/TokenJsonDeserializer.js';
+// Explicitly export serializer classes for offline transfers
+export { CommitmentJsonSerializer } from '@unicitylabs/state-transition-sdk/lib/serializer/json/transaction/CommitmentJsonSerializer.js';
+export { TokenJsonSerializer } from '@unicitylabs/state-transition-sdk/lib/serializer/json/token/TokenJsonSerializer.js';
+
+// Export factory classes
+export { TokenFactory } from '@unicitylabs/state-transition-sdk/lib/token/TokenFactory.js';
+export { PredicateJsonFactory } from '@unicitylabs/state-transition-sdk/lib/predicate/PredicateJsonFactory.js';
 
 // Commons exports - Signing
 export { SigningService } from '@unicitylabs/commons/lib/signing/SigningService.js';

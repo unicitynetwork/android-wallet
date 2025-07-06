@@ -3,7 +3,6 @@ console.log('========== UNICITY WRAPPER LOADED ==========');
 
 // Global variables for SDK components
 let sdkClient = null;
-let offlineClient = null;
 const AGGREGATOR_URL = 'https://gateway-test.unicity.network';
 console.log('🌐 AGGREGATOR URL:', AGGREGATOR_URL);
 
@@ -30,9 +29,9 @@ function initializeSdk() {
     console.log('SDK available classes:', Object.keys(sdk || {}));
     console.log('AggregatorClient:', typeof sdk.AggregatorClient);
     console.log('StateTransitionClient:', typeof sdk.StateTransitionClient);
-    console.log('OfflineStateTransitionClient:', typeof sdk.OfflineStateTransitionClient);
+    console.log('CommitmentJsonSerializer:', typeof sdk.CommitmentJsonSerializer);
     
-    const { AggregatorClient, StateTransitionClient, OfflineStateTransitionClient } = sdk;
+    const { AggregatorClient, StateTransitionClient } = sdk;
     if (!AggregatorClient || !StateTransitionClient) {
       throw new Error('AggregatorClient or StateTransitionClient not found in SDK');
     }
@@ -41,23 +40,17 @@ function initializeSdk() {
     const aggregatorClient = new AggregatorClient(AGGREGATOR_URL);
     sdkClient = new StateTransitionClient(aggregatorClient);
     
-    if (OfflineStateTransitionClient) {
-      offlineClient = new OfflineStateTransitionClient(aggregatorClient);
-      console.log('Offline client initialized successfully');
-    } else {
-      console.warn('OfflineStateTransitionClient not available - offline transfers will not work');
-    }
     console.log('SDK initialized successfully');
-    // Test offline classes availability
-    const offlineClassesAvailable = !!(sdk.OfflineStateTransitionClient && sdk.OfflineTransaction && sdk.OfflineCommitment);
-    console.log('Offline classes available:', offlineClassesAvailable);
-    console.log('OfflineTransaction:', typeof sdk.OfflineTransaction);
-    console.log('OfflineCommitment:', typeof sdk.OfflineCommitment);
+    // Test serializer classes availability for offline transfers
+    const offlineClassesAvailable = !!(sdk.CommitmentJsonSerializer && sdk.TokenJsonSerializer);
+    console.log('Offline serialization support available:', offlineClassesAvailable);
+    console.log('CommitmentJsonSerializer:', typeof sdk.CommitmentJsonSerializer);
+    console.log('TokenJsonSerializer:', typeof sdk.TokenJsonSerializer);
     
     AndroidBridge.postMessage(JSON.stringify({ 
       status: 'success', 
       data: 'SDK initialized',
-      offlineSupport: offlineClassesAvailable
+      offlineSupport: true // Offline transfers now use standard classes with JSON serialization
     }));
   } catch (e) {
     console.error('SDK initialization error:', e);
@@ -430,7 +423,8 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
       PredicateJsonFactory,
       TransactionData,
       HashAlgorithm,
-      DataHasher
+      DataHasher,
+      HexConverter
     } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
@@ -438,8 +432,14 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const tokenDeserializer = new TokenJsonDeserializer(new PredicateJsonFactory());
-    const token = await tokenDeserializer.deserialize(parsedTokenData.token || parsedTokenData);
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(parsedTokenData.token || parsedTokenData, tokenDataFromJSON);
     
     // Create sender signing service
     const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
@@ -493,8 +493,8 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
  */
 async function createOfflineTransferPackage(senderIdentityJson, recipientAddress, tokenJson) {
   try {
-    if (!offlineClient) {
-      throw new Error('Offline SDK client not initialized');
+    if (!sdkClient) {
+      throw new Error('SDK client not initialized');
     }
     
     console.log('Creating offline transfer package...');
@@ -504,12 +504,13 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     
     const { 
       SigningService, 
-      TokenJsonDeserializer,
+      TokenFactory,
       PredicateJsonFactory,
       TransactionData,
       HashAlgorithm,
       DataHasher,
-      OfflineTransaction
+      Commitment,
+      CommitmentJsonSerializer
     } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
@@ -517,8 +518,14 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate the Token object from JSON - this should include complete transaction history
-    const tokenDeserializer = new TokenJsonDeserializer(new PredicateJsonFactory());
-    const token = await tokenDeserializer.deserialize(parsedTokenData);
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(parsedTokenData, tokenDataFromJSON);
     
     console.log('Token reconstructed:', token.id ? token.id.toJSON() : 'undefined', 'transactions:', token.transactions?.length || 0);
     
@@ -540,22 +547,26 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
       token.nametagTokens
     );
     
-    // Create offline commitment (no network call)
-    const offlineCommitment = await offlineClient.createOfflineCommitment(
+    // Create commitment (no network call needed for offline)
+    const commitment = await Commitment.create(
       transactionData,
       senderSigningService
     );
     
-    // Create offline transaction package containing the commitment and the complete token
-    const offlineTransaction = new OfflineTransaction(offlineCommitment, token);
+    // Create offline transfer package with commitment and token
+    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
+    const offlinePackage = {
+      commitment: await commitmentSerializer.serialize(commitment),
+      token: token.toJSON()
+    };
     
-    // Use BigInt-safe serialization for offline transfer
-    const offlineTransactionJsonString = offlineTransaction.toJSONString();
+    // Convert to JSON string for offline transfer
+    const offlinePackageJsonString = JSON.stringify(offlinePackage);
     
-    console.log('Offline transfer package created successfully, size:', offlineTransactionJsonString.length);
+    console.log('Offline transfer package created successfully, size:', offlinePackageJsonString.length);
     AndroidBridge.postMessage(JSON.stringify({ 
       status: 'success', 
-      data: offlineTransactionJsonString
+      data: offlinePackageJsonString
     }));
   } catch (e) {
     console.error('Offline transfer package creation failed:', e);
@@ -584,23 +595,51 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
       MaskedPredicate,
       TokenState,
       HashAlgorithm,
-      OfflineTransaction
+      TokenFactory,
+      PredicateJsonFactory,
+      CommitmentJsonSerializer,
+      HexConverter
     } = window.UnicitySDK;
     
-    // Deserialize the offline transaction using BigInt-safe method
-    console.log('Deserializing offline transaction...');
-    const offlineTransaction = await OfflineTransaction.fromJSONString(offlineTransactionJson);
+    // Deserialize the offline transfer package
+    console.log('Deserializing offline transfer package...');
+    const offlinePackage = JSON.parse(offlineTransactionJson);
     
-    console.log('Offline transaction deserialized:');
-    console.log('- Token ID:', offlineTransaction.token.id ? offlineTransaction.token.id.toJSON() : 'undefined');
-    console.log('- Token type:', offlineTransaction.token.type ? offlineTransaction.token.type.toJSON() : 'undefined');
-    console.log('- Current transactions:', offlineTransaction.token.transactions?.length || 0);
+    // Recreate token and commitment from the package
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(offlinePackage.token, tokenDataFromJSON);
     
-    // Step 1: Submit the offline transaction to the network
-    console.log('Submitting offline transaction to network...');
-    const transaction = await offlineClient.submitOfflineTransaction(offlineTransaction.commitment);
+    console.log('Token deserialized:');
+    console.log('- Token ID:', token.id ? token.id.toJSON() : 'undefined');
+    console.log('- Token type:', token.type ? token.type.toJSON() : 'undefined');
+    console.log('- Current transactions:', token.transactions?.length || 0);
     
-    console.log('Transaction submitted successfully, request ID:', transaction.requestId ? transaction.requestId.toJSON() : 'undefined');
+    // Deserialize commitment
+    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
+    const commitment = await commitmentSerializer.deserialize(
+      token.id,
+      token.type,
+      offlinePackage.commitment
+    );
+    
+    // Step 1: Submit the commitment to the network
+    console.log('Submitting commitment to network...');
+    const commitmentResponse = await sdkClient.submitCommitment(commitment);
+    
+    console.log('Commitment submitted successfully');
+    
+    // Wait for inclusion proof
+    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+    
+    // Create transaction from commitment
+    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
+    console.log('Transaction created successfully');
     
     // Convert receiver identity
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -610,8 +649,8 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
     console.log('Creating receiver predicate for new ownership...');
     const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
     const recipientPredicate = await MaskedPredicate.create(
-      offlineTransaction.token.id,
-      offlineTransaction.token.type,
+      token.id,
+      token.type,
       receiverSigningService,
       HashAlgorithm.SHA256,
       receiverNonce
@@ -626,9 +665,9 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
     // Step 4: Finish the transaction - this updates the Token object with the new transaction
     console.log('Finishing transaction to update token ownership...');
     const updatedToken = await sdkClient.finishTransaction(
-      offlineTransaction.token,  // Original token with history
-      newTokenState,             // New state with receiver as owner
-      transaction               // The completed transaction
+      token,                    // Original token with history
+      newTokenState,           // New state with receiver as owner
+      transaction             // The completed transaction
     );
     
     console.log('Offline transfer completed successfully!');
@@ -767,7 +806,7 @@ async function runAutomatedOfflineTransferTest() {
     console.log('STARTING AUTOMATED OFFLINE TRANSFER TEST');
     console.log('========================================');
     
-    if (!sdkClient || !offlineClient) {
+    if (!sdkClient) {
       initializeSdk();
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for SDK to initialize
     }
@@ -850,8 +889,8 @@ async function runAutomatedOfflineTransferTest() {
  */
 async function createOfflineTransferDirectly(senderIdentity, recipientAddress, tokenJson) {
   try {
-    if (!offlineClient) {
-      throw new Error('Offline SDK client not initialized');
+    if (!sdkClient) {
+      throw new Error('SDK client not initialized');
     }
     
     // Get the actual token object from our token data structure
@@ -862,8 +901,9 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
       TransactionData,
       HashAlgorithm,
       DataHasher,
-      OfflineTransaction,
-      HexConverter
+      Commitment,
+      CommitmentJsonSerializer,
+      PredicateJsonFactory
     } = window.UnicitySDK;
     
     // Create the transfer
@@ -886,18 +926,21 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
       token.nametagTokens
     );
     
-    // Create offline commitment (no network call)
-    const offlineCommitment = await offlineClient.createOfflineCommitment(
+    // Create commitment (no network call needed for offline)
+    const commitment = await Commitment.create(
       transactionData,
       senderSigningService
     );
     
-    // Create offline transaction package
-    const offlineTransaction = new OfflineTransaction(offlineCommitment, token);
+    // Create offline transfer package with commitment and token
+    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
+    const offlinePackage = {
+      commitment: await commitmentSerializer.serialize(commitment),
+      token: token.toJSON()
+    };
     
-    // Use the new SDK method designed specifically for transfer/storage
-    // This properly handles BigInt serialization for NFC transfer
-    return JSON.stringify(offlineTransaction.toJSON());
+    // Return as JSON string for offline transfer
+    return JSON.stringify(offlinePackage);
   } catch (e) {
   console.error(e.stack)
     console.error('createOfflineTransferDirectly failed:', e);
@@ -910,8 +953,8 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
  */
 async function completeOfflineTransferDirectly(receiverIdentity, offlineTransactionJson) {
   try {
-    if (!offlineClient || !sdkClient) {
-      throw new Error('SDK clients not initialized');
+    if (!sdkClient) {
+      throw new Error('SDK client not initialized');
     }
     
     const { 
@@ -919,7 +962,10 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
       MaskedPredicate,
       TokenState,
       HashAlgorithm,
-      OfflineTransaction
+      TokenFactory,
+      PredicateJsonFactory,
+      CommitmentJsonSerializer,
+      HexConverter
     } = window.UnicitySDK;
     
     console.log('Completing offline transfer directly...');
@@ -927,19 +973,42 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
     const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    // Use the new SDK method designed specifically for transfer/storage deserialization
-    // This properly handles BigInt deserialization from NFC transfer
-    const offlineTransaction = await OfflineTransaction.fromJSONString(offlineTransactionJson);
+    // Deserialize the offline transfer package
+    const offlinePackage = JSON.parse(offlineTransactionJson);
     
-    // Submit the offline transaction to the network
-    console.log('Submitting offline transaction to network...');
-    const transaction = await offlineClient.submitOfflineTransaction(offlineTransaction.commitment);
+    // Recreate token from the package
+    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
+    const tokenDataFromJSON = (data) => {
+      if (typeof data !== 'string') {
+        throw new Error('Invalid token data');
+      }
+      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
+    };
+    const token = await tokenFactory.create(offlinePackage.token, tokenDataFromJSON);
+    
+    // Deserialize commitment
+    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
+    const commitment = await commitmentSerializer.deserialize(
+      token.id,
+      token.type,
+      offlinePackage.commitment
+    );
+    
+    // Submit the commitment to the network
+    console.log('Submitting commitment to network...');
+    const commitmentResponse = await sdkClient.submitCommitment(commitment);
+    
+    // Wait for inclusion proof
+    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+    
+    // Create transaction from commitment
+    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
     
     // Recreate receiver's predicate
     const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
     const recipientPredicate = await MaskedPredicate.create(
-      offlineTransaction.token.id,
-      offlineTransaction.token.type,
+      token.id,
+      token.type,
       receiverSigningService,
       HashAlgorithm.SHA256,
       receiverNonce
@@ -947,7 +1016,7 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
     
     // Complete the transaction
     const updatedToken = await sdkClient.finishTransaction(
-      offlineTransaction.token,
+      token,
       await TokenState.create(recipientPredicate, new TextEncoder().encode('offline token transfer')),
       transaction
     );
@@ -1269,7 +1338,7 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     
     const { 
       TokenFactory,
-      PredicateFactory
+      PredicateJsonFactory
     } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
