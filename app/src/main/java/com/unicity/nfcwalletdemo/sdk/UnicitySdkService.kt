@@ -66,6 +66,14 @@ class UnicitySdkService(context: Context) {
             callback(result)
         }
     }
+    
+    fun deserializeToken(tokenJsonString: String, callback: (Result<String>) -> Unit) {
+        val escapedTokenJson = escapeJavaScriptString(tokenJsonString)
+        
+        executeJs("deserializeToken('$escapedTokenJson')") { result ->
+            callback(result)
+        }
+    }
 
     fun createTransfer(
         senderIdentityJson: String, 

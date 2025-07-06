@@ -32,20 +32,27 @@
     
     <!-- Surface Colors -->
     <color name="surface">#FFFFFF</color>
+    <color name="surface_dark">#1E1E1E</color>
     <color name="surface_variant">#F8F9FA</color>
+    <color name="surface_variant_dark">#2D2D2D</color>
     <color name="background">#F5F5F5</color>
     <color name="background_dark">#FAFAFA</color>
     
     <!-- Text Colors -->
     <color name="text_primary">#000000</color>
+    <color name="text_primary_dark">#FFFFFF</color>
     <color name="text_secondary">#4A4A4A</color>
+    <color name="text_secondary_dark">#B3B3B3</color>
     <color name="text_tertiary">#9E9E9E</color>
+    <color name="text_tertiary_dark">#808080</color>
     <color name="text_on_dark">#FFFFFF</color>
     <color name="text_on_accent">#FFFFFF</color>
     
     <!-- Card Colors -->
     <color name="card_background">#FFFFFF</color>
+    <color name="card_background_dark">#1E1E1E</color>
     <color name="card_elevated">#FFFFFF</color>
+    <color name="card_elevated_dark">#2D2D2D</color>
     <color name="card_stroke">#E0E0E0</color>
     
     <!-- Button Colors -->

@@ -348,6 +348,56 @@ async function mintToken(identityJson, tokenDataJson) {
 }
 
 /**
+ * Deserializes a token from JSON string (e.g., from a .txf file)
+ * @param {string} tokenJsonString - The stringified JSON of the token
+ */
+async function deserializeToken(tokenJsonString) {
+  try {
+    if (!sdkClient) {
+      throw new Error('SDK not initialized');
+    }
+    
+    console.log('Deserializing token from JSON string...');
+    
+    const { 
+      TokenFactory,
+      TokenJsonSerializer,
+      PredicateJsonFactory
+    } = window.UnicitySDK;
+    
+    // Parse the JSON string
+    const tokenJson = JSON.parse(tokenJsonString);
+    console.log('Parsed token JSON:', tokenJson);
+    
+    // Create the token factory with deserializer
+    const predicateFactory = new PredicateJsonFactory();
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(predicateFactory));
+    
+    // Deserialize the token using factory
+    console.log('Deserializing token object...');
+    const token = await tokenFactory.create(tokenJson);
+    
+    // Verify the token was deserialized correctly by serializing it back
+    const reserializedJson = token.toJSON();
+    console.log('Token deserialized successfully');
+    console.log('Token ID:', token.id.toString());
+    console.log('Token Type:', token.type.toString());
+    
+    // Return the deserialized token as JSON
+    const result = {
+      token: reserializedJson,
+      tokenId: token.id.toString(),
+      tokenType: token.type.toString()
+    };
+    
+    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
+  } catch (e) {
+    console.error('Token deserialization failed:', e);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
+  }
+}
+
+/**
  * Step 1 of transfer: Generate receiving address
  * Bob generates a receiving address for a specific token type and ID
  * @param {string} tokenIdHex - The token ID in hex format

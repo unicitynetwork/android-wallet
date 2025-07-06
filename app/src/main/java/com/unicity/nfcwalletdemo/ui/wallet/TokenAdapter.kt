@@ -17,7 +17,8 @@ import java.util.*
 class TokenAdapter(
     private val onSendClick: (Token) -> Unit,
     private val onCancelClick: (Token) -> Unit,
-    private val onManualSubmitClick: (Token) -> Unit = {}
+    private val onManualSubmitClick: (Token) -> Unit = {},
+    private val onShareClick: (Token) -> Unit = {}
 ) : ListAdapter<Token, TokenAdapter.TokenViewHolder>(TokenDiffCallback()) {
     
     private var expandedTokenId: String? = null
@@ -180,6 +181,10 @@ class TokenAdapter(
             
             binding.btnManualSubmit.setOnClickListener {
                 onManualSubmitClick(token)
+            }
+            
+            binding.btnShare.setOnClickListener {
+                onShareClick(token)
             }
         }
         

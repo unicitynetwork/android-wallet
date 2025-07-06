@@ -210,6 +210,16 @@
                     android:layout_marginEnd="@dimen/margin_sm" />
 
                 <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnShare"
+                    style="@style/Button.Unicity.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Share"
+                    app:icon="@drawable/ic_share"
+                    app:iconGravity="textStart"
+                    android:layout_marginEnd="@dimen/margin_sm" />
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSend"
                     style="@style/Button.Unicity"
                     android:layout_width="wrap_content"

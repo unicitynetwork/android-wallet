@@ -48,6 +48,8 @@ import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import android.os.VibrationEffect
 import android.os.Vibrator
+import androidx.core.content.FileProvider
+import java.io.File
 import android.os.Build
 
 class MainActivity : AppCompatActivity() {
@@ -171,6 +173,9 @@ class MainActivity : AppCompatActivity() {
             },
             onManualSubmitClick = { token ->
                 manualSubmitOfflineTransfer(token)
+            },
+            onShareClick = { token ->
+                shareToken(token)
             }
         )
         
@@ -1317,6 +1322,47 @@ class MainActivity : AppCompatActivity() {
                     continuation.resumeWith(Result.failure(error))
                 }
             }
+        }
+    }
+    
+    private fun shareToken(token: Token) {
+        try {
+            // Get the token's JSON data
+            val tokenJson = token.jsonData
+            if (tokenJson.isNullOrEmpty()) {
+                Toast.makeText(this, "Token has no data to share", Toast.LENGTH_SHORT).show()
+                return
+            }
+            
+            // Create a temporary file in the cache directory
+            val fileName = "token_${token.name.replace(" ", "_")}_${System.currentTimeMillis()}.txf"
+            val file = File(cacheDir, fileName)
+            
+            // Write the JSON data to the file
+            file.writeText(tokenJson)
+            
+            // Create a content URI for the file
+            val uri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.provider",
+                file
+            )
+            
+            // Create the share intent
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "Unicity Token: ${token.name}")
+                putExtra(Intent.EXTRA_TEXT, "Sharing Unicity token: ${token.name}")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            
+            // Launch the share chooser
+            startActivity(Intent.createChooser(shareIntent, "Share Token"))
+            
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to share token", e)
+            Toast.makeText(this, "Failed to share token: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
     
