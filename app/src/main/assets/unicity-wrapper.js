@@ -432,14 +432,9 @@ async function createTransferPackage(senderIdentityJson, recipientAddress, token
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(parsedTokenData.token || parsedTokenData, tokenDataFromJSON);
+    const { TokenJsonSerializer } = window.UnicitySDK;
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(parsedTokenData.token || parsedTokenData);
     
     // Create sender signing service
     const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
@@ -510,7 +505,8 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
       HashAlgorithm,
       DataHasher,
       Commitment,
-      CommitmentJsonSerializer
+      CommitmentJsonSerializer,
+      HexConverter
     } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
@@ -518,14 +514,9 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate the Token object from JSON - this should include complete transaction history
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(parsedTokenData, tokenDataFromJSON);
+    const { TokenJsonSerializer } = window.UnicitySDK;
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(parsedTokenData);
     
     console.log('Token reconstructed:', token.id ? token.id.toJSON() : 'undefined', 'transactions:', token.transactions?.length || 0);
     
@@ -554,9 +545,8 @@ async function createOfflineTransferPackage(senderIdentityJson, recipientAddress
     );
     
     // Create offline transfer package with commitment and token
-    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
     const offlinePackage = {
-      commitment: await commitmentSerializer.serialize(commitment),
+      commitment: CommitmentJsonSerializer.serialize(commitment),
       token: token.toJSON()
     };
     
@@ -606,14 +596,9 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
     const offlinePackage = JSON.parse(offlineTransactionJson);
     
     // Recreate token and commitment from the package
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(offlinePackage.token, tokenDataFromJSON);
+    const { TokenJsonSerializer } = window.UnicitySDK;
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(offlinePackage.token);
     
     console.log('Token deserialized:');
     console.log('- Token ID:', token.id ? token.id.toJSON() : 'undefined');
@@ -739,14 +724,9 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Import the token from the transfer package
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(transferPackage.token, tokenDataFromJSON);
+    const { TokenJsonSerializer } = window.UnicitySDK;
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(transferPackage.token);
     
     // Bob receives the commitment from Alice and gets the inclusion proof
     const { Commitment } = window.UnicitySDK;
@@ -902,8 +882,7 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
       HashAlgorithm,
       DataHasher,
       Commitment,
-      CommitmentJsonSerializer,
-      PredicateJsonFactory
+      CommitmentJsonSerializer
     } = window.UnicitySDK;
     
     // Create the transfer
@@ -933,9 +912,8 @@ async function createOfflineTransferDirectly(senderIdentity, recipientAddress, t
     );
     
     // Create offline transfer package with commitment and token
-    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
     const offlinePackage = {
-      commitment: await commitmentSerializer.serialize(commitment),
+      commitment: CommitmentJsonSerializer.serialize(commitment),
       token: token.toJSON()
     };
     
@@ -977,14 +955,9 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
     const offlinePackage = JSON.parse(offlineTransactionJson);
     
     // Recreate token from the package
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(offlinePackage.token, tokenDataFromJSON);
+    const { TokenJsonSerializer } = window.UnicitySDK;
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(offlinePackage.token);
     
     // Deserialize commitment
     const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
@@ -1169,14 +1142,9 @@ async function createTransferDirectly(senderIdentity, receiverIdentity, tokenJso
     const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(tokenObj, tokenDataFromJSON);
+    const { TokenJsonSerializer } = window.UnicitySDK;
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(tokenObj);
     
     const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
     
@@ -1234,14 +1202,9 @@ async function completeTransferDirectly(receiverIdentity, transferPackage) {
     const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Import the token from the transfer package
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(transferPackage.token, tokenDataFromJSON);
+    const { TokenJsonSerializer } = window.UnicitySDK;
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(transferPackage.token);
     
     // Bob receives the commitment from Alice and gets the inclusion proof
     const commitment = await Commitment.fromJSON(transferPackage.commitment);
@@ -1338,7 +1301,8 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     
     const { 
       TokenFactory,
-      PredicateJsonFactory
+      PredicateJsonFactory,
+      TokenJsonSerializer
     } = window.UnicitySDK;
     
     // Convert hex strings back to Uint8Array
@@ -1346,15 +1310,8 @@ async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJso
     const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
     // Recreate token from JSON
-    const tokenFactory = new TokenFactory(new PredicateJsonFactory());
-    // Create a simple fromJSON function for the token data
-    const tokenDataFromJSON = (data) => {
-      if (typeof data !== 'string') {
-        throw new Error('Invalid token data');
-      }
-      return Promise.resolve({ toCBOR: () => HexConverter.decode(data), toJSON: () => data });
-    };
-    const token = await tokenFactory.create(tokenObj, tokenDataFromJSON);
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(tokenObj);
     
     console.log('Token recreated successfully');
     console.log('Token ID:', token.id.toJSON());
