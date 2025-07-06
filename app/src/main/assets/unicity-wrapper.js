@@ -362,38 +362,54 @@ async function deserializeToken(tokenJsonString) {
     const { 
       TokenFactory,
       TokenJsonSerializer,
-      PredicateJsonFactory
+      PredicateJsonFactory,
+      Token
     } = window.UnicitySDK;
     
     // Parse the JSON string
     const tokenJson = JSON.parse(tokenJsonString);
-    console.log('Parsed token JSON:', tokenJson);
+    console.log('Parsed token JSON:', JSON.stringify(tokenJson, null, 2));
+    
+    // Validate token structure
+    if (!tokenJson.version) {
+      throw new Error('Token JSON missing version field');
+    }
+    if (!tokenJson.state) {
+      throw new Error('Token JSON missing state field');
+    }
+    if (!tokenJson.genesis) {
+      throw new Error('Token JSON missing genesis field');
+    }
     
     // Create the token factory with deserializer
     const predicateFactory = new PredicateJsonFactory();
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(predicateFactory));
+    const tokenSerializer = new TokenJsonSerializer(predicateFactory);
     
-    // Deserialize the token using factory
-    console.log('Deserializing token object...');
-    const token = await tokenFactory.create(tokenJson);
+    // Use the deserializer directly instead of factory
+    console.log('Deserializing token using TokenJsonSerializer...');
+    const token = await tokenSerializer.deserialize(tokenJson);
     
-    // Verify the token was deserialized correctly by serializing it back
-    const reserializedJson = token.toJSON();
     console.log('Token deserialized successfully');
-    console.log('Token ID:', token.id.toString());
-    console.log('Token Type:', token.type.toString());
+    console.log('Token class:', token.constructor.name);
+    console.log('Token ID:', token.id?.toString());
+    console.log('Token Type:', token.type?.toString());
+    
+    // Verify by serializing it back
+    const reserializedJson = token.toJSON();
+    console.log('Re-serialized token:', JSON.stringify(reserializedJson, null, 2));
     
     // Return the deserialized token as JSON
     const result = {
       token: reserializedJson,
-      tokenId: token.id.toString(),
-      tokenType: token.type.toString()
+      tokenId: token.id?.toString() || 'unknown',
+      tokenType: token.type?.toString() || 'unknown'
     };
     
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
     console.error('Token deserialization failed:', e);
-    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
+    console.error('Stack trace:', e.stack);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message + ' - ' + e.stack }));
   }
 }
 
@@ -1549,3 +1565,15 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   console.log('Document already loaded - waiting for SDK...');
   waitForSdkAndInitialize();
 }
+
+// Make functions available globally for Android to call
+window.generateIdentity = generateIdentity;
+window.mintToken = mintToken;
+window.deserializeToken = deserializeToken;
+window.createTransfer = createTransfer;
+window.finishTransfer = finishTransfer;
+window.generateReceivingAddressForOfflineTransfer = generateReceivingAddressForOfflineTransfer;
+window.createOfflineTransferPackage = createOfflineTransferPackage;
+window.completeOfflineTransfer = completeOfflineTransfer;
+window.receiveOfflineTransfer = receiveOfflineTransfer;
+window.runAutomatedOfflineTransferTest = runAutomatedOfflineTransferTest;

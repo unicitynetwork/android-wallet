@@ -132,13 +132,22 @@ class WalletRepository(context: Context) {
             // Mint the token using Unicity SDK
             val mintResult = mintToken(identity, tokenData)
             
-            // Create Token object with Unicity data
+            // Extract the complete token JSON from the mint result
+            // The JS SDK returns a finalized, self-contained token that includes:
+            // - Token state with unlock predicate
+            // - Genesis (mint) transaction with inclusion proof
+            // - Complete transaction history
+            // This is the same format used for .txf file exports
+            val mintResultObj = gson.fromJson(mintResult.toJson(), Map::class.java)
+            val tokenJson = gson.toJson(mintResultObj["token"])
+            
+            // Create Token object with the complete, self-contained token data
             val token = Token(
                 name = name,
                 type = "Unicity Token",
                 unicityAddress = identity.secret.take(16), // Use part of secret as address
-                jsonData = mintResult.toJson(),
-                sizeBytes = mintResult.toJson().length
+                jsonData = tokenJson, // Store the complete token in .txf format
+                sizeBytes = tokenJson.length
             )
             
             // Only add to wallet if minting was successful
