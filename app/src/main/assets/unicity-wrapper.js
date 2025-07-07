@@ -217,7 +217,7 @@ async function mintToken(identityJson, tokenDataJson) {
     console.log('Test token data properties:', Object.keys(testTokenData));
     
     // Create the token state
-    const tokenState = await TokenState.create(predicate, new TextEncoder().encode(tokenData.stateData || 'Token state data'));
+    const tokenState = await TokenState.create(predicate, null);
     console.log('Token state created:', typeof tokenState);
     
     // Create address for minting
@@ -710,8 +710,7 @@ async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJ
     console.log('Receiver predicate created:', recipientPredicate.reference ? recipientPredicate.reference.toJSON() : 'undefined');
     
     // Step 3: Create new token state with receiver as owner
-    const newStateData = new TextEncoder().encode('ownership transferred');
-    const newTokenState = await TokenState.create(recipientPredicate, newStateData);
+    const newTokenState = await TokenState.create(recipientPredicate, null);
     
     // Step 4: Finish the transaction - this updates the Token object with the new transaction
     console.log('Finishing transaction to update token ownership...');
@@ -821,7 +820,7 @@ async function completeTransfer(receiverIdentityJson, transferPackageJson) {
     // Complete the transaction with the recipient predicate
     const updatedToken = await sdkClient.finishTransaction(
       token,
-      await TokenState.create(recipientPredicate, new TextEncoder().encode('received token')),
+      await TokenState.create(recipientPredicate, null),
       transaction
     );
     
@@ -1056,7 +1055,7 @@ async function completeOfflineTransferDirectly(receiverIdentity, offlineTransact
     // Complete the transaction
     const updatedToken = await sdkClient.finishTransaction(
       token,
-      await TokenState.create(recipientPredicate, new TextEncoder().encode('offline token transfer')),
+      await TokenState.create(recipientPredicate, null),
       transaction
     );
     
@@ -1098,7 +1097,7 @@ async function mintTokenDirectly(identity, tokenName, amount, customData) {
   
   const signingService = await SigningService.createFromSecret(secret, nonce);
   const predicate = await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, nonce);
-  const tokenState = await TokenState.create(predicate, new TextEncoder().encode('mint token'));
+  const tokenState = await TokenState.create(predicate, null);
   
   const dataHasher = new DataHasher(HashAlgorithm.SHA256);
   dataHasher.update(new TextEncoder().encode('mint token'));
@@ -1298,7 +1297,7 @@ async function completeTransferDirectly(receiverIdentity, transferPackage) {
     // Complete the transaction with the recipient predicate
     const updatedToken = await sdkClient.finishTransaction(
       token,
-      await TokenState.create(recipientPredicate, new TextEncoder().encode('received token')),
+      await TokenState.create(recipientPredicate, null),
       transaction
     );
     
