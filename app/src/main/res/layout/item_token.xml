@@ -184,8 +184,22 @@
                 android:id="@+id/layoutButtons"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="end">
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnShare"
+                    style="@style/Button.Unicity.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Share"
+                    app:icon="@drawable/ic_share"
+                    app:iconGravity="textStart" />
+
+                <!-- Spacer to push Send button to the right -->
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCancel"
@@ -207,16 +221,6 @@
                     app:iconGravity="textStart"
                     app:iconTint="@color/warning"
                     android:visibility="gone"
-                    android:layout_marginEnd="@dimen/margin_sm" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnShare"
-                    style="@style/Button.Unicity.Text"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Share"
-                    app:icon="@drawable/ic_share"
-                    app:iconGravity="textStart"
                     android:layout_marginEnd="@dimen/margin_sm" />
 
                 <com.google.android.material.button.MaterialButton
