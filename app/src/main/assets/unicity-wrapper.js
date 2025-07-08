@@ -11,46 +11,26 @@ console.log('🌐 AGGREGATOR URL:', AGGREGATOR_URL);
  */
 function initializeSdk() {
   try {
-    // Check what's available - bundled SDK is at window.unicity
-    console.log('window.unicity available:', !!window.unicity);
-    console.log('window.UnicitySDK available:', !!window.UnicitySDK);
-    console.log('window keys:', Object.keys(window).filter(key => key.toLowerCase().includes('uni')));
-    
-    // Use the bundled SDK
     const sdk = window.unicity || window.UnicitySDK;
     if (!sdk) {
-      console.error('No SDK found. Available window properties:', Object.keys(window).slice(0, 20));
       throw new Error('Unicity SDK not found');
     }
     
-    // For compatibility, make it available as UnicitySDK too
     window.UnicitySDK = sdk;
-    
-    console.log('SDK available classes:', Object.keys(sdk || {}));
-    console.log('AggregatorClient:', typeof sdk.AggregatorClient);
-    console.log('StateTransitionClient:', typeof sdk.StateTransitionClient);
-    console.log('CommitmentJsonSerializer:', typeof sdk.CommitmentJsonSerializer);
     
     const { AggregatorClient, StateTransitionClient } = sdk;
     if (!AggregatorClient || !StateTransitionClient) {
       throw new Error('AggregatorClient or StateTransitionClient not found in SDK');
     }
     
-    console.log('🔗 Creating AggregatorClient with URL:', AGGREGATOR_URL);
     const aggregatorClient = new AggregatorClient(AGGREGATOR_URL);
     sdkClient = new StateTransitionClient(aggregatorClient);
     
     console.log('SDK initialized successfully');
-    // Test serializer classes availability for offline transfers
-    const offlineClassesAvailable = !!(sdk.CommitmentJsonSerializer && sdk.TokenJsonSerializer);
-    console.log('Offline serialization support available:', offlineClassesAvailable);
-    console.log('CommitmentJsonSerializer:', typeof sdk.CommitmentJsonSerializer);
-    console.log('TokenJsonSerializer:', typeof sdk.TokenJsonSerializer);
     
     AndroidBridge.postMessage(JSON.stringify({ 
       status: 'success', 
-      data: 'SDK initialized',
-      offlineSupport: true // Offline transfers now use standard classes with JSON serialization
+      data: 'SDK initialized'
     }));
   } catch (e) {
     console.error('SDK initialization error:', e);
@@ -63,11 +43,9 @@ function initializeSdk() {
  */
 function generateIdentity() {
   try {
-    // Generate a 32-byte secret key
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const nonce = crypto.getRandomValues(new Uint8Array(32));
     
-    // Convert to hex for easy storage and transmission
     const secretHex = Array.from(secret).map(b => b.toString(16).padStart(2, '0')).join('');
     const nonceHex = Array.from(nonce).map(b => b.toString(16).padStart(2, '0')).join('');
     
@@ -83,70 +61,6 @@ function generateIdentity() {
 }
 
 /**
- * Generates a receiving address for a specific token type using receiver's identity
- * This is used by the receiver to create an address that the sender can use for offline transfers
- * @param {string} tokenIdJson - The token ID to receive
- * @param {string} tokenTypeJson - The token type to receive  
- * @param {string} receiverIdentityJson - The receiver's identity
- */
-async function generateReceivingAddressForOfflineTransfer(tokenIdString, tokenTypeString, receiverIdentityJson) {
-  try {
-    if (!sdkClient) {
-      throw new Error('SDK not initialized');
-    }
-    
-    console.log('Generating receiving address for offline transfer...');
-    
-    const { 
-      SigningService, 
-      MaskedPredicate,
-      DirectAddress,
-      TokenId,
-      TokenType,
-      HashAlgorithm
-    } = window.UnicitySDK;
-    
-    const receiverIdentity = JSON.parse(receiverIdentityJson);
-    
-    // TokenId and TokenType expect Uint8Array, decode from hex strings
-    const { HexConverter } = window.UnicitySDK;
-    const tokenId = new TokenId(HexConverter.decode(tokenIdString));
-    const tokenType = new TokenType(HexConverter.decode(tokenTypeString));
-    
-    // Convert receiver identity
-    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Create receiver's signing service
-    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-    
-    // Create receiver's predicate for this token
-    const receiverPredicate = await MaskedPredicate.create(
-      tokenId,
-      tokenType,
-      receiverSigningService,
-      HashAlgorithm.SHA256,
-      receiverNonce
-    );
-    
-    // Create address from predicate reference
-    const receivingAddress = await DirectAddress.create(receiverPredicate.reference);
-    
-    const result = {
-      address: receivingAddress.toJSON(),
-      predicate: receiverPredicate.toJSON(),
-      identity: receiverIdentity
-    };
-    
-    console.log('Receiving address generated successfully:', receivingAddress.toJSON());
-    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
-  } catch (e) {
-    console.error('Failed to generate receiving address:', e);
-    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
-  }
-}
-
-/**
  * Mints a new token
  * @param {string} identityJson - The stringified JSON of the owner's identity
  * @param {string} tokenDataJson - The stringified JSON of the token's data
@@ -156,16 +70,12 @@ async function mintToken(identityJson, tokenDataJson) {
     if (!sdkClient) {
       console.log('SDK not initialized, attempting to initialize...');
       initializeSdk();
-      
-      // Wait a bit for initialization
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       if (!sdkClient) {
         throw new Error('SDK failed to initialize');
       }
     }
-    
-    console.log('Attempting to mint real Unicity token...');
     
     const identity = JSON.parse(identityJson);
     const tokenData = JSON.parse(tokenDataJson);
@@ -181,8 +91,6 @@ async function mintToken(identityJson, tokenDataJson) {
       Token,
       TokenState,
       HashAlgorithm,
-      DataHasher,
-      DataHash,
       MintTransactionData
     } = window.UnicitySDK;
     
@@ -209,128 +117,41 @@ async function mintToken(identityJson, tokenDataJson) {
     // Create coin data
     const coinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
     const coinData = TokenCoinData.create([[coinId, BigInt(tokenData.amount || 100)]]);
-    console.log('Coin data created:', typeof coinData);
     
     // Create token data
     const testTokenData = new TestTokenData(new TextEncoder().encode(tokenData.data || 'Unicity token'));
-    console.log('Test token data created:', typeof testTokenData);
-    console.log('Test token data properties:', Object.keys(testTokenData));
     
     // Create the token state
     const tokenState = await TokenState.create(predicate, null);
-    console.log('Token state created:', typeof tokenState);
     
     // Create address for minting
     const address = await DirectAddress.create(predicate.reference);
-    console.log('Address created:', typeof address);
     
-    // Submit mint transaction - using MintTransactionData object
+    // Submit mint transaction
     const salt = crypto.getRandomValues(new Uint8Array(32));
-    const stateData = new Uint8Array();  // Empty state data as in documentation
     
-    console.log('Creating mint transaction data...');
+    const mintTransactionData = await MintTransactionData.create(
+      tokenId,
+      tokenType,
+      testTokenData.bytes,
+      coinData,
+      address.toJSON(),
+      salt,
+      null,  // No data hash when state data is null
+      null   // reason (null for new mint)
+    );
     
-    // Declare variables outside try-catch for proper scope
-    let mintCommitment;
-    let inclusionProof;
+    const mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
+    const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
+    const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
     
-    try {
-      // Use the exact pattern from SDK documentation
-      const stateHash = await new DataHasher(HashAlgorithm.SHA256).update(stateData).digest();
-      console.log('State hash created successfully:', typeof stateHash);
-      
-      // Check if MintTransactionData is available
-      const { MintTransactionData } = window.UnicitySDK;
-      if (!MintTransactionData) {
-        throw new Error('MintTransactionData not available in SDK');
-      }
-      
-      console.log('Creating MintTransactionData...');
-      console.log('Parameters:');
-      console.log('- tokenId:', typeof tokenId, tokenId);
-      console.log('- tokenType:', typeof tokenType, tokenType);
-      console.log('- testTokenData:', typeof testTokenData, testTokenData);
-      console.log('- coinData:', typeof coinData, coinData);
-      console.log('- address:', typeof address, address.toJSON());
-      console.log('- salt:', typeof salt, salt);
-      console.log('- stateHash:', typeof stateHash, stateHash);
-      
-      // Create MintTransactionData using the static create method
-      // MintTransactionData.create(tokenId, tokenType, tokenData, coinData, recipient, salt, dataHash, reason)
-      const mintTransactionData = await MintTransactionData.create(
-        tokenId,
-        tokenType,
-        testTokenData.bytes,  // Use the raw bytes
-        coinData,
-        address.toJSON(),     // Pass the address as a string
-        salt,
-        stateHash,
-        null  // reason (null for new mint)
-      );
-      
-      console.log('MintTransactionData created:', typeof mintTransactionData);
-      console.log('MintTransactionData hash:', mintTransactionData.hash);
-      
-      console.log('Submitting mint transaction...');
-      console.log('🌐 About to call submitMintTransaction with URL:', AGGREGATOR_URL);
-      console.log('🌐 SDK client type:', typeof sdkClient);
-      mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
-      
-      console.log('Mint commitment created successfully');
-      console.log('Waiting for inclusion proof...');
-      inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
-    } catch (mintError) {
-      console.error('Mint transaction failed:', mintError);
-      console.error('Error details:', mintError.message);
-      console.error('Stack trace:', mintError.stack);
-      
-      if (mintError.message.includes('Failed to fetch')) {
-        console.error('🌐 NETWORK ERROR: Unable to connect to aggregator');
-        console.error('🌐 Aggregator URL:', AGGREGATOR_URL);
-        console.error('🌐 This could be due to:');
-        console.error('   - Network connectivity issues');
-        console.error('   - Aggregator server being down');
-        console.error('   - CORS/security policy blocking the request');
-        console.error('   - Firewall/proxy blocking HTTPS requests');
-      }
-      
-      throw new Error(`Mint transaction failed: ${mintError.message}`);
-    }
-    
-    console.log('Creating transaction...');
-    console.log('mintCommitment type:', typeof mintCommitment, mintCommitment);
-    console.log('inclusionProof type:', typeof inclusionProof, inclusionProof);
-    console.log('mintCommitment properties:', Object.keys(mintCommitment || {}));
-    console.log('inclusionProof properties:', Object.keys(inclusionProof || {}));
-    
-    // Try original approach first - the SDK example shows passing commitment directly
-    console.log('Attempting createTransaction with commitment directly...');
-    let mintTransaction;
-    try {
-      mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
-      console.log('Transaction created successfully with direct approach');
-    } catch (directError) {
-      console.error('Direct approach failed:', directError.message);
-      console.log('Trying destructured approach...');
-      // Alternative: Try destructured approach if direct fails
-      mintTransaction = await sdkClient.createTransaction(
-        { requestId: mintCommitment.requestId, transactionData: mintCommitment.transactionData },
-        inclusionProof
-      );
-      console.log('Transaction created successfully with destructured approach');
-    }
-    
-    // Create the final token - CORRECTED CONSTRUCTOR
-    console.log('Creating final token with correct parameters...');
-    console.log('- tokenState:', typeof tokenState);
-    console.log('- mintTransaction (genesis):', typeof mintTransaction);
-    
+    // Create the final token
     const token = new Token(
-      tokenState,        // 1. state: TokenState
-      mintTransaction,   // 2. genesis: MT (mint transaction)
-      [],               // 3. transactions: Transaction<TransactionData>[] (empty for new token)
-      [],               // 4. nametagTokens: NameTagToken[] (empty for new token)
-      "2.0"             // 5. version: string (optional, defaults to TOKEN_VERSION)
+      tokenState,
+      mintTransaction,
+      [],    // transactions (empty for new token)
+      [],    // nametagTokens (empty for new token)
+      "2.0"  // version
     );
     
     const result = {
@@ -339,7 +160,7 @@ async function mintToken(identityJson, tokenDataJson) {
       requestId: mintCommitment.requestId.toJSON()
     };
     
-    console.log('Real Unicity token minted successfully!');
+    console.log('Token minted successfully!');
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
     console.error('Token minting failed:', e);
@@ -348,77 +169,194 @@ async function mintToken(identityJson, tokenDataJson) {
 }
 
 /**
- * Deserializes a token from JSON string (e.g., from a .txf file)
- * @param {string} tokenJsonString - The stringified JSON of the token
+ * Prepares a transfer (works for both online and offline)
+ * @param {string} senderIdentityJson - The sender's identity
+ * @param {string} recipientAddress - The recipient's address
+ * @param {string} tokenJson - The token to transfer
+ * @param {boolean} isOffline - Whether this is an offline transfer
  */
-async function deserializeToken(tokenJsonString) {
+async function prepareTransfer(senderIdentityJson, recipientAddress, tokenJson, isOffline = false) {
   try {
     if (!sdkClient) {
       throw new Error('SDK not initialized');
     }
     
-    console.log('Deserializing token from JSON string...');
+    console.log(`Preparing ${isOffline ? 'offline' : 'online'} transfer...`);
+    
+    const senderIdentity = JSON.parse(senderIdentityJson);
+    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
     
     const { 
+      SigningService, 
       TokenFactory,
-      TokenJsonSerializer,
       PredicateJsonFactory,
-      Token
+      TransactionData,
+      Commitment,
+      CommitmentJsonSerializer,
+      TokenJsonSerializer
     } = window.UnicitySDK;
     
-    // Parse the JSON string
-    const tokenJson = JSON.parse(tokenJsonString);
-    console.log('Parsed token JSON:', JSON.stringify(tokenJson, null, 2));
+    // Convert hex strings back to Uint8Array
+    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
     
-    // Validate token structure
-    if (!tokenJson.version) {
-      throw new Error('Token JSON missing version field');
+    // Recreate token from JSON
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(parsedTokenData.token || parsedTokenData);
+    
+    // Create sender signing service
+    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
+    
+    // Create transaction data
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    
+    const transactionData = await TransactionData.create(
+      token.state,
+      recipientAddress,
+      salt,
+      null, // No data hash when state data is null
+      null, // No state data
+      token.nametagTokens
+    );
+    
+    if (isOffline) {
+      // For offline transfers, create commitment without network submission
+      const commitment = await Commitment.create(
+        transactionData,
+        senderSigningService
+      );
+      
+      const offlinePackage = {
+        commitment: CommitmentJsonSerializer.serialize(commitment),
+        token: token.toJSON()
+      };
+      
+      console.log('Offline transfer package created successfully');
+      AndroidBridge.postMessage(JSON.stringify({ 
+        status: 'success', 
+        data: JSON.stringify(offlinePackage)
+      }));
+    } else {
+      // For online transfers, submit to network
+      const commitment = await sdkClient.submitTransaction(transactionData, senderSigningService);
+      const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+      const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
+      
+      const transferPackage = {
+        token: token.toJSON(),
+        transaction: transaction.toJSON(),
+        commitment: commitment.requestId.toJSON()
+      };
+      
+      console.log('Online transfer package created successfully');
+      AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(transferPackage) }));
     }
-    if (!tokenJson.state) {
-      throw new Error('Token JSON missing state field');
-    }
-    if (!tokenJson.genesis) {
-      throw new Error('Token JSON missing genesis field');
-    }
-    
-    // Create the token factory with deserializer
-    const predicateFactory = new PredicateJsonFactory();
-    const tokenSerializer = new TokenJsonSerializer(predicateFactory);
-    
-    // Use the deserializer directly instead of factory
-    console.log('Deserializing token using TokenJsonSerializer...');
-    const token = await tokenSerializer.deserialize(tokenJson);
-    
-    console.log('Token deserialized successfully');
-    console.log('Token class:', token.constructor.name);
-    console.log('Token ID:', token.id?.toString());
-    console.log('Token Type:', token.type?.toString());
-    
-    // Verify by serializing it back
-    const reserializedJson = token.toJSON();
-    console.log('Re-serialized token:', JSON.stringify(reserializedJson, null, 2));
-    
-    // Return the deserialized token as JSON
-    const result = {
-      token: reserializedJson,
-      tokenId: token.id?.toString() || 'unknown',
-      tokenType: token.type?.toString() || 'unknown'
-    };
-    
-    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
-    console.error('Token deserialization failed:', e);
-    console.error('Stack trace:', e.stack);
-    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message + ' - ' + e.stack }));
+    console.error('Transfer preparation failed:', e);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
 
 /**
- * Step 1 of transfer: Generate receiving address
- * Bob generates a receiving address for a specific token type and ID
+ * Finalizes a received transaction (works for both online and offline)
+ * @param {string} receiverIdentityJson - The receiver's identity
+ * @param {string} transferPackageJson - The transfer package
+ */
+async function finalizeReceivedTransaction(receiverIdentityJson, transferPackageJson) {
+  try {
+    if (!sdkClient) {
+      throw new Error('SDK not initialized');
+    }
+    
+    console.log('Finalizing received transaction...');
+    
+    const receiverIdentity = JSON.parse(receiverIdentityJson);
+    const transferPackage = JSON.parse(transferPackageJson);
+    
+    const { 
+      SigningService, 
+      MaskedPredicate,
+      TokenState,
+      HashAlgorithm,
+      TokenFactory,
+      PredicateJsonFactory,
+      CommitmentJsonSerializer,
+      Commitment,
+      TokenJsonSerializer
+    } = window.UnicitySDK;
+    
+    // Convert hex strings back to Uint8Array
+    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Recreate token from the package
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const token = await tokenFactory.create(transferPackage.token);
+    
+    // Check if this is an offline transfer (has serialized commitment) or online transfer
+    let commitment;
+    let transaction;
+    
+    if (transferPackage.commitment && typeof transferPackage.commitment === 'object' && transferPackage.commitment.transactionData) {
+      // Offline transfer - deserialize commitment
+      console.log('Processing offline transfer...');
+      const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
+      commitment = await commitmentSerializer.deserialize(
+        token.id,
+        token.type,
+        transferPackage.commitment
+      );
+      
+      // Submit the commitment to the network
+      await sdkClient.submitCommitment(commitment);
+      const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+      transaction = await sdkClient.createTransaction(commitment, inclusionProof);
+    } else {
+      // Online transfer - commitment is just the requestId
+      console.log('Processing online transfer...');
+      commitment = await Commitment.fromJSON(transferPackage.commitment);
+      const inclusionProof = await waitInclusionProof(sdkClient, commitment);
+      transaction = await sdkClient.createTransaction(commitment, inclusionProof);
+    }
+    
+    // Create receiver's predicate
+    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+    const recipientPredicate = await MaskedPredicate.create(
+      token.id,
+      token.type,
+      receiverSigningService,
+      HashAlgorithm.SHA256,
+      receiverNonce
+    );
+    
+    // Create new token state with receiver as owner
+    const newTokenState = await TokenState.create(recipientPredicate, null);
+    
+    // Finish the transaction
+    const updatedToken = await sdkClient.finishTransaction(
+      token,
+      newTokenState,
+      transaction
+    );
+    
+    const result = {
+      token: updatedToken.toJSON(),
+      identity: receiverIdentity
+    };
+    
+    console.log('Transaction finalized successfully!');
+    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
+  } catch (e) {
+    console.error('Transaction finalization failed:', e);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
+  }
+}
+
+/**
+ * Generates a receiving address for a specific token
  * @param {string} tokenIdHex - The token ID in hex format
  * @param {string} tokenTypeHex - The token type in hex format
- * @param {string} receiverIdentityJson - Bob's identity
+ * @param {string} receiverIdentityJson - The receiver's identity
  */
 async function generateReceivingAddress(tokenIdHex, tokenTypeHex, receiverIdentityJson) {
   try {
@@ -454,7 +392,7 @@ async function generateReceivingAddress(tokenIdHex, tokenTypeHex, receiverIdenti
     
     const result = {
       address: recipientAddress.toJSON(),
-      nonce: receiverIdentity.nonce // Bob needs to remember this for later
+      nonce: receiverIdentity.nonce
     };
     
     console.log('Receiving address generated:', result.address);
@@ -466,997 +404,46 @@ async function generateReceivingAddress(tokenIdHex, tokenTypeHex, receiverIdenti
 }
 
 /**
- * Step 2 of transfer: Create transfer package
- * Alice creates a transfer package (token + signed transaction) and submits it to the network
- * @param {string} senderIdentityJson - Alice's identity
- * @param {string} recipientAddress - Bob's receiving address (from step 1)
- * @param {string} tokenJson - The current JSON state of the token being sent
+ * Deserializes a token from JSON string
+ * @param {string} tokenJsonString - The stringified JSON of the token
  */
-async function createTransferPackage(senderIdentityJson, recipientAddress, tokenJson) {
+async function deserializeToken(tokenJsonString) {
   try {
     if (!sdkClient) {
       throw new Error('SDK not initialized');
     }
     
-    console.log('Creating transfer package...');
-    
-    const senderIdentity = JSON.parse(senderIdentityJson);
-    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
-    
     const { 
-      SigningService, 
-      TokenFactory,
-      PredicateJsonFactory,
-      TransactionData,
-      HashAlgorithm,
-      DataHasher,
-      HexConverter
+      TokenJsonSerializer,
+      PredicateJsonFactory
     } = window.UnicitySDK;
     
-    // Convert hex strings back to Uint8Array
-    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const tokenJson = JSON.parse(tokenJsonString);
     
-    // Recreate token from JSON
-    const { TokenJsonSerializer } = window.UnicitySDK;
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(parsedTokenData.token || parsedTokenData);
+    // Validate token structure
+    if (!tokenJson.version || !tokenJson.state || !tokenJson.genesis) {
+      throw new Error('Invalid token JSON structure');
+    }
     
-    // Create sender signing service
-    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
+    // Use the deserializer directly
+    const predicateFactory = new PredicateJsonFactory();
+    const tokenSerializer = new TokenJsonSerializer(predicateFactory);
+    const token = await tokenSerializer.deserialize(tokenJson);
     
-    // Create transaction data
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-    dataHasher.update(new TextEncoder().encode('token transfer'));
-    const dataHash = await dataHasher.digest();
-    
-    const transactionData = await TransactionData.create(
-      token.state,
-      recipientAddress, // Already in correct format from generateReceivingAddress
-      salt,
-      dataHash,
-      new TextEncoder().encode('token transfer'),
-      token.nametagTokens
-    );
-    
-    // Submit transaction to get commitment but NOT the inclusion proof
-    // This creates the cryptographic commitment without finalizing the transfer
-    const commitment = await sdkClient.submitTransaction(transactionData, senderSigningService);
-    
-    // Wait for inclusion proof
-    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
-    
-    // Create transaction
-    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
-    
-    // Package everything Bob needs to complete the transfer
-    const transferPackage = {
+    const result = {
       token: token.toJSON(),
-      transaction: transaction.toJSON(),
-      commitment: commitment.requestId.toJSON()
-    };
-    
-    console.log('Transfer package created successfully');
-    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(transferPackage) }));
-  } catch (e) {
-    console.error('Transfer package creation failed:', e);
-    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
-  }
-}
-
-/**
- * Creates an offline transfer package that can be transmitted without network
- * @param {string} senderIdentityJson - The sender's identity
- * @param {string} recipientAddress - The recipient's address
- * @param {string} tokenJson - The token to transfer (must be self-contained with transactions)
- * @returns {Promise<string>} - JSON string containing the offline transaction
- */
-async function createOfflineTransferPackage(senderIdentityJson, recipientAddress, tokenJson) {
-  try {
-    if (!sdkClient) {
-      throw new Error('SDK client not initialized');
-    }
-    
-    console.log('Creating offline transfer package...');
-    
-    const senderIdentity = JSON.parse(senderIdentityJson);
-    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
-    
-    const { 
-      SigningService, 
-      TokenFactory,
-      PredicateJsonFactory,
-      TransactionData,
-      HashAlgorithm,
-      DataHasher,
-      Commitment,
-      CommitmentJsonSerializer,
-      HexConverter
-    } = window.UnicitySDK;
-    
-    // Convert hex strings back to Uint8Array
-    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Recreate the Token object from JSON - this should include complete transaction history
-    const { TokenJsonSerializer } = window.UnicitySDK;
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(parsedTokenData);
-    
-    console.log('Token reconstructed:', token.id ? token.id.toJSON() : 'undefined', 'transactions:', token.transactions?.length || 0);
-    
-    // Create sender signing service
-    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
-    
-    // Create transaction data for ownership transfer
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-    dataHasher.update(new TextEncoder().encode('offline ownership transfer'));
-    const dataHash = await dataHasher.digest();
-    
-    const transactionData = await TransactionData.create(
-      token.state,  // Current token state with current owner predicate
-      recipientAddress,  // New owner's address (from their predicate reference)
-      salt,
-      dataHash,
-      new TextEncoder().encode('ownership transfer'),
-      token.nametagTokens
-    );
-    
-    // Create commitment (no network call needed for offline)
-    const commitment = await Commitment.create(
-      transactionData,
-      senderSigningService
-    );
-    
-    // Create offline transfer package with commitment and token
-    const offlinePackage = {
-      commitment: CommitmentJsonSerializer.serialize(commitment),
-      token: token.toJSON()
-    };
-    
-    // Convert to JSON string for offline transfer
-    const offlinePackageJsonString = JSON.stringify(offlinePackage);
-    
-    console.log('Offline transfer package created successfully, size:', offlinePackageJsonString.length);
-    AndroidBridge.postMessage(JSON.stringify({ 
-      status: 'success', 
-      data: offlinePackageJsonString
-    }));
-  } catch (e) {
-    console.error('Offline transfer package creation failed:', e);
-    console.error('Error stack:', e.stack);
-    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
-  }
-}
-
-/**
- * Completes an offline transfer received from another device
- * @param {string} receiverIdentityJson - The receiver's identity
- * @param {string} offlineTransactionJson - The offline transaction package
- * @returns {Promise<string>} - JSON string containing the updated token
- */
-async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson) {
-  try {
-    if (!offlineClient || !sdkClient) {
-      throw new Error('SDK clients not initialized');
-    }
-    
-    console.log('Starting offline transfer completion...');
-    
-    const receiverIdentity = JSON.parse(receiverIdentityJson);
-    const { 
-      SigningService, 
-      MaskedPredicate,
-      TokenState,
-      HashAlgorithm,
-      TokenFactory,
-      PredicateJsonFactory,
-      CommitmentJsonSerializer,
-      HexConverter
-    } = window.UnicitySDK;
-    
-    // Deserialize the offline transfer package
-    console.log('Deserializing offline transfer package...');
-    const offlinePackage = JSON.parse(offlineTransactionJson);
-    
-    // Recreate token and commitment from the package
-    const { TokenJsonSerializer } = window.UnicitySDK;
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(offlinePackage.token);
-    
-    console.log('Token deserialized:');
-    console.log('- Token ID:', token.id ? token.id.toJSON() : 'undefined');
-    console.log('- Token type:', token.type ? token.type.toJSON() : 'undefined');
-    console.log('- Current transactions:', token.transactions?.length || 0);
-    
-    // Deserialize commitment
-    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
-    const commitment = await commitmentSerializer.deserialize(
-      token.id,
-      token.type,
-      offlinePackage.commitment
-    );
-    
-    // Step 1: Submit the commitment to the network
-    console.log('Submitting commitment to network...');
-    const commitmentResponse = await sdkClient.submitCommitment(commitment);
-    
-    console.log('Commitment submitted successfully');
-    
-    // Wait for inclusion proof
-    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
-    
-    // Create transaction from commitment
-    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
-    console.log('Transaction created successfully');
-    
-    // Convert receiver identity
-    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Step 2: Create receiver's predicate (new owner)
-    console.log('Creating receiver predicate for new ownership...');
-    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-    const recipientPredicate = await MaskedPredicate.create(
-      token.id,
-      token.type,
-      receiverSigningService,
-      HashAlgorithm.SHA256,
-      receiverNonce
-    );
-    
-    console.log('Receiver predicate created:', recipientPredicate.reference ? recipientPredicate.reference.toJSON() : 'undefined');
-    
-    // Step 3: Create new token state with receiver as owner
-    const newTokenState = await TokenState.create(recipientPredicate, null);
-    
-    // Step 4: Finish the transaction - this updates the Token object with the new transaction
-    console.log('Finishing transaction to update token ownership...');
-    const updatedToken = await sdkClient.finishTransaction(
-      token,                    // Original token with history
-      newTokenState,           // New state with receiver as owner
-      transaction             // The completed transaction
-    );
-    
-    console.log('Offline transfer completed successfully!');
-    console.log('- Updated token transactions:', updatedToken.transactions?.length || 0);
-    console.log('- New owner predicate:', updatedToken.state?.predicate?.reference ? updatedToken.state.predicate.reference.toJSON() : 'undefined');
-    
-    // Return the updated token as JSON - this now contains the complete transaction history
-    const result = {
-      token: updatedToken.toJSON(),
-      identity: receiverIdentity
+      tokenId: token.id?.toString() || 'unknown',
+      tokenType: token.type?.toString() || 'unknown'
     };
     
     AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
   } catch (e) {
-    console.error('Offline transfer completion failed:', e);
-    console.error('Error stack:', e.stack);
+    console.error('Token deserialization failed:', e);
     AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
   }
 }
 
-/**
- * Step 3 of transfer: Complete transfer
- * Bob completes the transfer using the package from Alice
- * @param {string} receiverIdentityJson - Bob's identity
- * @param {string} transferPackageJson - The transfer package from Alice
- */
-async function completeTransfer(receiverIdentityJson, transferPackageJson) {
-  try {
-    if (!sdkClient) {
-      throw new Error('SDK not initialized');
-    }
-    
-    console.log('Completing transfer...');
-    console.log('Received transfer package JSON:', transferPackageJson);
-    
-    const { 
-      SigningService, 
-      MaskedPredicate, 
-      TokenFactory,
-      PredicateJsonFactory,
-      Transaction,
-      TokenState,
-      HashAlgorithm
-    } = window.UnicitySDK;
-    
-    const receiverIdentity = JSON.parse(receiverIdentityJson);
-    const transferPackage = JSON.parse(transferPackageJson);
-    
-    console.log('Parsed transfer package:', JSON.stringify(transferPackage, null, 2));
-    console.log('Transfer package type:', typeof transferPackage);
-    console.log('Transfer package keys:', Object.keys(transferPackage));
-    console.log('Has error field:', 'error' in transferPackage);
-    console.log('Has token field:', 'token' in transferPackage);
-    console.log('Has transaction field:', 'transaction' in transferPackage);
-    console.log('Has commitment field:', 'commitment' in transferPackage);
-    
-    if (transferPackage.error) {
-      console.log('ERROR: Received error package instead of transfer package!');
-      console.log('Error:', transferPackage.error);
-      console.log('Message:', transferPackage.message);
-      throw new Error(`Transfer package creation failed: ${transferPackage.message}`);
-    }
-    
-    console.log('Token in package:', JSON.stringify(transferPackage.token, null, 2));
-    console.log('Token version:', transferPackage.token?.version);
-    
-    // Convert hex strings back to Uint8Array
-    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Import the token from the transfer package
-    const { TokenJsonSerializer } = window.UnicitySDK;
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(transferPackage.token);
-    
-    // Bob receives the commitment from Alice and gets the inclusion proof
-    const { Commitment } = window.UnicitySDK;
-    const commitment = await Commitment.fromJSON(transferPackage.commitment);
-    
-    console.log('Bob received commitment:', commitment.requestId.toJSON());
-    
-    // Bob waits for inclusion proof (Alice already submitted the transaction)
-    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
-    
-    console.log('Bob got inclusion proof');
-    
-    // Create the transaction with inclusion proof
-    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
-    
-    // Recreate receiver's predicate
-    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-    const recipientPredicate = await MaskedPredicate.create(
-      token.id,
-      token.type,
-      receiverSigningService,
-      HashAlgorithm.SHA256,
-      receiverNonce
-    );
-    
-    // Complete the transaction with the recipient predicate
-    const updatedToken = await sdkClient.finishTransaction(
-      token,
-      await TokenState.create(recipientPredicate, null),
-      transaction
-    );
-    
-    const result = {
-      token: updatedToken.toJSON(),
-      identity: receiverIdentity
-    };
-    
-    console.log('Transfer completed successfully!');
-    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
-  } catch (e) {
-    console.error('Transfer completion failed:', e);
-    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
-  }
-}
-
-
-
-/**
- * AUTOMATED OFFLINE TRANSFER TEST - Tests the new offline transfer API
- * This simulates the complete offline transfer flow without NFC
- */
-async function runAutomatedOfflineTransferTest() {
-  try {
-    console.log('🚀 TEST FUNCTION CALLED - runAutomatedOfflineTransferTest()');
-    console.log('🌐 CURRENT AGGREGATOR URL:', AGGREGATOR_URL);
-    console.log('========================================');
-    console.log('STARTING AUTOMATED OFFLINE TRANSFER TEST');
-    console.log('========================================');
-    
-    if (!sdkClient) {
-      initializeSdk();
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for SDK to initialize
-    }
-    
-    // Step 1: Create Alice's wallet (sender)
-    console.log('Step 1: Creating Alice\'s wallet...');
-    const aliceSecret = crypto.getRandomValues(new Uint8Array(32));
-    const aliceNonce = crypto.getRandomValues(new Uint8Array(32));
-    const aliceIdentity = {
-      secret: Array.from(aliceSecret).map(b => b.toString(16).padStart(2, '0')).join(''),
-      nonce: Array.from(aliceNonce).map(b => b.toString(16).padStart(2, '0')).join('')
-    };
-    console.log('Alice identity created:', aliceIdentity.nonce.substring(0, 16) + '...');
-    
-    // Step 2: Create Bob's wallet (receiver)  
-    console.log('Step 2: Creating Bob\'s wallet...');
-    const bobSecret = crypto.getRandomValues(new Uint8Array(32));
-    const bobNonce = crypto.getRandomValues(new Uint8Array(32));
-    const bobIdentity = {
-      secret: Array.from(bobSecret).map(b => b.toString(16).padStart(2, '0')).join(''),
-      nonce: Array.from(bobNonce).map(b => b.toString(16).padStart(2, '0')).join('')
-    };
-    console.log('Bob identity created:', bobIdentity.nonce.substring(0, 16) + '...');
-    
-    // Step 3: Alice mints a token
-    console.log('Step 3: Alice mints a token...');
-    console.log('🌐 About to mint token using URL:', AGGREGATOR_URL);
-    const aliceToken = await mintTokenDirectly(aliceIdentity, 'OfflineTestToken', '150', 'Automated offline test token');
-    console.log('Alice minted token successfully, ID:', aliceToken.tokenId ? aliceToken.tokenId.toJSON() : 'undefined');
-    
-    // Step 4: Bob generates receiving address
-    console.log('Step 4: Bob generates receiving address...');
-    const bobReceivingAddress = await generateReceivingAddressDirectly(aliceToken.tokenId, aliceToken.tokenType, bobIdentity);
-    console.log('Bob generated address:', bobReceivingAddress);
-    
-    // Step 5: Alice creates OFFLINE transfer package (no network submission)
-    console.log('Step 5: Alice creates offline transfer package...');
-    const offlineTransferPackage = await createOfflineTransferDirectly(aliceIdentity, bobReceivingAddress, aliceToken);
-    console.log('Alice created offline transfer package with keys:', Object.keys(offlineTransferPackage));
-    
-    // Step 6: Bob completes the offline transfer (submits to network when available)
-    console.log('Step 6: Bob completes the offline transfer...');
-    const completedOfflineTransfer = await completeOfflineTransferDirectly(bobIdentity, offlineTransferPackage);
-    console.log('Bob completed offline transfer successfully!');
-    console.log('Bob\'s token transactions count:', completedOfflineTransfer.token.transactions.length);
-    
-    console.log('========================================');
-    console.log('AUTOMATED OFFLINE TRANSFER TEST COMPLETED SUCCESSFULLY!');
-    console.log('Token successfully transferred from Alice to Bob using offline method');
-    console.log('========================================');
-    
-    AndroidBridge.postMessage(JSON.stringify({ 
-      status: 'success', 
-      message: 'Automated offline transfer test completed successfully',
-      data: {
-        aliceTokenId: aliceToken.id,
-        bobTokenId: completedOfflineTransfer.token.id,
-        offlineTransferPackageKeys: Object.keys(offlineTransferPackage),
-        bobTransactionCount: completedOfflineTransfer.token.transactions.length
-      }
-    }));
-    
-  } catch (error) {
-    console.error('========================================');
-    console.error('AUTOMATED OFFLINE TRANSFER TEST FAILED!');
-    console.error('Error:', error.message);
-    console.error('Stack:', error.stack);
-    console.error('========================================');
-    
-    AndroidBridge.postMessage(JSON.stringify({ 
-      status: 'error', 
-      message: `Automated offline transfer test failed: ${error.message}`,
-      error: error.stack
-    }));
-  }
-}
-
-/**
- * Direct offline transfer creation that doesn't use Android bridge
- */
-async function createOfflineTransferDirectly(senderIdentity, recipientAddress, tokenJson) {
-  try {
-    if (!sdkClient) {
-      throw new Error('SDK client not initialized');
-    }
-    
-    // Get the actual token object from our token data structure
-    const token = tokenJson.token;
-    
-    const { 
-      SigningService, 
-      TransactionData,
-      HashAlgorithm,
-      DataHasher,
-      Commitment,
-      CommitmentJsonSerializer
-    } = window.UnicitySDK;
-    
-    // Create the transfer
-    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
-    
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-    dataHasher.update(new TextEncoder().encode('offline token transfer'));
-    const dataHash = await dataHasher.digest();
-    
-    const transactionData = await TransactionData.create(
-      token.state,
-      recipientAddress,
-      salt,
-      dataHash,
-      new TextEncoder().encode('offline transfer'),
-      token.nametagTokens
-    );
-    
-    // Create commitment (no network call needed for offline)
-    const commitment = await Commitment.create(
-      transactionData,
-      senderSigningService
-    );
-    
-    // Create offline transfer package with commitment and token
-    const offlinePackage = {
-      commitment: CommitmentJsonSerializer.serialize(commitment),
-      token: token.toJSON()
-    };
-    
-    // Return as JSON string for offline transfer
-    return JSON.stringify(offlinePackage);
-  } catch (e) {
-  console.error(e.stack)
-    console.error('createOfflineTransferDirectly failed:', e);
-    throw e;
-  }
-}
-
-/**
- * Direct offline transfer completion that doesn't use Android bridge
- */
-async function completeOfflineTransferDirectly(receiverIdentity, offlineTransactionJson) {
-  try {
-    if (!sdkClient) {
-      throw new Error('SDK client not initialized');
-    }
-    
-    const { 
-      SigningService, 
-      MaskedPredicate,
-      TokenState,
-      HashAlgorithm,
-      TokenFactory,
-      PredicateJsonFactory,
-      CommitmentJsonSerializer,
-      HexConverter
-    } = window.UnicitySDK;
-    
-    console.log('Completing offline transfer directly...');
-    
-    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Deserialize the offline transfer package
-    const offlinePackage = JSON.parse(offlineTransactionJson);
-    
-    // Recreate token from the package
-    const { TokenJsonSerializer } = window.UnicitySDK;
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(offlinePackage.token);
-    
-    // Deserialize commitment
-    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
-    const commitment = await commitmentSerializer.deserialize(
-      token.id,
-      token.type,
-      offlinePackage.commitment
-    );
-    
-    // Submit the commitment to the network
-    console.log('Submitting commitment to network...');
-    const commitmentResponse = await sdkClient.submitCommitment(commitment);
-    
-    // Wait for inclusion proof
-    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
-    
-    // Create transaction from commitment
-    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
-    
-    // Recreate receiver's predicate
-    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-    const recipientPredicate = await MaskedPredicate.create(
-      token.id,
-      token.type,
-      receiverSigningService,
-      HashAlgorithm.SHA256,
-      receiverNonce
-    );
-    
-    // Complete the transaction
-    const updatedToken = await sdkClient.finishTransaction(
-      token,
-      await TokenState.create(recipientPredicate, null),
-      transaction
-    );
-    
-    return {
-      token: updatedToken.toJSON(),
-      identity: receiverIdentity
-    };
-  } catch (e) {
-    console.error('completeOfflineTransferDirectly failed:', e);
-    throw e;
-  }
-}
-
-/**
- * Direct mint function that doesn't use Android bridge callbacks
- */
-async function mintTokenDirectly(identity, tokenName, amount, customData) {
-  const { 
-    SigningService, 
-    MaskedPredicate, 
-    DirectAddress,
-    TokenId,
-    TokenType,
-    TokenCoinData,
-    CoinId,
-    TokenState,
-    Token,
-    HashAlgorithm,
-    DataHasher
-  } = window.UnicitySDK;
-  
-  const secret = new Uint8Array(identity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-  const nonce = new Uint8Array(identity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-  
-  const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
-  const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
-  const testTokenData = new TestTokenData(new TextEncoder().encode(customData));
-  const coinData = TokenCoinData.create([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(amount)]]);
-  
-  const signingService = await SigningService.createFromSecret(secret, nonce);
-  const predicate = await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, nonce);
-  const tokenState = await TokenState.create(predicate, null);
-  
-  const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-  dataHasher.update(new TextEncoder().encode('mint token'));
-  const dataHash = await dataHasher.digest();
-  
-  // Create MintTransactionData object
-  const { MintTransactionData } = window.UnicitySDK;
-  const address = await DirectAddress.create(predicate.reference);
-  const mintTransactionData = await MintTransactionData.create(
-    tokenId,
-    tokenType,
-    testTokenData.bytes,
-    coinData,
-    address,
-    crypto.getRandomValues(new Uint8Array(32)),
-    dataHash,
-    null
-  );
-  
-  const mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
-  
-  const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
-  const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
-  
-  const token = new Token(tokenState, mintTransaction, [], [], "2.0");
-  
-  // Return token in a format suitable for offline transfers
-  // Instead of using toJSON() which breaks BigInt values, we return the token object directly
-  return {
-    token: token,
-    tokenState: tokenState,
-    mintTransaction: mintTransaction,
-    tokenId: tokenId,
-    tokenType: tokenType,
-    predicate: predicate
-  };
-}
-
-/**
- * Direct address generation that doesn't use Android bridge
- */
-async function generateReceivingAddressDirectly(tokenId, tokenType, receiverIdentity) {
-  const { 
-    SigningService, 
-    MaskedPredicate, 
-    DirectAddress,
-    TokenId,
-    TokenType,
-    HashAlgorithm,
-    HexConverter
-  } = window.UnicitySDK;
-  
-  const receiverSecret = new Uint8Array(HexConverter.decode(receiverIdentity.secret));
-  const receiverNonce = new Uint8Array(HexConverter.decode(receiverIdentity.nonce));
-  
-  const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-  const recipientPredicate = await MaskedPredicate.create(tokenId, tokenType, receiverSigningService, HashAlgorithm.SHA256, receiverNonce);
-  const address = await DirectAddress.create(recipientPredicate.reference);
-  
-  return address.toJSON();
-}
-
-/**
- * Direct transfer creation that doesn't use Android bridge
- */
-async function createTransferDirectly(senderIdentity, receiverIdentity, tokenJson) {
-  try {
-    if (!sdkClient) {
-      throw new Error('SDK not initialized');
-    }
-    
-    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
-    const tokenObj = parsedTokenData.token || parsedTokenData;
-    
-    const { 
-      SigningService, 
-      MaskedPredicate, 
-      DirectAddress,
-      TokenId,
-      TokenType,
-      HashAlgorithm,
-      TokenFactory,
-      PredicateJsonFactory,
-      TransactionData,
-      DataHasher,
-      HexConverter
-    } = window.UnicitySDK;
-    
-    // Generate Bob's address first
-    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // TokenId and TokenType expect Uint8Array, decode from hex strings
-    const tokenId = new TokenId(HexConverter.decode(tokenObj.id));
-    const tokenType = new TokenType(HexConverter.decode(tokenObj.type));
-    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-    const recipientPredicate = await MaskedPredicate.create(
-      tokenId,
-      tokenType,
-      receiverSigningService,
-      HashAlgorithm.SHA256,
-      receiverNonce
-    );
-    const recipientAddress = await DirectAddress.create(recipientPredicate.reference);
-    
-    // Now create the transfer
-    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    const { TokenJsonSerializer } = window.UnicitySDK;
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(tokenObj);
-    
-    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
-    
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-    dataHasher.update(new TextEncoder().encode('token transfer'));
-    const dataHash = await dataHasher.digest();
-    
-    const transactionData = await TransactionData.create(
-      token.state,
-      recipientAddress,
-      salt,
-      dataHash,
-      new TextEncoder().encode('token transfer'),
-      token.nametagTokens
-    );
-    
-    const commitment = await sdkClient.submitTransaction(transactionData, senderSigningService);
-    
-    return {
-      token: token.toJSON(),
-      commitment: commitment.toJSON(),
-      recipientAddress: recipientAddress.toJSON()
-    };
-  } catch (e) {
-    console.error('createTransferDirectly failed:', e);
-    throw e;
-  }
-}
-
-/**
- * Direct transfer completion that doesn't use Android bridge
- */
-async function completeTransferDirectly(receiverIdentity, transferPackage) {
-  try {
-    if (!sdkClient) {
-      throw new Error('SDK not initialized');
-    }
-    
-    const { 
-      SigningService, 
-      MaskedPredicate, 
-      TokenFactory,
-      PredicateJsonFactory,
-      Commitment,
-      TokenState,
-      HashAlgorithm,
-      HexConverter
-    } = window.UnicitySDK;
-    
-    console.log('Completing transfer directly...');
-    console.log('Transfer package:', JSON.stringify(transferPackage, null, 2));
-    
-    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Import the token from the transfer package
-    const { TokenJsonSerializer } = window.UnicitySDK;
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(transferPackage.token);
-    
-    // Bob receives the commitment from Alice and gets the inclusion proof
-    const commitment = await Commitment.fromJSON(transferPackage.commitment);
-    
-    console.log('Bob received commitment:', commitment.requestId.toJSON());
-    
-    // Bob waits for inclusion proof (Alice already submitted the transaction)
-    const inclusionProof = await waitInclusionProof(sdkClient, commitment);
-    
-    console.log('Bob got inclusion proof');
-    
-    // Create the transaction with inclusion proof
-    const transaction = await sdkClient.createTransaction(commitment, inclusionProof);
-    
-    // Recreate receiver's predicate
-    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-    const recipientPredicate = await MaskedPredicate.create(
-      token.id,
-      token.type,
-      receiverSigningService,
-      HashAlgorithm.SHA256,
-      receiverNonce
-    );
-    
-    // Complete the transaction with the recipient predicate
-    const updatedToken = await sdkClient.finishTransaction(
-      token,
-      await TokenState.create(recipientPredicate, null),
-      transaction
-    );
-    
-    return {
-      token: updatedToken.toJSON(),
-      identity: receiverIdentity
-    };
-  } catch (e) {
-    console.error('completeTransferDirectly failed:', e);
-    throw e;
-  }
-}
-
-// Keep the old functions for backward compatibility but update them to use new flow
-async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJson) {
-  try {
-    console.log('============ CREATE TRANSFER STARTED ============');
-    console.log('Using updated createTransfer for backward compatibility...');
-    console.log('Sender Identity:', senderIdentityJson);
-    console.log('Receiver Identity:', receiverIdentityJson);
-    console.log('Token JSON:', tokenJson);
-    
-    // Parse the token to get ID and type
-    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
-    const tokenObj = parsedTokenData.token || parsedTokenData;
-    console.log('Parsed token object:', JSON.stringify(tokenObj, null, 2));
-    
-    // Step 1: Generate receiving address (normally Bob would do this)
-    const { 
-      SigningService, 
-      MaskedPredicate, 
-      DirectAddress,
-      TokenId,
-      TokenType,
-      HashAlgorithm,
-      Token,
-      TransactionData,
-      DataHasher,
-      HexConverter
-    } = window.UnicitySDK;
-    
-    const receiverIdentity = JSON.parse(receiverIdentityJson);
-    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Create receiver's predicate
-    // TokenId and TokenType expect Uint8Array, decode from hex strings
-    const tokenId = new TokenId(HexConverter.decode(tokenObj.id));
-    const tokenType = new TokenType(HexConverter.decode(tokenObj.type));
-    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
-    const recipientPredicate = await MaskedPredicate.create(
-      tokenId,
-      tokenType,
-      receiverSigningService,
-      HashAlgorithm.SHA256,
-      receiverNonce
-    );
-    const recipientAddress = await DirectAddress.create(recipientPredicate.reference);
-    
-    // Step 2: Create transfer package inline (avoid double posting)
-    if (!sdkClient) {
-      throw new Error('SDK not initialized');
-    }
-    
-    const senderIdentity = JSON.parse(senderIdentityJson);
-    
-    const { 
-      TokenFactory,
-      PredicateJsonFactory,
-      TokenJsonSerializer
-    } = window.UnicitySDK;
-    
-    // Convert hex strings back to Uint8Array
-    const senderSecret = new Uint8Array(senderIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    const senderNonce = new Uint8Array(senderIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Recreate token from JSON
-    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
-    const token = await tokenFactory.create(tokenObj);
-    
-    console.log('Token recreated successfully');
-    console.log('Token ID:', token.id.toJSON());
-    console.log('Token state:', token.state);
-    console.log('Token state data:', token.state?.data);
-    console.log('Token state predicate:', token.state?.unlockPredicate);
-    console.log('Number of transactions:', token.transactions?.length);
-    
-    // Check if token has already been transferred
-    if (token.transactions && token.transactions.length > 0) {
-      console.log('Token transaction history:');
-      token.transactions.forEach((tx, index) => {
-        console.log(`Transaction ${index}:`, {
-          type: tx.data?.type || (index === 0 ? 'mint' : 'transfer'),
-          recipient: tx.data?.recipient,
-          hasInclusionProof: !!tx.inclusionProof
-        });
-      });
-      
-      // Check if this is a spent token
-      if (token.transactions.length > 1) {
-        console.warn('WARNING: Token has been transferred before!');
-        const lastTransfer = token.transactions[token.transactions.length - 1];
-        console.warn('Last transfer was to:', lastTransfer.data?.recipient);
-      }
-    }
-    
-    // Create sender signing service
-    const senderSigningService = await SigningService.createFromSecret(senderSecret, senderNonce);
-    
-    // Create transaction data
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const dataHasher = new DataHasher(HashAlgorithm.SHA256);
-    dataHasher.update(new TextEncoder().encode('token transfer'));
-    const dataHash = await dataHasher.digest();
-    
-    console.log('Creating transaction data...');
-    console.log('Token state:', token.state);
-    console.log('Recipient address:', recipientAddress);
-    console.log('Token nametag tokens:', token.nametagTokens);
-    
-    const transactionData = await TransactionData.create(
-      token.state,
-      recipientAddress,
-      salt,
-      dataHash,
-      new TextEncoder().encode('token transfer'),
-      token.nametagTokens
-    );
-    
-    // Alice submits the transaction but doesn't wait for inclusion proof
-    // She sends the commitment to Bob, who will get the inclusion proof later
-    const commitment = await sdkClient.submitTransaction(transactionData, senderSigningService);
-    
-    console.log('Transaction submitted, commitment:', commitment.requestId.toJSON());
-    
-    // Return the transfer package in the expected format
-    const tokenData = token.toJSON();
-    console.log('Token being sent:', JSON.stringify(tokenData, null, 2));
-    console.log('Token version:', tokenData.version);
-    
-    const result = {
-      token: tokenData,
-      commitment: commitment.toJSON(),
-      recipientAddress: recipientAddress
-    };
-    
-    console.log('Transfer package created successfully');
-    console.log('Full transfer package:', JSON.stringify(result, null, 2));
-    AndroidBridge.postMessage(JSON.stringify({ status: 'success', data: JSON.stringify(result) }));
-  } catch (e) {
-    console.error('createTransfer failed:', e);
-    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
-  }
-}
-
-async function finishTransfer(receiverIdentityJson, transferJson) {
-  console.log('Using updated finishTransfer for backward compatibility...');
-  return completeTransfer(receiverIdentityJson, transferJson);
-}
+// ===== UTILITY CLASSES AND FUNCTIONS =====
 
 /**
  * Utility class for test token data
@@ -1466,33 +453,12 @@ class TestTokenData {
     this._data = new Uint8Array(data);
   }
   
-  get data() {
-    return new Uint8Array(this._data);
-  }
-  
-  // Add bytes property required by SDK
   get bytes() {
     return new Uint8Array(this._data);
   }
   
-  static fromJSON(data) {
-    if (typeof data !== 'string') {
-      throw new Error('Invalid test token data');
-    }
-    const bytes = new Uint8Array(data.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    return new TestTokenData(bytes);
-  }
-  
   toJSON() {
     return Array.from(this._data).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  
-  toCBOR() {
-    return this.data;
-  }
-  
-  toString() {
-    return `TestTokenData: ${this.toJSON()}`;
   }
 }
 
@@ -1503,21 +469,17 @@ async function waitInclusionProof(client, commitment, timeout = 30000) {
   const { InclusionProofVerificationStatus } = window.UnicitySDK;
   
   const startTime = Date.now();
-  console.log('Waiting for inclusion proof, requestId:', commitment.requestId.toJSON());
+  console.log('Waiting for inclusion proof...');
   
   while (Date.now() - startTime < timeout) {
     try {
-      console.log('Requesting inclusion proof, elapsed:', Date.now() - startTime + 'ms');
       const inclusionProof = await client.getInclusionProof(commitment);
-      console.log('Got inclusion proof, verifying...');
       
       if ((await inclusionProof.verify(commitment.requestId)) === InclusionProofVerificationStatus.OK) {
         console.log('Inclusion proof verified successfully');
         return inclusionProof;
       }
-      console.log('Inclusion proof verification failed, retrying...');
     } catch (err) {
-      console.log('Inclusion proof request failed:', err.message);
       // Continue waiting if not found yet
     }
     
@@ -1527,23 +489,21 @@ async function waitInclusionProof(client, commitment, timeout = 30000) {
   throw new Error('Timeout waiting for inclusion proof');
 }
 
+// ===== SDK INITIALIZATION =====
 
-// Wait for the SDK to be loaded before initializing
 function waitForSdkAndInitialize() {
   const maxAttempts = 10;
   let attempts = 0;
   
   function checkAndInit() {
     attempts++;
-    console.log(`Attempt ${attempts}: Checking for SDK...`);
-    console.log('window.unicity available:', !!window.unicity);
+    console.log(`Checking for SDK... (attempt ${attempts}/${maxAttempts})`);
     
     if (window.unicity) {
       console.log('SDK found, initializing...');
       initializeSdk();
     } else if (attempts < maxAttempts) {
-      console.log(`SDK not ready yet, waiting... (attempt ${attempts}/${maxAttempts})`);
-      setTimeout(checkAndInit, 500); // Wait 500ms and try again
+      setTimeout(checkAndInit, 500);
     } else {
       console.error('SDK failed to load after maximum attempts');
       AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: 'SDK failed to load' }));
@@ -1555,24 +515,84 @@ function waitForSdkAndInitialize() {
 
 // Initialize SDK when page loads
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('DOMContentLoaded - waiting for SDK...');
   waitForSdkAndInitialize();
 });
 
 // Also try to initialize immediately in case DOM is already loaded
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  console.log('Document already loaded - waiting for SDK...');
   waitForSdkAndInitialize();
+}
+
+// ===== BACKWARD COMPATIBILITY WRAPPER FUNCTIONS =====
+
+/**
+ * Wrapper for createTransfer - generates address and prepares transfer
+ */
+async function createTransfer(senderIdentityJson, receiverIdentityJson, tokenJson) {
+  try {
+    // Parse to get token ID and type
+    const parsedTokenData = typeof tokenJson === 'string' ? JSON.parse(tokenJson) : tokenJson;
+    const tokenObj = parsedTokenData.token || parsedTokenData;
+    
+    // Generate receiving address
+    const { HexConverter, TokenId, TokenType, SigningService, MaskedPredicate, DirectAddress, HashAlgorithm } = window.UnicitySDK;
+    const receiverIdentity = JSON.parse(receiverIdentityJson);
+    const receiverSecret = new Uint8Array(receiverIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const receiverNonce = new Uint8Array(receiverIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    const tokenId = new TokenId(HexConverter.decode(tokenObj.id));
+    const tokenType = new TokenType(HexConverter.decode(tokenObj.type));
+    const receiverSigningService = await SigningService.createFromSecret(receiverSecret, receiverNonce);
+    const recipientPredicate = await MaskedPredicate.create(tokenId, tokenType, receiverSigningService, HashAlgorithm.SHA256, receiverNonce);
+    const recipientAddress = await DirectAddress.create(recipientPredicate.reference);
+    
+    // Prepare online transfer
+    await prepareTransfer(senderIdentityJson, recipientAddress.toJSON(), tokenJson, false);
+  } catch (e) {
+    console.error('createTransfer failed:', e);
+    AndroidBridge.postMessage(JSON.stringify({ status: 'error', message: e.message }));
+  }
+}
+
+/**
+ * Wrapper for finishTransfer
+ */
+async function finishTransfer(receiverIdentityJson, transferJson) {
+  return finalizeReceivedTransaction(receiverIdentityJson, transferJson);
+}
+
+/**
+ * Wrapper for createOfflineTransferPackage
+ */
+async function createOfflineTransferPackage(senderIdentityJson, recipientAddress, tokenJson) {
+  return prepareTransfer(senderIdentityJson, recipientAddress, tokenJson, true);
+}
+
+/**
+ * Wrapper for completeOfflineTransfer
+ */
+async function completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson) {
+  return finalizeReceivedTransaction(receiverIdentityJson, offlineTransactionJson);
+}
+
+/**
+ * Wrapper for generateReceivingAddressForOfflineTransfer
+ */
+async function generateReceivingAddressForOfflineTransfer(tokenIdString, tokenTypeString, receiverIdentityJson) {
+  return generateReceivingAddress(tokenIdString, tokenTypeString, receiverIdentityJson);
 }
 
 // Make functions available globally for Android to call
 window.generateIdentity = generateIdentity;
 window.mintToken = mintToken;
 window.deserializeToken = deserializeToken;
+window.prepareTransfer = prepareTransfer;
+window.finalizeReceivedTransaction = finalizeReceivedTransaction;
+window.generateReceivingAddress = generateReceivingAddress;
+
+// Backward compatibility
 window.createTransfer = createTransfer;
 window.finishTransfer = finishTransfer;
-window.generateReceivingAddressForOfflineTransfer = generateReceivingAddressForOfflineTransfer;
 window.createOfflineTransferPackage = createOfflineTransferPackage;
 window.completeOfflineTransfer = completeOfflineTransfer;
-window.receiveOfflineTransfer = receiveOfflineTransfer;
-window.runAutomatedOfflineTransferTest = runAutomatedOfflineTransferTest;
+window.generateReceivingAddressForOfflineTransfer = generateReceivingAddressForOfflineTransfer;
