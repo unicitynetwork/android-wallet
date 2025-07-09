@@ -152,7 +152,11 @@ async function runAutomatedOfflineTransferTest() {
     if (typeof AndroidBridge !== 'undefined') {
       AndroidBridge.postMessage(JSON.stringify({ 
         status: 'success', 
-        message: 'Automated offline transfer test completed successfully'
+        data: JSON.stringify({
+          message: 'Automated offline transfer test completed successfully',
+          tokenId: tokenId.toJSON(),
+          transactionCount: bobToken.transactions.length
+        })
       }));
     }
     
@@ -169,7 +173,8 @@ async function runAutomatedOfflineTransferTest() {
     if (typeof AndroidBridge !== 'undefined') {
       AndroidBridge.postMessage(JSON.stringify({ 
         status: 'error', 
-        message: `Test failed: ${error.message}`
+        message: `Test failed: ${error.message}`,
+        data: '' // Android SDK expects data field even for errors
       }));
     }
     
