@@ -154,8 +154,8 @@ async function runAutomatedOfflineTransferTest() {
         status: 'success', 
         data: JSON.stringify({
           message: 'Automated offline transfer test completed successfully',
-          tokenId: tokenId.toJSON(),
-          transactionCount: bobToken.transactions.length
+          token: bobToken.toJSON(),
+          identity: bobIdentity
         })
       }));
     }
