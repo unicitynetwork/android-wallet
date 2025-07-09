@@ -523,6 +523,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   waitForSdkAndInitialize();
 }
 
+
 // ===== BACKWARD COMPATIBILITY WRAPPER FUNCTIONS =====
 
 /**
