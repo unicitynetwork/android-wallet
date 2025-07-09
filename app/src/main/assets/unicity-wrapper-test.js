@@ -2,62 +2,45 @@
 console.log('========== UNICITY WRAPPER TEST LOADED ==========');
 
 /**
- * Automated test for offline transfers
+ * Pure JavaScript test for offline transfers - no AndroidBridge needed
  */
 async function runAutomatedOfflineTransferTest() {
   try {
     console.log('🚀 STARTING AUTOMATED OFFLINE TRANSFER TEST');
     console.log('🌐 AGGREGATOR URL:', AGGREGATOR_URL);
     
+    // Ensure SDK is initialized
     if (!sdkClient) {
+      console.log('Initializing SDK...');
       initializeSdk();
       await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!sdkClient) {
+        throw new Error('SDK not initialized');
+      }
     }
     
-    // Helper function to execute and capture response
-    async function executeAndCapture(fn) {
-      let capturedData = null;
-      let capturedError = null;
-      const originalPostMessage = AndroidBridge.postMessage;
-      
-      // Create a promise that will resolve when we get the response
-      const responsePromise = new Promise((resolve) => {
-        AndroidBridge.postMessage = function(message) {
-          originalPostMessage.call(this, message); // Call original to maintain normal flow
-          try {
-            const response = JSON.parse(message);
-            if (response.status === 'success') {
-              capturedData = response.data;
-              resolve();
-            } else if (response.status === 'error') {
-              capturedError = response.message;
-              resolve();
-            }
-          } catch (e) {
-            capturedError = e.message;
-            resolve();
-          }
-        };
-      });
-      
-      // Execute the function
-      fn();
-      
-      // Wait for response
-      await responsePromise;
-      
-      // Restore original
-      AndroidBridge.postMessage = originalPostMessage;
-      
-      if (capturedError) {
-        throw new Error(capturedError);
-      }
-      
-      return capturedData;
-    }
+    const { 
+      SigningService, 
+      MaskedPredicate, 
+      DirectAddress, 
+      TokenId, 
+      TokenType,
+      TokenCoinData,
+      CoinId,
+      Token,
+      TokenState,
+      HashAlgorithm,
+      MintTransactionData,
+      TokenFactory,
+      PredicateJsonFactory,
+      TransactionData,
+      Commitment,
+      CommitmentJsonSerializer,
+      TokenJsonSerializer
+    } = window.UnicitySDK;
     
     // Step 1: Create identities
-    console.log('Creating Alice and Bob identities...');
+    console.log('Step 1: Creating Alice and Bob identities...');
     const aliceIdentity = {
       secret: Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join(''),
       nonce: Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -67,56 +50,130 @@ async function runAutomatedOfflineTransferTest() {
       secret: Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join(''),
       nonce: Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('')
     };
+    console.log('✓ Identities created');
     
-    // Step 2: Alice mints a token
-    console.log('Alice minting token...');
-    const mintData = await executeAndCapture(
-      () => mintToken(JSON.stringify(aliceIdentity), JSON.stringify({ amount: 150, data: 'Test token' }))
+    // Step 2: Alice mints a token (direct SDK calls)
+    console.log('\nStep 2: Alice minting token...');
+    const aliceSecret = new Uint8Array(aliceIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const aliceNonce = new Uint8Array(aliceIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    const signingService = await SigningService.createFromSecret(aliceSecret, aliceNonce);
+    const tokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
+    const tokenType = TokenType.create(crypto.getRandomValues(new Uint8Array(32)));
+    
+    const predicate = await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, aliceNonce);
+    const coinData = TokenCoinData.create([[new CoinId(crypto.getRandomValues(new Uint8Array(32))), BigInt(150)]]);
+    const testTokenData = new TestTokenData(new TextEncoder().encode('Offline test token'));
+    const tokenState = await TokenState.create(predicate, null);
+    const address = await DirectAddress.create(predicate.reference);
+    
+    const mintTransactionData = await MintTransactionData.create(
+      tokenId, tokenType, testTokenData.bytes, coinData,
+      address.toJSON(), crypto.getRandomValues(new Uint8Array(32)), null, null
     );
-    const aliceToken = JSON.parse(mintData);
-    console.log('Token minted, ID:', aliceToken.token.id);
+    
+    console.log('Submitting mint transaction...');
+    const mintCommitment = await sdkClient.submitMintTransaction(mintTransactionData);
+    const inclusionProof = await waitInclusionProof(sdkClient, mintCommitment);
+    const mintTransaction = await sdkClient.createTransaction(mintCommitment, inclusionProof);
+    
+    const aliceToken = new Token(tokenState, mintTransaction, [], [], "2.0");
+    console.log('✓ Token minted, ID:', tokenId.toJSON());
     
     // Step 3: Bob generates receiving address
-    console.log('Bob generating receiving address...');
-    const addressData = await executeAndCapture(
-      () => generateReceivingAddress(aliceToken.token.id, aliceToken.token.type, JSON.stringify(bobIdentity))
-    );
-    const { address } = JSON.parse(addressData);
-    console.log('Address generated:', address);
+    console.log('\nStep 3: Bob generating receiving address...');
+    const bobSecret = new Uint8Array(bobIdentity.secret.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const bobNonce = new Uint8Array(bobIdentity.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    
+    const bobSigningService = await SigningService.createFromSecret(bobSecret, bobNonce);
+    const bobPredicate = await MaskedPredicate.create(tokenId, tokenType, bobSigningService, HashAlgorithm.SHA256, bobNonce);
+    const bobAddress = await DirectAddress.create(bobPredicate.reference);
+    console.log('✓ Address generated:', bobAddress.toJSON());
     
     // Step 4: Alice creates offline transfer package
-    console.log('Alice creating offline transfer package...');
-    const offlinePackage = await executeAndCapture(
-      () => prepareTransfer(JSON.stringify(aliceIdentity), address, JSON.stringify(aliceToken), true)
+    console.log('\nStep 4: Alice creating offline transfer package...');
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    const transactionData = await TransactionData.create(
+      aliceToken.state,
+      bobAddress.toJSON(),
+      salt,
+      null,
+      null,
+      aliceToken.nametagTokens
     );
-    console.log('Offline package created');
+    
+    const commitment = await Commitment.create(transactionData, signingService);
+    const offlinePackage = {
+      commitment: CommitmentJsonSerializer.serialize(commitment),
+      token: aliceToken.toJSON()
+    };
+    console.log('✓ Offline package created');
+    console.log('  - Package size:', JSON.stringify(offlinePackage).length, 'bytes');
+    console.log('  - Has commitment:', !!offlinePackage.commitment);
+    console.log('  - Has token:', !!offlinePackage.token);
     
     // Step 5: Bob completes the offline transfer
-    console.log('Bob completing offline transfer...');
-    const finalData = await executeAndCapture(
-      () => finalizeReceivedTransaction(JSON.stringify(bobIdentity), offlinePackage)
+    console.log('\nStep 5: Bob completing offline transfer...');
+    
+    // Recreate token from package
+    const tokenFactory = new TokenFactory(new TokenJsonSerializer(new PredicateJsonFactory()));
+    const receivedToken = await tokenFactory.create(offlinePackage.token);
+    
+    // Deserialize commitment
+    const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
+    const receivedCommitment = await commitmentSerializer.deserialize(
+      receivedToken.id,
+      receivedToken.type,
+      offlinePackage.commitment
     );
-    const result = JSON.parse(finalData);
     
-    console.log('========================================');
-    console.log('OFFLINE TRANSFER TEST COMPLETED!');
-    console.log('Token transferred from Alice to Bob');
-    console.log('Transactions count:', result.token.transactions.length);
+    console.log('Submitting commitment to network...');
+    await sdkClient.submitCommitment(receivedCommitment);
+    
+    console.log('Waiting for inclusion proof...');
+    const transferInclusionProof = await waitInclusionProof(sdkClient, receivedCommitment);
+    const transaction = await sdkClient.createTransaction(receivedCommitment, transferInclusionProof);
+    
+    // Create Bob's new token state
+    const newTokenState = await TokenState.create(bobPredicate, null);
+    
+    // Finish the transaction
+    const bobToken = await sdkClient.finishTransaction(receivedToken, newTokenState, transaction);
+    
+    console.log('✓ Transfer completed!');
+    console.log('  - Bob now owns the token');
+    console.log('  - Transaction count:', bobToken.transactions.length);
+    
+    console.log('\n========================================');
+    console.log('OFFLINE TRANSFER TEST COMPLETED SUCCESSFULLY!');
     console.log('========================================');
     
-    AndroidBridge.postMessage(JSON.stringify({ 
-      status: 'success', 
-      message: 'Automated offline transfer test completed successfully'
-    }));
+    // Return success to AndroidBridge if it exists
+    if (typeof AndroidBridge !== 'undefined') {
+      AndroidBridge.postMessage(JSON.stringify({ 
+        status: 'success', 
+        message: 'Automated offline transfer test completed successfully'
+      }));
+    }
+    
+    return { success: true, bobToken: bobToken.toJSON() };
     
   } catch (error) {
+    console.error('\n========================================');
     console.error('OFFLINE TRANSFER TEST FAILED!');
     console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('========================================');
     
-    AndroidBridge.postMessage(JSON.stringify({ 
-      status: 'error', 
-      message: `Test failed: ${error.message}`
-    }));
+    // Return error to AndroidBridge if it exists
+    if (typeof AndroidBridge !== 'undefined') {
+      AndroidBridge.postMessage(JSON.stringify({ 
+        status: 'error', 
+        message: `Test failed: ${error.message}`
+      }));
+    }
+    
+    throw error;
   }
 }
 

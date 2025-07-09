@@ -232,6 +232,9 @@ async function prepareTransfer(senderIdentityJson, recipientAddress, tokenJson, 
       };
       
       console.log('Offline transfer package created successfully');
+      console.log('Package structure:', Object.keys(offlinePackage));
+      console.log('Commitment keys:', Object.keys(offlinePackage.commitment));
+      
       AndroidBridge.postMessage(JSON.stringify({ 
         status: 'success', 
         data: JSON.stringify(offlinePackage)
@@ -300,6 +303,9 @@ async function finalizeReceivedTransaction(receiverIdentityJson, transferPackage
     if (transferPackage.commitment && typeof transferPackage.commitment === 'object' && transferPackage.commitment.transactionData) {
       // Offline transfer - deserialize commitment
       console.log('Processing offline transfer...');
+      console.log('Token ID:', token.id?.toString());
+      console.log('Token Type:', token.type?.toString());
+      
       const commitmentSerializer = new CommitmentJsonSerializer(new PredicateJsonFactory());
       commitment = await commitmentSerializer.deserialize(
         token.id,
@@ -307,8 +313,12 @@ async function finalizeReceivedTransaction(receiverIdentityJson, transferPackage
         transferPackage.commitment
       );
       
+      console.log('Commitment deserialized, submitting to network...');
+      
       // Submit the commitment to the network
       await sdkClient.submitCommitment(commitment);
+      console.log('Commitment submitted, waiting for inclusion proof...');
+      
       const inclusionProof = await waitInclusionProof(sdkClient, commitment);
       transaction = await sdkClient.createTransaction(commitment, inclusionProof);
     } else {
