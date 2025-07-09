@@ -11,6 +11,7 @@ import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
 import com.unicity.nfcwalletdemo.sdk.UnicityTokenData
 import com.unicity.nfcwalletdemo.sdk.UnicityMintResult
+import com.unicity.nfcwalletdemo.identity.IdentityManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,7 @@ class WalletRepository(context: Context) {
         context.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
     private val gson = Gson()
     private val unicitySdkService = UnicitySdkService(context)
+    private val identityManager = IdentityManager(context)
     
     private val _wallet = MutableStateFlow<Wallet?>(null)
     val wallet: StateFlow<Wallet?> = _wallet.asStateFlow()
@@ -116,6 +118,10 @@ class WalletRepository(context: Context) {
     fun clearWallet() {
         // Clear existing wallet data
         sharedPreferences.edit().clear().apply()
+        // Note: We do NOT clear the BIP-39 identity here
+        // The identity persists across wallet resets for recovery purposes
+        // If you need to clear identity, use identityManager.clearIdentity() separately
+        
         // Create new empty wallet
         createNewWallet()
     }
@@ -163,22 +169,17 @@ class WalletRepository(context: Context) {
     }
     
     
-    private suspend fun generateIdentity(): UnicityIdentity = suspendCancellableCoroutine { continuation ->
-        unicitySdkService.generateIdentity { result ->
-            result.onSuccess { identityJson ->
-                try {
-                    val identity = UnicityIdentity.fromJson(identityJson)
-                    continuation.resume(identity)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to parse identity", e)
-                    continuation.resume(UnicityIdentity("error_secret", "error_nonce"))
-                }
-            }
-            result.onFailure { error ->
-                Log.e(TAG, "Failed to generate identity", error)
-                continuation.resume(UnicityIdentity("fallback_secret", "fallback_nonce"))
-            }
+    private suspend fun generateIdentity(): UnicityIdentity {
+        // Check if we already have an identity
+        val existingIdentity = identityManager.getCurrentIdentity()
+        if (existingIdentity != null) {
+            // Return the existing BIP-39 derived identity
+            return UnicityIdentity(existingIdentity.secret, existingIdentity.nonce)
         }
+        
+        // Generate a new BIP-39 identity if none exists
+        val (identity, _) = identityManager.generateNewIdentity()
+        return UnicityIdentity(identity.secret, identity.nonce)
     }
     
     private suspend fun mintToken(identity: UnicityIdentity, tokenData: UnicityTokenData): UnicityMintResult = 
@@ -203,6 +204,8 @@ class WalletRepository(context: Context) {
         }
     
     fun getSdkService() = unicitySdkService
+    
+    fun getIdentityManager() = identityManager
     
     fun destroy() {
         unicitySdkService.destroy()

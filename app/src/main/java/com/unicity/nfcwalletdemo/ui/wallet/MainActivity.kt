@@ -105,7 +105,8 @@ class MainActivity : AppCompatActivity() {
     private fun setupUI() {
         // Setup bottom navigation
         binding.navUnicity.setOnClickListener {
-            // Navigation handled without toast feedback
+            // Open User Profile when Unicity icon is tapped
+            startActivity(Intent(this, com.unicity.nfcwalletdemo.ui.profile.UserProfileActivity::class.java))
         }
         
         binding.navTawasal.setOnClickListener {

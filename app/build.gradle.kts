@@ -48,6 +48,13 @@ android {
     lint {
         abortOnError = false
     }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/INDEX.LIST"
+            excludes += "/META-INF/DEPENDENCIES"
+        }
+    }
 }
 
 dependencies {
@@ -91,6 +98,13 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.zxing:core:3.5.2")
     
+    // BIP-39 for seed phrase generation
+    implementation("cash.z.ecc.android:kotlin-bip39:1.0.7")
+    
+    // Google Drive API for backup
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("com.google.api-client:google-api-client-android:2.2.0")
+    implementation("com.google.apis:google-api-services-drive:v3-rev20240730-2.0.0")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

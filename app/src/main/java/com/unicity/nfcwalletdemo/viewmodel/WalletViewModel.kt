@@ -331,6 +331,8 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     
     fun getSdkService() = repository.getSdkService()
     
+    fun getIdentityManager() = repository.getIdentityManager()
+    
     override fun onCleared() {
         super.onCleared()
         priceUpdateJob?.cancel()
