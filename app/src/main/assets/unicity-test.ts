@@ -44,6 +44,15 @@ async function runOfflineTransferTest(): Promise<void> {
     
     // Step 2: Generate Bob's receiving address
     console.log("\nStep 2: Generating Bob's receiving address...");
+    
+    // First reconstruct the token from JSON to get proper objects
+    const predicateFactory = new unicity.PredicateJsonFactory();
+    const tokenFactory = new unicity.TokenFactory(
+      new unicity.TokenJsonSerializer(predicateFactory)
+    );
+    const token = await tokenFactory.create(mintedData.token);
+    
+    // Generate Bob's identity components
     const bobSecretMatches = bobIdentity.secret.match(/.{2}/g);
     const bobNonceMatches = bobIdentity.nonce.match(/.{2}/g);
     if (!bobSecretMatches || !bobNonceMatches) {
@@ -54,28 +63,19 @@ async function runOfflineTransferTest(): Promise<void> {
     const bobNonce = new Uint8Array(bobNonceMatches.map((byte: string) => parseInt(byte, 16)));
     
     // Create Bob's signing service
-    const bobSigningService = await (window as any).unicity.SigningService.createFromSecret(bobSecret, bobNonce);
+    const bobSigningService = await unicity.SigningService.createFromSecret(bobSecret, bobNonce);
     
-    // Calculate Bob's address reference for the specific token
-    // First, we need to reconstruct the token to get the proper type
-    const predicateFactory = new (window as any).unicity.PredicateJsonFactory();
-    const tokenFactory = new (window as any).unicity.TokenFactory(
-      new (window as any).unicity.TokenJsonSerializer(predicateFactory)
-    );
-    
-    // Reconstruct the token from JSON
-    const reconstructedToken = await tokenFactory.create(mintedData.token);
-    console.log("Reconstructed token type:", reconstructedToken.type);
-    
-    const bobReference = await (window as any).unicity.MaskedPredicate.calculateReference(
-      reconstructedToken.type,
-      bobSigningService.algorithm,
-      bobSigningService.publicKey,
-      (window as any).unicity.HashAlgorithm.SHA256,
+    // Create Bob's predicate for THIS specific token (using token's ID and type)
+    const recipientPredicate = await unicity.MaskedPredicate.create(
+      token.id,
+      token.type,
+      bobSigningService,
+      unicity.HashAlgorithm.SHA256,
       bobNonce
     );
     
-    const bobAddress = await (window as any).unicity.DirectAddress.create(bobReference);
+    // Create Bob's receiving address from the predicate
+    const bobAddress = await unicity.DirectAddress.create(recipientPredicate.reference);
     const bobAddressString = bobAddress.toJSON();
     console.log("Bob's receiving address:", bobAddressString);
     
@@ -116,14 +116,14 @@ async function runOfflineTransferTest(): Promise<void> {
     console.log("\n=== Offline Transfer Test Completed Successfully ===");
     
     // Return success message to Android
-    if ((window as any).Android) {
-      (window as any).Android.showToast("Offline transfer test completed successfully!");
+    if (window.Android) {
+      window.Android.showToast("Offline transfer test completed successfully!");
     }
     
   } catch (error: any) {
     console.error("Offline transfer test failed:", error);
-    if ((window as any).Android) {
-      (window as any).Android.showToast("Test failed: " + error.message);
+    if (window.Android) {
+      window.Android.showToast("Test failed: " + error.message);
     }
     throw error;
   }

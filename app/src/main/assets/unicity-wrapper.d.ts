@@ -1,6 +1,7 @@
 interface AndroidBridge {
     onResult(requestId: string, data: string): void;
     onError(requestId: string, error: string): void;
+    showToast(message: string): void;
 }
 interface AndroidRequest {
     id: string;
@@ -27,32 +28,7 @@ interface TransferPackageJson {
 interface Window {
     Android?: AndroidBridge;
 }
-declare const unicity: {
-    StateTransitionClient: any;
-    AggregatorClient: any;
-    Commitment: any;
-    CommitmentJsonSerializer: any;
-    TokenFactory: any;
-    TokenJsonSerializer: any;
-    PredicateJsonFactory: any;
-    RequestId: any;
-    MintTransactionData: any;
-    TokenId: any;
-    TokenType: any;
-    DirectAddress: any;
-    SigningService: any;
-    HashAlgorithm: any;
-    MaskedPredicate: any;
-    TokenCoinData: any;
-    CoinId: any;
-    Token: any;
-    TokenState: any;
-    Transaction: any;
-    TransactionData: any;
-    TransactionJsonSerializer: any;
-    SubmitCommitmentStatus: any;
-    waitInclusionProof: any;
-};
+declare const unicity: any;
 declare const aggregatorUrl = "https://gateway-test.unicity.network";
 declare function createClient(): any;
 declare function mintToken(identityJson: string, tokenDataJson: string): Promise<string>;

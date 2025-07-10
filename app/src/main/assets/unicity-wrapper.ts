@@ -2,6 +2,7 @@
 interface AndroidBridge {
   onResult(requestId: string, data: string): void;
   onError(requestId: string, error: string): void;
+  showToast(message: string): void;
 }
 
 interface AndroidRequest {
@@ -37,33 +38,11 @@ interface Window {
   Android?: AndroidBridge;
 }
 
-// Import types from the Unicity SDK
-declare const unicity: {
-  StateTransitionClient: any;
-  AggregatorClient: any;
-  Commitment: any;
-  CommitmentJsonSerializer: any;
-  TokenFactory: any;
-  TokenJsonSerializer: any;
-  PredicateJsonFactory: any;
-  RequestId: any;
-  MintTransactionData: any;
-  TokenId: any;
-  TokenType: any;
-  DirectAddress: any;
-  SigningService: any;
-  HashAlgorithm: any;
-  MaskedPredicate: any;
-  TokenCoinData: any;
-  CoinId: any;
-  Token: any;
-  TokenState: any;
-  Transaction: any;
-  TransactionData: any;
-  TransactionJsonSerializer: any;
-  SubmitCommitmentStatus: any;
-  waitInclusionProof: any;
-};
+// Import the SDK type definitions
+/// <reference path="./unicity-sdk.d.ts" />
+
+// Re-declare unicity since the reference path doesn't seem to work in this webpack config
+declare const unicity: any;
 
 // SDK configuration
 const aggregatorUrl = "https://gateway-test.unicity.network";

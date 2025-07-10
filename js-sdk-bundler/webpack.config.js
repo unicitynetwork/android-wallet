@@ -48,7 +48,8 @@ module.exports = [
   },
   // Second config: Compile the TypeScript wrapper
   {
-    mode: 'production',
+    mode: 'development', // Changed to development for readable output
+    devtool: 'inline-source-map', // Add source maps for debugging
     entry: path.resolve(__dirname, '../app/src/main/assets/unicity-wrapper.ts'),
     output: {
       path: path.resolve(__dirname, '../app/src/main/assets'),
@@ -78,7 +79,8 @@ module.exports = [
   },
   // Third config: Compile the test file
   {
-    mode: 'production',
+    mode: 'development', // Changed to development for readable output
+    devtool: 'inline-source-map', // Add source maps for debugging
     entry: path.resolve(__dirname, '../app/src/main/assets/unicity-test.ts'),
     output: {
       path: path.resolve(__dirname, '../app/src/main/assets'),
