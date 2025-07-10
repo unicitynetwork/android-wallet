@@ -57,8 +57,18 @@ async function runOfflineTransferTest(): Promise<void> {
     const bobSigningService = await (window as any).unicity.SigningService.createFromSecret(bobSecret, bobNonce);
     
     // Calculate Bob's address reference for the specific token
+    // First, we need to reconstruct the token to get the proper type
+    const predicateFactory = new (window as any).unicity.PredicateJsonFactory();
+    const tokenFactory = new (window as any).unicity.TokenFactory(
+      new (window as any).unicity.TokenJsonSerializer(predicateFactory)
+    );
+    
+    // Reconstruct the token from JSON
+    const reconstructedToken = await tokenFactory.create(mintedData.token);
+    console.log("Reconstructed token type:", reconstructedToken.type);
+    
     const bobReference = await (window as any).unicity.MaskedPredicate.calculateReference(
-      mintedData.token.genesis.data.tokenType,
+      reconstructedToken.type,
       bobSigningService.algorithm,
       bobSigningService.publicKey,
       (window as any).unicity.HashAlgorithm.SHA256,
