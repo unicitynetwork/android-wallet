@@ -134,6 +134,21 @@ class UnicitySdkService(context: Context) {
         )
         callWrapperMethod("finalizeReceivedTransaction", params, callback)
     }
+    
+    // Test methods
+    fun runOfflineTransferTest(callback: (Result<String>) -> Unit) {
+        if (!isInitialized) {
+            callback(Result.failure(Exception("SDK not initialized")))
+            return
+        }
+        
+        Handler(Looper.getMainLooper()).post {
+            Log.d(TAG, "Running offline transfer test")
+            webView.evaluateJavascript("runOfflineTransferTest()", null)
+            // Return success immediately since the test runs asynchronously and logs results
+            callback(Result.success("Test started - check console logs"))
+        }
+    }
 
     // Simplified method to call wrapper functions using the structured approach
     private fun callWrapperMethod(method: String, params: Map<String, Any>, callback: (Result<String>) -> Unit) {
@@ -186,6 +201,14 @@ class UnicitySdkService(context: Context) {
                 Log.e(TAG, "Error response for request $requestId: $error")
                 callbacks[requestId]?.invoke(Result.failure(Exception(error)))
                 callbacks.remove(requestId)
+            }
+        }
+        
+        @JavascriptInterface
+        fun showToast(message: String) {
+            Handler(Looper.getMainLooper()).post {
+                Log.i(TAG, "Toast from JS: $message")
+                // Toast would require context, so just log for now
             }
         }
     }

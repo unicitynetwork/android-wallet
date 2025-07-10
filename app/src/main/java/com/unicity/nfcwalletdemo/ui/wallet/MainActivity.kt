@@ -546,6 +546,10 @@ class MainActivity : AppCompatActivity() {
                 showMintTokenDialog()
                 true
             }
+            com.unicity.nfcwalletdemo.R.id.action_offline_transfer_test -> {
+                runOfflineTransferTest()
+                true
+            }
             com.unicity.nfcwalletdemo.R.id.action_reset_wallet -> {
                 showResetWalletDialog()
                 true
@@ -587,6 +591,38 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
+    private fun runOfflineTransferTest() {
+        Toast.makeText(this, "Starting offline transfer test...", Toast.LENGTH_SHORT).show()
+        
+        lifecycleScope.launch {
+            try {
+                viewModel.getSdkService().runOfflineTransferTest { result ->
+                    runOnUiThread {
+                        if (result.isSuccess) {
+                            Log.i("MainActivity", "Offline transfer test started - check logs for results")
+                            // The test runs asynchronously and logs results to console
+                        } else {
+                            Toast.makeText(
+                                this@MainActivity, 
+                                "Test failed: ${result.exceptionOrNull()?.message}", 
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to run offline transfer test", e)
+                runOnUiThread {
+                    Toast.makeText(
+                        this@MainActivity, 
+                        "Test error: ${e.message}", 
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+    
     
     
     private fun showCurrencyDialog() {
@@ -606,7 +642,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test NFC Transfer")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test NFC Transfer", "Test Offline Transfer")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -615,6 +651,7 @@ class MainActivity : AppCompatActivity() {
                     0 -> showMintTokenDialog()
                     1 -> showResetWalletDialog()
                     2 -> startNfcTestTransfer()
+                    3 -> runOfflineTransferTest()
                 }
             }
             .show()

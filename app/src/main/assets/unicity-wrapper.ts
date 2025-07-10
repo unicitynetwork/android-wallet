@@ -417,5 +417,10 @@ async function handleAndroidRequest(request: string): Promise<void> {
 }
 
 
-// Export only the handler for Android bridge communication
+// Export the handler for Android bridge communication
 (window as any).handleAndroidRequest = handleAndroidRequest;
+
+// Also export individual functions for testing purposes
+(window as any).mintToken = mintToken;
+(window as any).prepareTransfer = prepareTransfer;
+(window as any).finalizeReceivedTransaction = finalizeReceivedTransaction;

@@ -8,6 +8,11 @@
         app:showAsAction="never" />
         
     <item
+        android:id="@+id/action_offline_transfer_test"
+        android:title="Test Offline Transfer"
+        app:showAsAction="never" />
+        
+    <item
         android:id="@+id/action_reset_wallet"
         android:title="Reset Wallet"
         app:showAsAction="never" />

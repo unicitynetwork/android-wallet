@@ -76,4 +76,34 @@ module.exports = [
       unicity: 'unicity'
     },
   },
+  // Third config: Compile the test file
+  {
+    mode: 'production',
+    entry: path.resolve(__dirname, '../app/src/main/assets/unicity-test.ts'),
+    output: {
+      path: path.resolve(__dirname, '../app/src/main/assets'),
+      filename: 'unicity-test.js',
+    },
+    module: {
+      rules: [
+        {
+          test: /\.tsx?$/,
+          use: {
+            loader: 'ts-loader',
+            options: {
+              configFile: path.resolve(__dirname, '../app/src/main/assets/tsconfig.json')
+            }
+          },
+          exclude: /node_modules/,
+        },
+      ],
+    },
+    resolve: {
+      extensions: ['.tsx', '.ts', '.js'],
+    },
+    // Mark unicity as external since it's loaded from unicity-sdk.js
+    externals: {
+      unicity: 'unicity'
+    },
+  },
 ];
