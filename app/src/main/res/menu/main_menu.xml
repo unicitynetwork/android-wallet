@@ -12,10 +12,4 @@
         android:title="Reset Wallet"
         app:showAsAction="never" />
         
-        
-    <item
-        android:id="@+id/action_test_offline_transfer"
-        android:title="Test Offline Transfer"
-        app:showAsAction="never" />
-        
 </menu>

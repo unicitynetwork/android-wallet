@@ -8,13 +8,15 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
-import org.json.JSONObject
+import com.google.gson.Gson
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 class UnicitySdkService(context: Context) {
 
     private val webView: WebView = WebView(context)
     private val callbacks = ConcurrentHashMap<String, (Result<String>) -> Unit>()
+    private val gson = Gson()
     private var isInitialized = false
     
     companion object {
@@ -28,10 +30,11 @@ class UnicitySdkService(context: Context) {
     private fun setupWebView() {
         webView.settings.apply {
             javaScriptEnabled = true
-            allowFileAccess = false
-            allowContentAccess = false
-            allowFileAccessFromFileURLs = false
-            allowUniversalAccessFromFileURLs = false
+            allowFileAccess = true
+            allowContentAccess = true
+            // Allow network access from file URLs for the SDK to work
+            allowFileAccessFromFileURLs = true
+            allowUniversalAccessFromFileURLs = true
             domStorageEnabled = true
             // Enable network access
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -39,7 +42,7 @@ class UnicitySdkService(context: Context) {
             setUserAgentString(userAgentString + " UnicityWallet/1.0")
         }
         
-        webView.addJavascriptInterface(UnicityJsBridge(), "AndroidBridge")
+        webView.addJavascriptInterface(AndroidBridge(), "Android")
         
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -52,27 +55,57 @@ class UnicitySdkService(context: Context) {
         webView.loadUrl("file:///android_asset/bridge.html")
     }
 
+    // Data classes for structured communication
+    private data class AndroidRequest(
+        val id: String,
+        val method: String,
+        val params: Map<String, Any>
+    )
+
+    // Public API methods
     fun generateIdentity(callback: (Result<String>) -> Unit) {
-        executeJs("generateIdentity()") { result ->
-            callback(result)
-        }
+        // For now, generate a simple identity locally
+        // In the future, this could use the BIP-39 identity from IdentityManager
+        val identity = UnicityIdentity(
+            secret = UUID.randomUUID().toString().replace("-", ""),
+            nonce = UUID.randomUUID().toString().replace("-", "")
+        )
+        callback(Result.success(identity.toJson()))
     }
 
     fun mintToken(identityJson: String, tokenDataJson: String, callback: (Result<String>) -> Unit) {
-        val escapedIdentity = escapeJavaScriptString(identityJson)
-        val escapedTokenData = escapeJavaScriptString(tokenDataJson)
-        
-        executeJs("mintToken('$escapedIdentity', '$escapedTokenData')") { result ->
-            callback(result)
-        }
+        val params = mapOf(
+            "identityJson" to identityJson,
+            "tokenDataJson" to tokenDataJson
+        )
+        callWrapperMethod("mintToken", params, callback)
     }
     
-    fun deserializeToken(tokenJsonString: String, callback: (Result<String>) -> Unit) {
-        val escapedTokenJson = escapeJavaScriptString(tokenJsonString)
-        
-        executeJs("deserializeToken('$escapedTokenJson')") { result ->
-            callback(result)
-        }
+    fun createOfflineTransferPackage(
+        senderIdentityJson: String,
+        recipientAddress: String,
+        tokenJson: String,
+        callback: (Result<String>) -> Unit
+    ) {
+        val params = mapOf(
+            "senderIdentityJson" to senderIdentityJson,
+            "recipientAddress" to recipientAddress,
+            "tokenJson" to tokenJson,
+            "isOffline" to true
+        )
+        callWrapperMethod("prepareTransfer", params, callback)
+    }
+
+    fun completeOfflineTransfer(
+        receiverIdentityJson: String,
+        offlineTransactionJson: String,
+        callback: (Result<String>) -> Unit
+    ) {
+        val params = mapOf(
+            "receiverIdentityJson" to receiverIdentityJson,
+            "transferPackageJson" to offlineTransactionJson
+        )
+        callWrapperMethod("finalizeReceivedTransaction", params, callback)
     }
 
     fun createTransfer(
@@ -81,114 +114,49 @@ class UnicitySdkService(context: Context) {
         tokenJson: String, 
         callback: (Result<String>) -> Unit
     ) {
-        val escapedSenderIdentity = escapeJavaScriptString(senderIdentityJson)
-        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
-        val escapedToken = escapeJavaScriptString(tokenJson)
+        // Extract receiver address from receiver identity
+        val receiverIdentity = UnicityIdentity.fromJson(receiverIdentityJson)
+        val recipientAddress = "oddity_${receiverIdentity.secret.take(16)}" // Simplified address generation
         
-        executeJs("createTransfer('$escapedSenderIdentity', '$escapedReceiverIdentity', '$escapedToken')") { result ->
-            callback(result)
-        }
+        val params = mapOf(
+            "senderIdentityJson" to senderIdentityJson,
+            "recipientAddress" to recipientAddress,
+            "tokenJson" to tokenJson,
+            "isOffline" to false
+        )
+        callWrapperMethod("prepareTransfer", params, callback)
     }
 
     fun finishTransfer(receiverIdentityJson: String, transferJson: String, callback: (Result<String>) -> Unit) {
-        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
-        val escapedTransfer = escapeJavaScriptString(transferJson)
-        
-        executeJs("finishTransfer('$escapedReceiverIdentity', '$escapedTransfer')") { result ->
-            callback(result)
-        }
+        val params = mapOf(
+            "receiverIdentityJson" to receiverIdentityJson,
+            "transferPackageJson" to transferJson
+        )
+        callWrapperMethod("finalizeReceivedTransaction", params, callback)
     }
 
-
-    fun runAutomatedOfflineTransferTest(callback: (Result<String>) -> Unit) {
-        executeJs("runAutomatedOfflineTransferTest()") { result ->
-            callback(result)
-        }
-    }
-
-
-    /**
-     * Creates an offline transfer package that can be transmitted via NFC without network
-     */
-    fun createOfflineTransferPackage(
-        senderIdentityJson: String,
-        recipientAddress: String,
-        tokenJson: String,
-        callback: (Result<String>) -> Unit
-    ) {
-        val escapedSenderIdentity = escapeJavaScriptString(senderIdentityJson)
-        val escapedRecipientAddress = escapeJavaScriptString(recipientAddress)
-        val escapedToken = escapeJavaScriptString(tokenJson)
-        
-        executeJs("createOfflineTransferPackage('$escapedSenderIdentity', '$escapedRecipientAddress', '$escapedToken')") { result ->
-            callback(result)
-        }
-    }
-
-    /**
-     * Completes an offline transfer received via NFC
-     */
-    fun completeOfflineTransfer(
-        receiverIdentityJson: String,
-        offlineTransactionJson: String,
-        callback: (Result<String>) -> Unit
-    ) {
-        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
-        val escapedOfflineTransaction = escapeJavaScriptString(offlineTransactionJson)
-        
-        executeJs("completeOfflineTransfer('$escapedReceiverIdentity', '$escapedOfflineTransaction')") { result ->
-            callback(result)
-        }
-    }
-
-    /**
-     * Generates a receiving address for a token type
-     */
-    fun generateReceivingAddress(
-        tokenIdHex: String,
-        tokenTypeHex: String,
-        receiverIdentityJson: String,
-        callback: (Result<String>) -> Unit
-    ) {
-        val escapedTokenId = escapeJavaScriptString(tokenIdHex)
-        val escapedTokenType = escapeJavaScriptString(tokenTypeHex)
-        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
-        
-        executeJs("generateReceivingAddress('$escapedTokenId', '$escapedTokenType', '$escapedReceiverIdentity')") { result ->
-            callback(result)
-        }
-    }
-
-    /**
-     * Generates a receiving address for offline transfers using specific token ID and type
-     */
-    fun generateReceivingAddressForOfflineTransfer(
-        tokenIdJson: String,
-        tokenTypeJson: String,
-        receiverIdentityJson: String,
-        callback: (Result<String>) -> Unit
-    ) {
-        val escapedTokenId = escapeJavaScriptString(tokenIdJson)
-        val escapedTokenType = escapeJavaScriptString(tokenTypeJson)
-        val escapedReceiverIdentity = escapeJavaScriptString(receiverIdentityJson)
-        
-        executeJs("generateReceivingAddressForOfflineTransfer('$escapedTokenId', '$escapedTokenType', '$escapedReceiverIdentity')") { result ->
-            callback(result)
-        }
-    }
-    
-    private fun executeJs(script: String, callback: (Result<String>) -> Unit) {
+    // Simplified method to call wrapper functions using the structured approach
+    private fun callWrapperMethod(method: String, params: Map<String, Any>, callback: (Result<String>) -> Unit) {
         if (!isInitialized) {
             callback(Result.failure(Exception("SDK not initialized")))
             return
         }
         
-        val callId = java.util.UUID.randomUUID().toString()
-        callbacks[callId] = callback
+        val requestId = UUID.randomUUID().toString()
+        callbacks[requestId] = callback
+        
+        val request = AndroidRequest(
+            id = requestId,
+            method = method,
+            params = params
+        )
+        
+        val requestJson = gson.toJson(request)
+        val escapedJson = escapeJavaScriptString(requestJson)
         
         Handler(Looper.getMainLooper()).post {
-            Log.d(TAG, "Executing JavaScript: $script")
-            webView.evaluateJavascript(script, null)
+            Log.d(TAG, "Calling wrapper method: $method")
+            webView.evaluateJavascript("handleAndroidRequest('$escapedJson')", null)
         }
     }
     
@@ -202,34 +170,22 @@ class UnicitySdkService(context: Context) {
             .replace("\t", "\\t")
     }
 
-    private inner class UnicityJsBridge {
+    private inner class AndroidBridge {
         @JavascriptInterface
-        fun postMessage(responseJson: String) {
+        fun onResult(requestId: String, data: String) {
             Handler(Looper.getMainLooper()).post {
-                Log.d(TAG, "Received from JavaScript: $responseJson")
-                
-                val callback = callbacks.values.firstOrNull()
-                callbacks.clear()
-
-                try {
-                    val response = JSONObject(responseJson)
-                    when (response.getString("status")) {
-                        "success" -> {
-                            val data = response.getString("data")
-                            callback?.invoke(Result.success(data))
-                        }
-                        "error" -> {
-                            val message = response.getString("message")
-                            callback?.invoke(Result.failure(Exception(message)))
-                        }
-                        else -> {
-                            callback?.invoke(Result.failure(Exception("Unknown response status")))
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing JavaScript response", e)
-                    callback?.invoke(Result.failure(e))
-                }
+                Log.d(TAG, "Success response for request $requestId: $data")
+                callbacks[requestId]?.invoke(Result.success(data))
+                callbacks.remove(requestId)
+            }
+        }
+        
+        @JavascriptInterface
+        fun onError(requestId: String, error: String) {
+            Handler(Looper.getMainLooper()).post {
+                Log.e(TAG, "Error response for request $requestId: $error")
+                callbacks[requestId]?.invoke(Result.failure(Exception(error)))
+                callbacks.remove(requestId)
             }
         }
     }

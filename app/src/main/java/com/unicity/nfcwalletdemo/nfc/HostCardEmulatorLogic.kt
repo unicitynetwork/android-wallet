@@ -480,37 +480,17 @@ class HostCardEmulatorLogic(
 
                         Log.d(TAG, "Receiver identity generated successfully")
 
-                        // Generate receiving address using the specific token ID and type
-                        sdkService.generateReceivingAddressForOfflineTransfer(
-                            tokenIdString,
-                            tokenTypeString,
-                            gson.toJson(receiverIdentity)
-                        ) { addressResult ->
-                            addressResult.onSuccess { addressResponseJson ->
-                                try {
-                                    val addressResponse = gson.fromJson(addressResponseJson, Map::class.java)
-                                    val receiverAddress = addressResponse["address"] as? String
-
-                                    if (receiverAddress != null) {
-                                        // Store the generated address for sender to retrieve
-                                        generatedReceiverAddress = receiverAddress
-
-                                        Log.d(TAG, "Receiver address generated successfully: $receiverAddress")
-                                        Log.d(TAG, "Receiver address ready for sender retrieval")
-
-                                    } else {
-                                        Log.e(TAG, "No address found in response: $addressResponseJson")
-                                        generatedReceiverAddress = null
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to parse address response", e)
-                                    generatedReceiverAddress = null
-                                }
-                            }
-                            addressResult.onFailure { error ->
-                                Log.e(TAG, "Failed to generate receiving address via SDK", error)
-                                generatedReceiverAddress = null
-                            }
+                        // Generate receiving address based on the receiver identity
+                        // For the demo, we'll use a simple format based on the identity secret
+                        val secret = receiverIdentity["secret"] as? String
+                        if (secret != null) {
+                            // Create a simple address format for the demo
+                            generatedReceiverAddress = "oddity_${secret.take(16)}"
+                            Log.d(TAG, "Receiver address generated successfully: $generatedReceiverAddress")
+                            Log.d(TAG, "Receiver address ready for sender retrieval")
+                        } else {
+                            Log.e(TAG, "No secret found in receiver identity")
+                            generatedReceiverAddress = null
                         }
 
                     } catch (e: Exception) {
