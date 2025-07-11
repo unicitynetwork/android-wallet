@@ -46,7 +46,7 @@ import com.unicity.nfcwalletdemo.nfc.HybridNfcBluetoothClient
 import com.unicity.nfcwalletdemo.nfc.RealNfcTransceiver
 import com.unicity.nfcwalletdemo.nfc.SimpleNfcTransceiver
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -75,7 +75,7 @@ class MainActivity : AppCompatActivity() {
         private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 1001
     }
     
-    private lateinit var sdkService: UnicitySdkService
+    private lateinit var sdkService: UnicityJavaSdkService
     private val gson = Gson()
     
     // Success dialog properties
@@ -92,7 +92,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
-        sdkService = UnicitySdkService(this)
+        sdkService = UnicityJavaSdkService()
         
         setupActionBar()
         setupNfc()
@@ -781,35 +781,8 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun runOfflineTransferTest() {
-        Toast.makeText(this, "Starting offline transfer test...", Toast.LENGTH_SHORT).show()
-        
-        lifecycleScope.launch {
-            try {
-                viewModel.getSdkService().runOfflineTransferTest { result ->
-                    runOnUiThread {
-                        if (result.isSuccess) {
-                            Log.i("MainActivity", "Offline transfer test started - check logs for results")
-                            // The test runs asynchronously and logs results to console
-                        } else {
-                            Toast.makeText(
-                                this@MainActivity, 
-                                "Test failed: ${result.exceptionOrNull()?.message}", 
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Failed to run offline transfer test", e)
-                runOnUiThread {
-                    Toast.makeText(
-                        this@MainActivity, 
-                        "Test error: ${e.message}", 
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
+        Toast.makeText(this, "Offline transfer test not available in Java SDK", Toast.LENGTH_SHORT).show()
+        // TODO: Implement offline transfer test using Java SDK
     }
     
     
@@ -1576,16 +1549,11 @@ class MainActivity : AppCompatActivity() {
     }
     
     private suspend fun completeOfflineTransfer(receiverIdentityJson: String, offlineTransactionJson: String): String {
-        return kotlin.coroutines.suspendCoroutine { continuation ->
-            sdkService.completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson) { result ->
-                result.onSuccess { resultJson ->
-                    continuation.resumeWith(Result.success(resultJson))
-                }
-                result.onFailure { error ->
-                    continuation.resumeWith(Result.failure(error))
-                }
-            }
-        }
+        val result = sdkService.completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson)
+        return result.fold(
+            onSuccess = { it },
+            onFailure = { throw it }
+        )
     }
     
     private fun shareToken(token: Token) {
@@ -1794,7 +1762,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (::sdkService.isInitialized) {
-            sdkService.destroy()
+            // No cleanup needed for Java SDK service
         }
     }
     

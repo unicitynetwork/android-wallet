@@ -6,7 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
@@ -17,10 +17,12 @@ import com.unicity.nfcwalletdemo.nfc.TestPingMessage
 import com.unicity.nfcwalletdemo.nfc.TestPongResponse
 import com.unicity.nfcwalletdemo.nfc.BluetoothHandshake
 import com.unicity.nfcwalletdemo.nfc.BluetoothHandshakeResponse
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 class HostCardEmulatorLogic(
     private val context: Context,
-    private val sdkService: UnicitySdkService
+    private val sdkService: UnicityJavaSdkService
 ) {
 
     // Transfer state
@@ -827,10 +829,12 @@ class HostCardEmulatorLogic(
                 Log.e(TAG, "Failed to parse transaction data for inspection", e)
             }
             
-            sdkService.completeOfflineTransfer(
-                receiverIdentityJson,
-                finalTransactionData
-            ) { result: Result<String> ->
+            // Launch coroutine to call suspend function
+            kotlinx.coroutines.GlobalScope.launch {
+                val result = sdkService.completeOfflineTransfer(
+                    receiverIdentityJson,
+                    finalTransactionData
+                )
                 result.onSuccess { processedTokenJson: String ->
                     Log.d(TAG, "Offline transaction processed successfully by SDK")
                     

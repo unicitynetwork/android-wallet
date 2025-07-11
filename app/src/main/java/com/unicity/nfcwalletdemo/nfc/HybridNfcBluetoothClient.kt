@@ -4,7 +4,7 @@ import android.content.Context
 import android.nfc.NfcAdapter
 import android.util.Log
 import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshTransferService
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.data.model.Token
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +22,7 @@ import java.util.UUID
  */
 class HybridNfcBluetoothClient(
     private val context: Context,
-    private val sdkService: UnicitySdkService,
+    private val sdkService: UnicityJavaSdkService,
     private val apduTransceiver: ApduTransceiver,
     private val onTransferComplete: () -> Unit,
     private val onError: (String) -> Unit,
@@ -319,13 +319,12 @@ class HybridNfcBluetoothClient(
             // If this is a real transfer, create proper offline transfer
             if (!isTestMode) {
                 val result = sdkService.createOfflineTransferPackage(
-                    senderIdentityJson = senderIdentity,
-                    recipientAddress = "temp-address", // Will be updated by receiver
-                    tokenJson = token.jsonData ?: "{}"
-                ) { result ->
-                    if (result.isFailure) {
-                        throw result.exceptionOrNull() ?: Exception("Failed to create transfer package")
-                    }
+                    senderIdentity,
+                    "temp-address", // Will be updated by receiver
+                    token.jsonData ?: "{}"
+                )
+                if (result.isFailure) {
+                    throw result.exceptionOrNull() ?: Exception("Failed to create transfer package")
                 }
             }
             
@@ -338,18 +337,18 @@ class HybridNfcBluetoothClient(
             val transferPackage = JSONObject(String(tokenData))
             
             if (!isTestMode) {
-                sdkService.completeOfflineTransfer(
-                    receiverIdentityJson = receiverIdentity,
-                    offlineTransactionJson = transferPackage.toString()
-                ) { result ->
-                    if (result.isFailure) {
-                        throw result.exceptionOrNull() ?: Exception("Failed to complete transfer")
-                    }
+                val result = sdkService.completeOfflineTransfer(
+                    receiverIdentity,
+                    transferPackage.toString()
+                )
+                if (result.isFailure) {
+                    throw result.exceptionOrNull() ?: Exception("Failed to complete transfer")
                 }
             } else {
                 // In test mode, just log the received token
                 Log.d(TAG, "Test mode: Received token package: ${transferPackage.toString(2)}")
             }
+            Unit // Return Unit explicitly
         }
     }
     
