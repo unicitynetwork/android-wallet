@@ -4,13 +4,14 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
     tools:context=".ui.bluetooth.BluetoothMeshActivity">
 
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
         android:text="Nearby Wallet Devices"
         android:textSize="24sp"
         android:textStyle="bold"
@@ -21,6 +22,7 @@
         android:id="@+id/tvStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
         android:layout_marginTop="8dp"
         android:text="Ready to scan"
         android:textSize="16sp"
@@ -58,31 +60,37 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvDeviceCount">
 
-        <Button
-            android:id="@+id/btnStartDiscovery"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="8dp"
-            android:text="Start Discovery" />
+        <!-- Discovery is always on, no need for start button -->
 
         <Button
             android:id="@+id/btnClearList"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp"
             android:text="Clear List" />
 
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerViewDevices"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginTop="16dp"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/buttonLayout" />
+    
+    <!-- Debug text to show if RecyclerView area is visible -->
+    <TextView
+        android:id="@+id/tvDebugEmpty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RecyclerView area is visible but empty"
+        android:textSize="16sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/recyclerViewDevices"
+        app:layout_constraintEnd_toEndOf="@id/recyclerViewDevices"
+        app:layout_constraintStart_toStartOf="@id/recyclerViewDevices"
+        app:layout_constraintTop_toTopOf="@id/recyclerViewDevices" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

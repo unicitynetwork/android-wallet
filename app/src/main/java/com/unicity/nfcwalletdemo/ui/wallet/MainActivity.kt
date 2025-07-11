@@ -56,6 +56,8 @@ import android.os.Vibrator
 import androidx.core.content.FileProvider
 import java.io.File
 import android.os.Build
+import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshManager
+import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -121,7 +123,13 @@ class MainActivity : AppCompatActivity() {
                         // User can still use basic features
                     }
                     .show()
+            } else {
+                // Initialize Bluetooth mesh if permissions are granted
+                initializeBluetoothMesh()
             }
+        } else if (checkBluetoothPermissions()) {
+            // Initialize Bluetooth mesh on normal app start if permissions are granted
+            initializeBluetoothMesh()
         }
         observeViewModel()
 
@@ -1321,6 +1329,67 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    private fun initializeBluetoothMesh() {
+        // Initialize the Bluetooth mesh manager
+        BluetoothMeshManager.initialize(this)
+        
+        // Observe mesh events
+        lifecycleScope.launch {
+            BluetoothMeshManager.meshEvents.collectLatest { event ->
+                when (event) {
+                    is BluetoothMeshManager.MeshEvent.MessageReceived -> {
+                        // Show received message in the UI
+                        runOnUiThread {
+                            showMeshMessage(event.message, event.fromDevice)
+                        }
+                    }
+                    is BluetoothMeshManager.MeshEvent.Error -> {
+                        Log.e("MainActivity", "Bluetooth mesh error: ${event.message}")
+                    }
+                    is BluetoothMeshManager.MeshEvent.Initialized -> {
+                        Log.d("MainActivity", "Bluetooth mesh initialized")
+                    }
+                    else -> {
+                        // Handle other events if needed
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun showMeshMessage(message: String, fromDevice: String) {
+        // Create a material design snackbar to show the message
+        val fullMessage = "Bluetooth message from $fromDevice:\n$message"
+        val snackbar = com.google.android.material.snackbar.Snackbar.make(
+            binding.root,
+            fullMessage,
+            com.google.android.material.snackbar.Snackbar.LENGTH_LONG
+        )
+        
+        // Customize the snackbar
+        snackbar.setBackgroundTint(getColor(R.color.purple_700))
+        snackbar.setTextColor(Color.WHITE)
+        snackbar.setAction("Reply") {
+            // Open Bluetooth mesh discovery to reply
+            startActivity(Intent(this, com.unicity.nfcwalletdemo.ui.bluetooth.BluetoothMeshActivity::class.java))
+        }
+        snackbar.setActionTextColor(Color.YELLOW)
+        
+        // Set max lines to show more content
+        val snackbarView = snackbar.view
+        val textView = snackbarView.findViewById<TextView>(com.google.android.material.R.id.snackbar_text)
+        textView?.maxLines = 3
+        
+        // Show the snackbar
+        snackbar.show()
+        
+        // Also show as a toast for debugging
+        Toast.makeText(this, fullMessage, Toast.LENGTH_LONG).show()
+        
+        // Also log for debugging
+        Log.d("MainActivity", "Received mesh message from $fromDevice: $message")
+    }
+    
     private fun showNfcWaitingDialog(crypto: CryptoCurrency, amount: Double) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_nfc_waiting, null)
         val transferDetails = dialogView.findViewById<TextView>(R.id.transferDetails)
@@ -1732,6 +1801,8 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == BLUETOOTH_PERMISSION_REQUEST_CODE) {
             if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
                 Toast.makeText(this, "Bluetooth permissions granted! Tap token to transfer again.", Toast.LENGTH_SHORT).show()
+                // Initialize Bluetooth mesh after permissions are granted
+                initializeBluetoothMesh()
             } else {
                 Toast.makeText(this, "Bluetooth permissions are required for token transfer", Toast.LENGTH_LONG).show()
             }

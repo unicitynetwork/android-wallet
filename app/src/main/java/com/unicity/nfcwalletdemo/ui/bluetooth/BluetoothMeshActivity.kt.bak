@@ -36,8 +36,6 @@ import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothProfile
 import java.nio.charset.StandardCharsets
 import android.view.View
-import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshManager
-import kotlinx.coroutines.flow.collectLatest
 
 class BluetoothMeshActivity : AppCompatActivity() {
     
@@ -56,9 +54,9 @@ class BluetoothMeshActivity : AppCompatActivity() {
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var isScanning = true // Always scanning
     private val scanScope = CoroutineScope(Dispatchers.Main + Job())
+    private var gattServer: BluetoothGattServer? = null
+    private val connectedDevices = mutableSetOf<android.bluetooth.BluetoothDevice>()
     private var bluetoothManager: BluetoothManager? = null
-    private var lastUpdateTime = 0L
-    private val UPDATE_INTERVAL_MS = 1000L // Only update list every 1 second
     
     data class DiscoveredDevice(
         val address: String,
@@ -77,13 +75,10 @@ class BluetoothMeshActivity : AppCompatActivity() {
         
         // Start advertising immediately if permissions are granted
         if (checkBluetoothPermissions()) {
-            // Use the shared BluetoothMeshManager instead of our own GATT server
-            startAdvertising() // Still advertise locally for better discovery
+            startGattServer() // Start GATT server first
+            startAdvertising() // Then start advertising
             startDiscovery() // Start discovery automatically
             updateCurrentDeviceInfo()
-            
-            // Observe mesh events
-            observeMeshEvents()
         } else {
             binding.tvStatus.text = "Bluetooth permissions required"
             binding.tvCurrentDevice.text = "This device: Permission required"
@@ -99,43 +94,18 @@ class BluetoothMeshActivity : AppCompatActivity() {
             onDeviceClicked(device)
         }
         
-        // Create and set adapter before applying to RecyclerView
-        val linearLayoutManager = LinearLayoutManager(this)
-        binding.recyclerViewDevices.layoutManager = linearLayoutManager
-        binding.recyclerViewDevices.adapter = deviceAdapter
-        binding.recyclerViewDevices.setHasFixedSize(false)
-        
-        // Force layout to ensure RecyclerView is visible
-        binding.recyclerViewDevices.post {
-            binding.recyclerViewDevices.requestLayout()
-            // Debug: check if RecyclerView has proper size
-            Log.d(TAG, "RecyclerView dimensions - width: ${binding.recyclerViewDevices.width}, height: ${binding.recyclerViewDevices.height}")
-            Log.d(TAG, "RecyclerView visibility: ${binding.recyclerViewDevices.visibility}")
-            Log.d(TAG, "RecyclerView parent: ${binding.recyclerViewDevices.parent?.javaClass?.simpleName}")
-            Log.d(TAG, "RecyclerView has adapter: ${binding.recyclerViewDevices.adapter != null}")
-            Log.d(TAG, "RecyclerView has layoutManager: ${binding.recyclerViewDevices.layoutManager != null}")
+        binding.recyclerViewDevices.apply {
+            layoutManager = LinearLayoutManager(this@BluetoothMeshActivity)
+            adapter = deviceAdapter
         }
         
         // Discovery is always on, no need for start/stop button
         // Button is removed from layout
         
         binding.btnClearList.setOnClickListener {
-            Log.d(TAG, "Clear button clicked, current list size: ${discoveredDevices.size}")
             discoveredDevices.clear()
             deviceAdapter.notifyDataSetChanged()
             binding.tvDeviceCount.text = "Discovered devices: 0"
-            binding.tvStatus.text = "Device list cleared"
-            
-            // Force a layout refresh
-            binding.recyclerViewDevices.requestLayout()
-        }
-        
-        // Add a refresh button to manually update RSSI values
-        binding.btnClearList.setOnLongClickListener {
-            // Just refresh the list without sorting
-            deviceAdapter.notifyDataSetChanged()
-            Toast.makeText(this, "Refreshed list", Toast.LENGTH_SHORT).show()
-            true
         }
         
         // Display current device info
@@ -315,7 +285,7 @@ class BluetoothMeshActivity : AppCompatActivity() {
                 
                 // Log all discovered devices for debugging
                 if (hasOurService || deviceName?.contains("Unicity", ignoreCase = true) == true) {
-//                    Log.d(TAG, "Found wallet device: ${device.address} ($deviceName) RSSI: $rssi Service: $hasOurService")
+                    Log.d(TAG, "Found wallet device: ${device.address} ($deviceName) RSSI: $rssi Service: $hasOurService")
                 }
                 
                 // Only show devices with our service UUID or "Unicity" in name
@@ -330,14 +300,15 @@ class BluetoothMeshActivity : AppCompatActivity() {
                 
                 // Update or add device to list
                 val existingIndex = discoveredDevices.indexOfFirst { it.address == device.address }
-                val currentTime = System.currentTimeMillis()
-                
                 if (existingIndex >= 0) {
-                    // Update existing device's RSSI only, keep position
-                    discoveredDevices[existingIndex] = discoveredDevices[existingIndex].copy(
+                    // Update existing device
+                    discoveredDevices[existingIndex] = DiscoveredDevice(
+                        address = device.address,
+                        name = deviceName,
                         rssi = rssi,
-                        lastSeen = currentTime
+                        lastSeen = System.currentTimeMillis()
                     )
+                    deviceAdapter.notifyItemChanged(existingIndex)
                 } else {
                     // Add new device
                     discoveredDevices.add(
@@ -347,41 +318,17 @@ class BluetoothMeshActivity : AppCompatActivity() {
                             rssi = rssi
                         )
                     )
-                    
-                    // Immediately notify for new devices
-                    runOnUiThread {
-                        deviceAdapter.notifyItemInserted(discoveredDevices.size - 1)
-                        // Force RecyclerView to update
-                        binding.recyclerViewDevices.scrollToPosition(discoveredDevices.size - 1)
-                    }
+                    deviceAdapter.notifyItemInserted(discoveredDevices.size - 1)
                 }
                 
-                // Update UI periodically to avoid constant redraws
-                if (currentTime - lastUpdateTime > UPDATE_INTERVAL_MS) {
-                    lastUpdateTime = currentTime
-                    // Update adapter on UI thread
-                    runOnUiThread {
-                        // Don't sort - keep discovery order
-                        deviceAdapter.notifyDataSetChanged()
-                        
-                        // Debug log
-//                        Log.d(TAG, "Updated adapter - devices: ${discoveredDevices.size}")
-//                        discoveredDevices.forEach { device ->
-//                            Log.d(TAG, "  - ${device.name ?: "Unknown"} (${device.address}) RSSI: ${device.rssi}")
-//                        }
-                    }
-                }
+                // Sort devices by signal strength (proximity)
+                discoveredDevices.sortByDescending { it.rssi }
+                deviceAdapter.notifyDataSetChanged()
                 
-                runOnUiThread {
-                    binding.tvDeviceCount.text = "Discovered devices: ${discoveredDevices.size}"
-                    if (discoveredDevices.isNotEmpty()) {
-                        binding.tvStatus.text = "Found ${discoveredDevices.size} wallet device(s)"
-                    }
+                binding.tvDeviceCount.text = "Discovered devices: ${discoveredDevices.size}"
+                if (discoveredDevices.isNotEmpty()) {
+                    binding.tvStatus.text = "Found ${discoveredDevices.size} wallet device(s)"
                 }
-                
-                // Debug logging
-//                Log.d(TAG, "Device list size: ${discoveredDevices.size}, Adapter item count: ${deviceAdapter.itemCount}")
-//                Log.d(TAG, "RecyclerView height: ${binding.recyclerViewDevices.height}, child count: ${binding.recyclerViewDevices.childCount}")
             }
         }
         
@@ -391,71 +338,119 @@ class BluetoothMeshActivity : AppCompatActivity() {
         }
     }
     
-    private var isSending = false // Prevent multiple simultaneous sends
-    
     private fun onDeviceClicked(device: DiscoveredDevice) {
-        // Prevent multiple clicks
-        if (isSending) {
-            Toast.makeText(this, "Already sending...", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
         Log.d(TAG, "Clicked on device: ${device.address}")
         
-        // Vibrate for feedback
-        try {
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(50)
-            }
-        } catch (e: Exception) {
-            // Ignore vibration errors
+        // Send a mesh message to the device
+        scanScope.launch {
+            sendMeshMessage(device)
+        }
+    }
+    
+    private suspend fun sendMeshMessage(device: DiscoveredDevice) {
+        val message = "Hello from ${getLocalDeviceId()}"
+        
+        runOnUiThread {
+            Toast.makeText(
+                this@BluetoothMeshActivity,
+                "Connecting to ${device.name ?: device.address}...",
+                Toast.LENGTH_SHORT
+            ).show()
         }
         
-        // Send a mesh message using the shared BluetoothMeshManager
-        isSending = true
-        lifecycleScope.launch {
-            try {
-                // Show progress in status
-                runOnUiThread {
-                    binding.tvStatus.text = "Connecting to ${device.name ?: device.address}..."
-                }
-                
-                val message = "Hello from ${getLocalDeviceId()}"
-                val success = BluetoothMeshManager.sendMessage(device.address, message)
-                
-                runOnUiThread {
-                    if (success) {
-                        binding.tvStatus.text = "Message sent successfully!"
-                        Toast.makeText(
-                            this@BluetoothMeshActivity,
-                            "Message sent!",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    } else {
-                        binding.tvStatus.text = "Failed to send message"
-                        Toast.makeText(
-                            this@BluetoothMeshActivity,
-                            "Failed to send message",
-                            Toast.LENGTH_SHORT
-                        ).show()
+        try {
+            // Get the actual BluetoothDevice object
+            val bluetoothDevice = bluetoothAdapter?.getRemoteDevice(device.address)
+            if (bluetoothDevice == null) {
+                Log.e(TAG, "Could not get BluetoothDevice for address ${device.address}")
+                return
+            }
+            
+            // Connect to the device's GATT server
+            val gatt = bluetoothDevice.connectGatt(this, false, object : BluetoothGattCallback() {
+                override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                    Log.d(TAG, "onConnectionStateChange: status=$status, newState=$newState")
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        Log.d(TAG, "Connected to ${device.address}, discovering services...")
+                        val discoverResult = gatt.discoverServices()
+                        Log.d(TAG, "discoverServices() returned: $discoverResult")
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        Log.d(TAG, "Disconnected from ${device.address}")
+                        gatt.close()
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error sending message", e)
-                runOnUiThread {
-                    binding.tvStatus.text = "Error: ${e.message}"
-                    Toast.makeText(
-                        this@BluetoothMeshActivity,
-                        "Error: ${e.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                
+                override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                    Log.d(TAG, "onServicesDiscovered status: $status")
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        val services = gatt.services
+                        Log.d(TAG, "Discovered ${services.size} services")
+                        services.forEach { service ->
+                            Log.d(TAG, "Service: ${service.uuid}")
+                        }
+                        
+                        val service = gatt.getService(MESH_SERVICE_UUID)
+                        if (service != null) {
+                            Log.d(TAG, "Found mesh service")
+                            val characteristic = service.getCharacteristic(MESH_MESSAGE_UUID)
+                            if (characteristic != null) {
+                                Log.d(TAG, "Found message characteristic, properties: ${characteristic.properties}")
+                                // Send the message
+                                val messageBytes = message.toByteArray(StandardCharsets.UTF_8)
+                                val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    val result = gatt.writeCharacteristic(characteristic, messageBytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                                    Log.d(TAG, "Write result (API 33+): $result")
+                                    result == BluetoothGatt.GATT_SUCCESS
+                                } else {
+                                    characteristic.value = messageBytes
+                                    val result = gatt.writeCharacteristic(characteristic)
+                                    Log.d(TAG, "Write result (legacy): $result")
+                                    result
+                                }
+                                Log.d(TAG, "Message write initiated: $success, message length: ${messageBytes.size}")
+                            } else {
+                                Log.e(TAG, "Message characteristic not found in service")
+                                val chars = service.characteristics
+                                Log.e(TAG, "Service has ${chars.size} characteristics")
+                                chars.forEach { char ->
+                                    Log.e(TAG, "Characteristic: ${char.uuid}")
+                                }
+                            }
+                        } else {
+                            Log.e(TAG, "Mesh service not found")
+                        }
+                    } else {
+                        Log.e(TAG, "Service discovery failed with status: $status")
+                    }
                 }
-            } finally {
-                isSending = false
+                
+                override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        Log.d(TAG, "Message sent successfully")
+                        runOnUiThread {
+                            Toast.makeText(
+                                this@BluetoothMeshActivity,
+                                "Message sent to ${device.name ?: device.address}!",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to send message: $status")
+                    }
+                    gatt.disconnect()
+                }
+            })
+            
+            Log.d(TAG, "Initiating GATT connection to ${device.address}")
+            
+            // For debugging - list all currently connected devices
+            connectedDevices.forEach { connectedDevice ->
+                Log.d(TAG, "Currently connected: ${connectedDevice.address}")
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception connecting to device", e)
+            runOnUiThread {
+                Toast.makeText(this, "Permission error", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -500,33 +495,110 @@ class BluetoothMeshActivity : AppCompatActivity() {
         }
     }
     
-    private fun observeMeshEvents() {
-        lifecycleScope.launch {
-            BluetoothMeshManager.meshEvents.collectLatest { event ->
-                when (event) {
-                    is BluetoothMeshManager.MeshEvent.MessageReceived -> {
+    private fun startGattServer() {
+        try {
+            val gattServerCallback = object : BluetoothGattServerCallback() {
+                override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+                    Log.d(TAG, "onServiceAdded: status=$status, service=${service.uuid}")
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
                         runOnUiThread {
-                            // Show received message
+                            binding.tvStatus.text = "GATT server ready"
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to add service, status: $status")
+                        runOnUiThread {
+                            binding.tvStatus.text = "GATT service error: $status"
+                        }
+                    }
+                }
+                
+                override fun onConnectionStateChange(device: android.bluetooth.BluetoothDevice, status: Int, newState: Int) {
+                    Log.d(TAG, "Device ${device.address} connection state: $newState")
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        connectedDevices.add(device)
+                    } else {
+                        connectedDevices.remove(device)
+                    }
+                }
+                
+                override fun onCharacteristicWriteRequest(
+                    device: android.bluetooth.BluetoothDevice,
+                    requestId: Int,
+                    characteristic: BluetoothGattCharacteristic,
+                    preparedWrite: Boolean,
+                    responseNeeded: Boolean,
+                    offset: Int,
+                    value: ByteArray
+                ) {
+                    Log.d(TAG, "onCharacteristicWriteRequest from ${device.address}, characteristic: ${characteristic.uuid}")
+                    
+                    if (characteristic.uuid == MESH_MESSAGE_UUID) {
+                        val message = String(value, StandardCharsets.UTF_8)
+                        Log.d(TAG, "Received message from ${device.address}: $message")
+                        
+                        runOnUiThread {
+                            // Show the received message as a toast
                             Toast.makeText(
                                 this@BluetoothMeshActivity,
-                                event.message,
+                                message,
                                 Toast.LENGTH_LONG
                             ).show()
                             
-                            binding.tvStatus.text = "Received: ${event.message}"
+                            // Also update the status
+                            binding.tvStatus.text = "Received: $message"
+                            
+                            // The main activity will receive this through BluetoothMeshManager
+                            // which is also running its own GATT server
                         }
                     }
-                    else -> {
-                        // Handle other events if needed
+                    
+                    if (responseNeeded) {
+                        Log.d(TAG, "Sending response to ${device.address}")
+                        gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
                     }
                 }
             }
+            
+            gattServer = bluetoothManager?.openGattServer(this, gattServerCallback)
+            
+            if (gattServer == null) {
+                Log.e(TAG, "Failed to open GATT server")
+                binding.tvStatus.text = "GATT server failed"
+                return
+            }
+            
+            // Create the mesh service
+            val service = BluetoothGattService(MESH_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+            
+            // Add message characteristic with both write and write without response
+            val messageCharacteristic = BluetoothGattCharacteristic(
+                MESH_MESSAGE_UUID,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
+                BluetoothGattCharacteristic.PERMISSION_WRITE
+            )
+            
+            service.addCharacteristic(messageCharacteristic)
+            val success = gattServer?.addService(service) ?: false
+            
+            Log.d(TAG, "GATT server started, service added: $success")
+            if (!success) {
+                binding.tvStatus.text = "Failed to add GATT service"
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception starting GATT server", e)
         }
     }
     
     override fun onDestroy() {
         super.onDestroy()
         stopDiscovery()
+        
+        // Stop GATT server
+        try {
+            gattServer?.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing GATT server", e)
+        }
         
         // Stop advertising
         try {

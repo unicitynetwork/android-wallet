@@ -26,6 +26,7 @@ class BluetoothDeviceAdapter(
     
     override fun onBindViewHolder(holder: DeviceViewHolder, position: Int) {
         val device = devices[position]
+//        android.util.Log.d("BluetoothDeviceAdapter", "Binding device at position $position: ${device.address}")
         
         holder.tvDeviceName.text = device.name ?: "Unknown Device"
         holder.tvDeviceAddress.text = device.address
@@ -48,8 +49,23 @@ class BluetoothDeviceAdapter(
         }
         holder.tvRssi.setTextColor(holder.itemView.context.getColor(color))
         
-        holder.itemView.setOnClickListener {
-            onDeviceClick(device)
+        // Make the entire item clickable with better touch feedback
+        holder.itemView.apply {
+            setOnClickListener {
+                // Provide immediate visual feedback
+                it.alpha = 0.7f
+                it.postDelayed({ it.alpha = 1.0f }, 100)
+                onDeviceClick(device)
+            }
+            
+            // Add ripple effect
+            isClickable = true
+            isFocusable = true
+            
+            // Set background to selectable item background for ripple effect
+            val typedValue = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, typedValue, true)
+            setBackgroundResource(typedValue.resourceId)
         }
     }
     
