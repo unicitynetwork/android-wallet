@@ -24,4 +24,10 @@
     
     <!-- App Background for Dark Mode -->
     <color name="app_background">@color/background_dark</color>
+    
+    <!-- Signal Strength Colors for Dark Mode (brighter for visibility) -->
+    <color name="signal_excellent">#66BB6A</color>
+    <color name="signal_good">#42A5F5</color>
+    <color name="signal_fair">#FFA726</color>
+    <color name="signal_poor">#BDBDBD</color>
 </resources>
