@@ -36,11 +36,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "11"
     }
     buildFeatures {
         viewBinding = true
@@ -58,6 +58,17 @@ android {
 }
 
 dependencies {
+    // Unicity Java SDK
+    implementation(files("libs/java-state-transition-sdk-1.0-SNAPSHOT-android.jar"))
+    
+    // Required dependencies for Unicity SDK
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.17.0")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
+    implementation("org.bouncycastle:bcprov-jdk15on:1.70")
+    implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
+    implementation("com.google.guava:guava:33.0.0-android")
+    // OkHttp already included below
+    
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.0")
@@ -123,6 +134,4 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.5.4")
 }
 
-tasks.named("preBuild") {
-    dependsOn(":bundleJsSdk")
-}
+// JS SDK bundle no longer needed - using Java SDK now

@@ -23,3 +23,26 @@
 # Keep Gson classes
 -keep class com.google.gson.** { *; }
 -keep class com.unicity.nfcwalletdemo.data.model.** { *; }
+
+# Jackson
+-keep class com.fasterxml.jackson.** { *; }
+-keepattributes *Annotation*,EnclosingMethod,Signature
+-keepnames class com.fasterxml.jackson.** { *; }
+-dontwarn com.fasterxml.jackson.databind.**
+
+# BouncyCastle
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
+
+# OkHttp
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keepnames class okhttp3.** { *; }
+-keepnames class okio.** { *; }
+
+# Unicity SDK
+-keep class com.unicity.sdk.** { *; }
+-keepclassmembers class com.unicity.sdk.** {
+    public <methods>;
+    public <fields>;
+}
