@@ -22,9 +22,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.lifecycle.lifecycleScope
-import android.bluetooth.le.AdvertiseCallback
-import android.bluetooth.le.AdvertiseData
-import android.bluetooth.le.AdvertiseSettings
 import android.os.ParcelUuid
 import java.util.UUID
 import android.bluetooth.BluetoothGatt
@@ -75,15 +72,17 @@ class BluetoothMeshActivity : AppCompatActivity() {
         setupUI()
         setupBluetooth()
         
-        // Start advertising immediately if permissions are granted
+        // Start discovery immediately if permissions are granted
         if (checkBluetoothPermissions()) {
-            // Use the shared BluetoothMeshManager instead of our own GATT server
-            startAdvertising() // Still advertise locally for better discovery
+            // Use the shared BluetoothMeshManager - no local advertising needed
             startDiscovery() // Start discovery automatically
             updateCurrentDeviceInfo()
             
             // Observe mesh events
             observeMeshEvents()
+            
+            // Update status to show we're using the shared mesh service
+            binding.tvStatus.text = "Using shared mesh service"
         } else {
             binding.tvStatus.text = "Bluetooth permissions required"
             binding.tvCurrentDevice.text = "This device: Permission required"
@@ -180,63 +179,8 @@ class BluetoothMeshActivity : AppCompatActivity() {
         // Not used anymore - permissions handled at first launch
     }
     
-    private fun startAdvertising() {
-        try {
-            if (!checkBluetoothPermissions()) {
-                Log.e(TAG, "Missing Bluetooth permissions for advertising")
-                return
-            }
-            
-            val bluetoothLeAdvertiser = bluetoothAdapter?.bluetoothLeAdvertiser
-            if (bluetoothLeAdvertiser == null) {
-                Log.e(TAG, "Bluetooth LE Advertising not supported")
-                binding.tvStatus.text = "BLE Advertising not supported"
-                return
-            }
-            
-            val settings = AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-                .setConnectable(true)
-                .setTimeout(0) // Advertise indefinitely
-                .build()
-            
-            val data = AdvertiseData.Builder()
-                .setIncludeDeviceName(true)
-                .addServiceUuid(ParcelUuid(MESH_SERVICE_UUID))
-                .build()
-            
-            bluetoothLeAdvertiser.startAdvertising(settings, data, advertiseCallback)
-            Log.d(TAG, "Started advertising with UUID: $MESH_SERVICE_UUID")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception in advertising", e)
-            binding.tvStatus.text = "Permission error"
-        }
-    }
-    
-    private val advertiseCallback = object : AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            Log.d(TAG, "Advertising started successfully")
-            runOnUiThread {
-                binding.tvStatus.text = "Advertising active"
-            }
-        }
-        
-        override fun onStartFailure(errorCode: Int) {
-            val errorMsg = when (errorCode) {
-                ADVERTISE_FAILED_DATA_TOO_LARGE -> "Data too large"
-                ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "Too many advertisers"
-                ADVERTISE_FAILED_ALREADY_STARTED -> "Already started"
-                ADVERTISE_FAILED_INTERNAL_ERROR -> "Internal error"
-                ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "Feature unsupported"
-                else -> "Unknown error: $errorCode"
-            }
-            Log.e(TAG, "Advertising failed: $errorMsg")
-            runOnUiThread {
-                binding.tvStatus.text = "Advertising failed: $errorMsg"
-            }
-        }
-    }
+    // Removed startAdvertising and advertiseCallback - now using shared BluetoothMeshManager
+    // which already handles advertising from MainActivity
     
     private fun startDiscovery() {
         if (!checkBluetoothPermissions()) {
@@ -333,26 +277,39 @@ class BluetoothMeshActivity : AppCompatActivity() {
                 val currentTime = System.currentTimeMillis()
                 
                 if (existingIndex >= 0) {
-                    // Update existing device's RSSI only, keep position
-                    discoveredDevices[existingIndex] = discoveredDevices[existingIndex].copy(
+                    // Update existing device's RSSI and name if available
+                    val existingDevice = discoveredDevices[existingIndex]
+                    discoveredDevices[existingIndex] = existingDevice.copy(
+                        name = deviceName ?: existingDevice.name, // Update name if we get a better one
                         rssi = rssi,
                         lastSeen = currentTime
                     )
                 } else {
-                    // Add new device
-                    discoveredDevices.add(
-                        DiscoveredDevice(
-                            address = device.address,
-                            name = deviceName,
-                            rssi = rssi
-                        )
-                    )
+                    // Only add new device if it's truly new (not seen before)
+                    // Check if this might be a duplicate with slightly different address
+                    val possibleDuplicate = discoveredDevices.any { existingDevice ->
+                        // If names match and they're both non-null, it might be the same device
+                        existingDevice.name != null && deviceName != null && 
+                        existingDevice.name == deviceName
+                    }
                     
-                    // Immediately notify for new devices
-                    runOnUiThread {
-                        deviceAdapter.notifyItemInserted(discoveredDevices.size - 1)
-                        // Force RecyclerView to update
-                        binding.recyclerViewDevices.scrollToPosition(discoveredDevices.size - 1)
+                    if (!possibleDuplicate) {
+                        discoveredDevices.add(
+                            DiscoveredDevice(
+                                address = device.address,
+                                name = deviceName,
+                                rssi = rssi
+                            )
+                        )
+                        
+                        // Immediately notify for new devices
+                        runOnUiThread {
+                            deviceAdapter.notifyItemInserted(discoveredDevices.size - 1)
+                            // Force RecyclerView to update
+                            binding.recyclerViewDevices.scrollToPosition(discoveredDevices.size - 1)
+                        }
+                    } else {
+                        Log.d(TAG, "Skipping possible duplicate device: $deviceName ($device.address)")
                     }
                 }
                 
@@ -527,13 +484,7 @@ class BluetoothMeshActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         stopDiscovery()
-        
-        // Stop advertising
-        try {
-            bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception stopping advertising", e)
-        }
+        // No need to stop advertising - handled by BluetoothMeshManager
     }
     
     override fun onSupportNavigateUp(): Boolean {
