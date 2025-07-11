@@ -1,5 +1,6 @@
 package com.unicity.nfcwalletdemo.ui.wallet
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
@@ -41,11 +42,15 @@ import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.model.CryptoCurrency
 import com.unicity.nfcwalletdemo.nfc.DirectNfcClient
+import com.unicity.nfcwalletdemo.nfc.HybridNfcBluetoothClient
 import com.unicity.nfcwalletdemo.nfc.RealNfcTransceiver
+import com.unicity.nfcwalletdemo.nfc.SimpleNfcTransceiver
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.core.content.FileProvider
@@ -63,6 +68,10 @@ class MainActivity : AppCompatActivity() {
     private var currentTransferringCrypto: CryptoCurrency? = null
     private var currentTab = 0 // 0 for Assets, 1 for NFTs
     private var selectedCurrency = "USD"
+    
+    companion object {
+        private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 1001
+    }
     
     private lateinit var sdkService: UnicitySdkService
     private val gson = Gson()
@@ -91,6 +100,29 @@ class MainActivity : AppCompatActivity() {
         setupSwipeRefresh()
         setupSuccessDialog()
         setupTestTrigger()
+        
+        // Request Bluetooth permissions on first launch
+        val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val isFirstLaunch = prefs.getBoolean("is_first_launch", true)
+        
+        if (isFirstLaunch) {
+            // Mark that we've launched the app
+            prefs.edit().putBoolean("is_first_launch", false).apply()
+            
+            // Request Bluetooth permissions for mesh networking
+            if (!checkBluetoothPermissions()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Enable Bluetooth Features")
+                    .setMessage("This app uses Bluetooth for secure offline token transfers. Grant permission to enable this feature.")
+                    .setPositiveButton("Grant Permission") { _, _ ->
+                        requestBluetoothPermissions()
+                    }
+                    .setNegativeButton("Later") { _, _ ->
+                        // User can still use basic features
+                    }
+                    .show()
+            }
+        }
         observeViewModel()
 
         realNfcTransceiver = nfcAdapter?.let { RealNfcTransceiver(it) }
@@ -166,7 +198,7 @@ class MainActivity : AppCompatActivity() {
         tokenAdapter = TokenAdapter(
             onSendClick = { token ->
                 checkNfc {
-                    startTokenTransfer(token)
+                    startHybridTokenTransfer(token)
                 }
             },
             onCancelClick = { token ->
@@ -432,10 +464,155 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    private fun startHybridTokenTransfer(token: Token) {
+        currentTransferringToken = token
+        tokenAdapter.setTransferring(token, true)
+        viewModel.selectToken(token)
+        
+        Log.d("MainActivity", "Starting hybrid NFC+Bluetooth transfer for token: ${token.name}")
+        
+        // Check Bluetooth permissions first
+        if (!checkBluetoothPermissions()) {
+            requestBluetoothPermissions()
+            tokenAdapter.setTransferring(token, false)
+            currentTransferringToken = null
+            return
+        }
+        
+        Toast.makeText(this, "Tap phones together to start transfer", Toast.LENGTH_SHORT).show()
+        
+        val realNfcTransceiver = nfcAdapter?.let { SimpleNfcTransceiver(it) }
+        if (realNfcTransceiver == null) {
+            Toast.makeText(this, "NFC not available or enabled", Toast.LENGTH_SHORT).show()
+            tokenAdapter.setTransferring(token, false)
+            currentTransferringToken = null
+            return
+        }
+        
+        val hybridClient = HybridNfcBluetoothClient(
+            context = this,
+            sdkService = viewModel.getSdkService(),
+            apduTransceiver = realNfcTransceiver,
+            onTransferComplete = {
+                Log.d("MainActivity", "✅ Hybrid transfer completed")
+                runOnUiThread {
+                    vibrateSuccess()
+                    tokenAdapter.setTransferring(token, false)
+                    currentTransferringToken = null
+                    viewModel.removeToken(token.id)
+                    realNfcTransceiver.disableReaderMode(this)
+                    showSuccessDialog("${token.name} sent successfully via hybrid transfer!")
+                    Toast.makeText(this@MainActivity, "Token sent successfully!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onError = { error ->
+                Log.e("MainActivity", "Hybrid transfer error: $error")
+                runOnUiThread {
+                    vibrateError()
+                    tokenAdapter.setTransferring(token, false)
+                    currentTransferringToken = null
+                    realNfcTransceiver.disableReaderMode(this)
+                    Toast.makeText(this@MainActivity, error, Toast.LENGTH_SHORT).show()
+                }
+            },
+            onProgress = { current, total ->
+                Log.d("MainActivity", "Hybrid transfer progress: $current/$total")
+                runOnUiThread {
+                    if (current == 1 && total > 1) {
+                        vibrateConnectionEstablished()
+                        Toast.makeText(this@MainActivity, "Bluetooth transfer in progress...", Toast.LENGTH_SHORT).show()
+                    }
+                    if (total > 1) {
+                        tokenAdapter.updateTransferProgress(token, current, total)
+                    }
+                    
+                    // Progress feedback at milestones
+                    val percentComplete = (current * 100) / total
+                    if (percentComplete == 25 || percentComplete == 50 || percentComplete == 75) {
+                        vibrateConnectionEstablished() // Use existing vibration method
+                    }
+                }
+            }
+        )
+        
+        lifecycleScope.launch {
+            try {
+                // Extract sender identity from token's jsonData
+                Log.d("MainActivity", "Token jsonData: ${token.jsonData}")
+                val senderIdentityJson = token.jsonData?.let { jsonData ->
+                    try {
+                        val mintResult = Gson().fromJson(jsonData, Map::class.java)
+                        Log.d("MainActivity", "Mint result keys: ${mintResult.keys}")
+                        val identityData = mintResult["identity"] as? Map<*, *>
+                        if (identityData != null) {
+                            Log.d("MainActivity", "Found identity data: $identityData")
+                            Gson().toJson(identityData)
+                        } else {
+                            Log.d("MainActivity", "No identity found in mint result")
+                            null
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Failed to extract identity from token", e)
+                        null
+                    }
+                }
+                
+                // Use identity from token or generate a temporary one
+                val finalSenderIdentity = senderIdentityJson ?: run {
+                    Log.w("MainActivity", "No identity in token, generating temporary identity")
+                    // Generate a temporary identity for testing
+                    val tempIdentity = mapOf(
+                        "secret" to "temp_secret_${System.currentTimeMillis()}",
+                        "nonce" to "temp_nonce_${System.currentTimeMillis()}"
+                    )
+                    Gson().toJson(tempIdentity)
+                }
+                
+                realNfcTransceiver.enableReaderMode(this@MainActivity)
+                Log.d("MainActivity", "NFC reader mode enabled for hybrid transfer")
+                hybridClient.startTransferAsSender(token, finalSenderIdentity)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to start hybrid transfer", e)
+                runOnUiThread {
+                    tokenAdapter.setTransferring(token, false)
+                    currentTransferringToken = null
+                    Toast.makeText(this@MainActivity, "Failed to start transfer: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
     private fun cancelTokenTransfer(token: Token) {
         tokenAdapter.setTransferring(token, false)
         currentTransferringToken = null
         disableNfcTransfer()
+    }
+    
+    private fun checkBluetoothPermissions(): Boolean {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            // Android 12+ requires runtime Bluetooth permissions
+            checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            // Below Android 12, only location permission is needed for BLE scanning
+            checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+    
+    private fun requestBluetoothPermissions() {
+        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            arrayOf(
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_ADVERTISE
+            )
+        } else {
+            arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        
+        requestPermissions(permissions, BLUETOOTH_PERMISSION_REQUEST_CODE)
+        Toast.makeText(this, "Bluetooth permissions required for token transfer", Toast.LENGTH_SHORT).show()
     }
     
     private fun setupNfc() {
@@ -550,6 +727,10 @@ class MainActivity : AppCompatActivity() {
                 runOfflineTransferTest()
                 true
             }
+            com.unicity.nfcwalletdemo.R.id.action_bluetooth_mesh -> {
+                startActivity(Intent(this, com.unicity.nfcwalletdemo.ui.bluetooth.BluetoothMeshActivity::class.java))
+                true
+            }
             com.unicity.nfcwalletdemo.R.id.action_reset_wallet -> {
                 showResetWalletDialog()
                 true
@@ -642,7 +823,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test NFC Transfer", "Test Offline Transfer")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test NFC Transfer", "Test Offline Transfer", "Bluetooth Mesh Discovery")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -652,6 +833,7 @@ class MainActivity : AppCompatActivity() {
                     1 -> showResetWalletDialog()
                     2 -> startNfcTestTransfer()
                     3 -> runOfflineTransferTest()
+                    4 -> startActivity(Intent(this@MainActivity, com.unicity.nfcwalletdemo.ui.bluetooth.BluetoothMeshActivity::class.java))
                 }
             }
             .show()
@@ -1537,6 +1719,22 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         if (::sdkService.isInitialized) {
             sdkService.destroy()
+        }
+    }
+    
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        if (requestCode == BLUETOOTH_PERMISSION_REQUEST_CODE) {
+            if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                Toast.makeText(this, "Bluetooth permissions granted! Tap token to transfer again.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Bluetooth permissions are required for token transfer", Toast.LENGTH_LONG).show()
+            }
         }
     }
 }
