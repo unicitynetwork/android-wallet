@@ -40,14 +40,14 @@ class BluetoothDeviceAdapter(
         }
         holder.tvRssi.text = "$signalStrength (${device.rssi} dBm)"
         
-        // Color code by proximity
+        // Color code by proximity with theme-aware colors
         val color = when {
-            device.rssi >= -50 -> android.R.color.holo_green_dark
-            device.rssi >= -70 -> android.R.color.holo_blue_dark
-            device.rssi >= -80 -> android.R.color.holo_orange_dark
-            else -> android.R.color.darker_gray
+            device.rssi >= -50 -> holder.itemView.context.getColor(com.unicity.nfcwalletdemo.R.color.signal_excellent)
+            device.rssi >= -70 -> holder.itemView.context.getColor(com.unicity.nfcwalletdemo.R.color.signal_good)
+            device.rssi >= -80 -> holder.itemView.context.getColor(com.unicity.nfcwalletdemo.R.color.signal_fair)
+            else -> holder.itemView.context.getColor(com.unicity.nfcwalletdemo.R.color.signal_poor)
         }
-        holder.tvRssi.setTextColor(holder.itemView.context.getColor(color))
+        holder.tvRssi.setTextColor(color)
         
         // Make the entire item clickable with better touch feedback
         holder.itemView.apply {
