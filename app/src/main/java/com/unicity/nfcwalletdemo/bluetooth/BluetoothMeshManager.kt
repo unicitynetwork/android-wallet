@@ -270,130 +270,184 @@ object BluetoothMeshManager {
     /**
      * Send a message to a specific device
      */
-    suspend fun sendMessage(deviceAddress: String, message: String): Boolean {
+    suspend fun sendMessage(deviceAddress: String, message: String, retryCount: Int = 3): Boolean {
         return withContext(Dispatchers.IO) {
-            val result = CompletableDeferred<Boolean>()
+            var attempt = 0
+            var lastError: String? = null
             
-            try {
-                val device = bluetoothAdapter?.getRemoteDevice(deviceAddress)
-                if (device == null) {
-                    Log.e(TAG, "Device not found: $deviceAddress")
-                    return@withContext false
+            while (attempt < retryCount) {
+                attempt++
+                Log.d(TAG, "Sending message attempt $attempt of $retryCount to $deviceAddress")
+                
+                val success = try {
+                    sendMessageAttempt(deviceAddress, message)
+                } catch (e: Exception) {
+                    lastError = e.message
+                    Log.e(TAG, "Attempt $attempt failed: ${e.message}", e)
+                    false
                 }
                 
-                var gattConnection: BluetoothGatt? = null
+                if (success) {
+                    Log.d(TAG, "Message sent successfully on attempt $attempt")
+                    return@withContext true
+                }
                 
-                val gattCallback = object : BluetoothGattCallback() {
-                    override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-                        Log.d(TAG, "Connection state change - status: $status, newState: $newState")
-                        when (newState) {
-                            BluetoothProfile.STATE_CONNECTED -> {
-                                Log.d(TAG, "Connected to $deviceAddress, discovering services...")
-                                val discoverResult = gatt.discoverServices()
-                                Log.d(TAG, "Service discovery started: $discoverResult")
-                            }
-                            BluetoothProfile.STATE_DISCONNECTED -> {
-                                Log.d(TAG, "Disconnected from $deviceAddress, status: $status")
-                                if (!result.isCompleted) {
-                                    result.complete(false)
-                                }
+                // If not the last attempt, wait before retrying
+                if (attempt < retryCount) {
+                    val delayMs = attempt * 500L // Exponential backoff: 500ms, 1000ms, 1500ms
+                    Log.d(TAG, "Waiting ${delayMs}ms before retry...")
+                    delay(delayMs)
+                }
+            }
+            
+            Log.e(TAG, "Failed to send message after $retryCount attempts. Last error: $lastError")
+            return@withContext false
+        }
+    }
+    
+    private suspend fun sendMessageAttempt(deviceAddress: String, message: String): Boolean {
+        val result = CompletableDeferred<Boolean>()
+        var gattConnection: BluetoothGatt? = null
+        
+        try {
+            val device = bluetoothAdapter?.getRemoteDevice(deviceAddress)
+            if (device == null) {
+                Log.e(TAG, "Device not found: $deviceAddress")
+                return false
+            }
+            
+            val gattCallback = object : BluetoothGattCallback() {
+                override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                    Log.d(TAG, "Connection state change - status: $status, newState: $newState")
+                    when (newState) {
+                        BluetoothProfile.STATE_CONNECTED -> {
+                            Log.d(TAG, "Connected to $deviceAddress, discovering services...")
+                            val discoverResult = gatt.discoverServices()
+                            Log.d(TAG, "Service discovery started: $discoverResult")
+                        }
+                        BluetoothProfile.STATE_DISCONNECTED -> {
+                            Log.d(TAG, "Disconnected from $deviceAddress, status: $status")
+                            if (!result.isCompleted) {
+                                result.complete(false)
                             }
                         }
                     }
-                    
-                    override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-                        Log.d(TAG, "onServicesDiscovered - status: $status")
-                        if (status == BluetoothGatt.GATT_SUCCESS) {
-                            // List all services
-                            val services = gatt.services
-                            Log.d(TAG, "Found ${services.size} services:")
-                            services.forEach { service ->
-                                Log.d(TAG, "  Service: ${service.uuid}")
-                            }
+                }
+                
+                override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                    Log.d(TAG, "onServicesDiscovered - status: $status")
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        // List all services
+                        val services = gatt.services
+                        Log.d(TAG, "Found ${services.size} services:")
+                        services.forEach { service ->
+                            Log.d(TAG, "  Service: ${service.uuid}")
+                        }
+                        
+                        val service = gatt.getService(MESH_SERVICE_UUID)
+                        if (service == null) {
+                            Log.e(TAG, "Mesh service $MESH_SERVICE_UUID not found")
+                            result.complete(false)
+                            gatt.disconnect()
+                            return
+                        }
+                        
+                        val characteristic = service.getCharacteristic(MESH_MESSAGE_UUID)
+                        if (characteristic != null) {
+                            Log.d(TAG, "Found message characteristic, writing message...")
+                            val messageBytes = message.toByteArray(StandardCharsets.UTF_8)
                             
-                            val service = gatt.getService(MESH_SERVICE_UUID)
-                            if (service == null) {
-                                Log.e(TAG, "Mesh service $MESH_SERVICE_UUID not found")
-                                result.complete(false)
-                                gatt.disconnect()
-                                return
-                            }
-                            
-                            val characteristic = service.getCharacteristic(MESH_MESSAGE_UUID)
-                            if (characteristic != null) {
-                                Log.d(TAG, "Found message characteristic, writing message...")
-                                val messageBytes = message.toByteArray(StandardCharsets.UTF_8)
-                                
-                                // Check characteristic properties
-                                val properties = characteristic.properties
-                                val writeType = when {
-                                    (properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 -> {
-                                        Log.d(TAG, "Using WRITE_TYPE_NO_RESPONSE")
-                                        BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                                    }
-                                    (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 -> {
-                                        Log.d(TAG, "Using WRITE_TYPE_DEFAULT")
-                                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                                    }
-                                    else -> {
-                                        Log.e(TAG, "Characteristic doesn't support writing")
-                                        result.complete(false)
-                                        gatt.disconnect()
-                                        return
-                                    }
+                            // Check characteristic properties
+                            val properties = characteristic.properties
+                            val writeType = when {
+                                (properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 -> {
+                                    Log.d(TAG, "Using WRITE_TYPE_NO_RESPONSE")
+                                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
                                 }
-                                
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    val writeResult = gatt.writeCharacteristic(characteristic, messageBytes, writeType)
-                                    Log.d(TAG, "Write initiated (API 33+): $writeResult with writeType: $writeType")
-                                    if (writeResult != BluetoothGatt.GATT_SUCCESS) {
-                                        Log.e(TAG, "Write failed with result: $writeResult")
-                                        result.complete(false)
-                                        gatt.disconnect()
-                                    }
-                                } else {
-                                    characteristic.writeType = writeType
-                                    characteristic.value = messageBytes
-                                    val writeResult = gatt.writeCharacteristic(characteristic)
-                                    Log.d(TAG, "Write initiated (legacy): $writeResult with writeType: $writeType")
-                                    if (!writeResult) {
-                                        Log.e(TAG, "Write failed")
-                                        result.complete(false)
-                                        gatt.disconnect()
-                                    }
+                                (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 -> {
+                                    Log.d(TAG, "Using WRITE_TYPE_DEFAULT")
+                                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                                }
+                                else -> {
+                                    Log.e(TAG, "Characteristic doesn't support writing")
+                                    result.complete(false)
+                                    gatt.disconnect()
+                                    return
+                                }
+                            }
+                            
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                val writeResult = gatt.writeCharacteristic(characteristic, messageBytes, writeType)
+                                Log.d(TAG, "Write initiated (API 33+): $writeResult with writeType: $writeType")
+                                if (writeResult != BluetoothGatt.GATT_SUCCESS) {
+                                    Log.e(TAG, "Write failed with result: $writeResult")
+                                    result.complete(false)
+                                    gatt.disconnect()
                                 }
                             } else {
-                                Log.e(TAG, "Message characteristic $MESH_MESSAGE_UUID not found")
-                                result.complete(false)
-                                gatt.disconnect()
+                                characteristic.writeType = writeType
+                                characteristic.value = messageBytes
+                                val writeResult = gatt.writeCharacteristic(characteristic)
+                                Log.d(TAG, "Write initiated (legacy): $writeResult with writeType: $writeType")
+                                if (!writeResult) {
+                                    Log.e(TAG, "Write failed")
+                                    result.complete(false)
+                                    gatt.disconnect()
+                                }
                             }
                         } else {
-                            Log.e(TAG, "Service discovery failed with status: $status")
+                            Log.e(TAG, "Message characteristic $MESH_MESSAGE_UUID not found")
                             result.complete(false)
                             gatt.disconnect()
                         }
-                    }
-                    
-                    override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-                        Log.d(TAG, "Characteristic write completed with status: $status")
-                        result.complete(status == BluetoothGatt.GATT_SUCCESS)
+                    } else {
+                        Log.e(TAG, "Service discovery failed with status: $status")
+                        result.complete(false)
                         gatt.disconnect()
-                        gatt.close()
                     }
                 }
                 
-                gattConnection = device.connectGatt(context, false, gattCallback)
-                
-                // Wait for the result with a timeout
+                override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+                    Log.d(TAG, "Characteristic write completed with status: $status")
+                    val success = status == BluetoothGatt.GATT_SUCCESS
+                    result.complete(success)
+                    gatt.disconnect()
+                    gatt.close()
+                }
+            }
+            
+            gattConnection = device.connectGatt(context, false, gattCallback)
+            if (gattConnection == null) {
+                Log.e(TAG, "Failed to create GATT connection")
+                return false
+            }
+            
+            // Wait for the result with a timeout
+            return try {
                 withTimeout(10000) {
                     result.await()
                 }
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Security exception sending message", e)
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.e(TAG, "Connection timeout after 10 seconds")
+                result.complete(false)
                 false
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception sending message", e)
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending message", e)
+            return false
+        } finally {
+            // Ensure cleanup if something went wrong
+            if (!result.isCompleted) {
+                result.complete(false)
+            }
+            try {
+                gattConnection?.disconnect()
+                gattConnection?.close()
             } catch (e: Exception) {
-                Log.e(TAG, "Error sending message", e)
-                false
+                Log.e(TAG, "Error during cleanup", e)
             }
         }
     }
