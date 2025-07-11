@@ -520,7 +520,7 @@ class DirectNfcClient(
                 val genesisData = genesis?.get("data") as? Map<*, *>
                 genesisData?.get("tokenId") ?: parsedTokenData["id"] // Fallback to direct id
             } catch (e: Exception) {
-                parsedTokenData["id"] // Fallback to direct id
+                parsedTokenData["id"] ?: token.id // Fallback to token.id if JSON doesn't have it
             }
             
             val tokenType = try {
@@ -528,7 +528,7 @@ class DirectNfcClient(
                 val genesisData = genesis?.get("data") as? Map<*, *>
                 genesisData?.get("tokenType") ?: parsedTokenData["type"] // Fallback to direct type
             } catch (e: Exception) {
-                parsedTokenData["type"] // Fallback to direct type
+                parsedTokenData["type"] ?: token.type // Fallback to token.type if JSON doesn't have it
             }
             
             Log.d(TAG, "Extracted token ID: $tokenId, token type: $tokenType")

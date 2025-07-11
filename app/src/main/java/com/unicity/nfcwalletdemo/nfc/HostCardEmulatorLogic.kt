@@ -15,6 +15,8 @@ import com.unicity.nfcwalletdemo.nfc.ReceiverAddressResponse
 import com.unicity.nfcwalletdemo.nfc.OfflineTransactionPackage
 import com.unicity.nfcwalletdemo.nfc.TestPingMessage
 import com.unicity.nfcwalletdemo.nfc.TestPongResponse
+import com.unicity.nfcwalletdemo.nfc.BluetoothHandshake
+import com.unicity.nfcwalletdemo.nfc.BluetoothHandshakeResponse
 
 class HostCardEmulatorLogic(
     private val context: Context,
@@ -73,6 +75,9 @@ class HostCardEmulatorLogic(
         // Commands for test mode
         private const val CMD_TEST_PING: Byte = 0x08
         private const val CMD_TEST_PONG: Byte = 0x09
+        
+        // Command for hybrid NFC+Bluetooth handshake
+        private const val CMD_HYBRID_HANDSHAKE: Byte = 0x10
 
         // Transfer modes
         const val TRANSFER_MODE_DIRECT = "DIRECT_READY"
@@ -97,6 +102,9 @@ class HostCardEmulatorLogic(
             return SW_OK
         }
 
+        // Log the received command for debugging
+        Log.d(TAG, "Received command: INS=${String.format("%02X", commandApdu[1])}, P1=${String.format("%02X", commandApdu[2])}, P2=${String.format("%02X", commandApdu[3])}, LC=${if(commandApdu.size > 4) commandApdu[4] else 0}")
+        
         // Check command type - only proper offline handshake protocol supported
         when (commandApdu[1]) {
             CMD_REQUEST_RECEIVER_ADDRESS -> {
@@ -119,9 +127,16 @@ class HostCardEmulatorLogic(
                 startReceiveActivity()
                 return handleTestPing(commandApdu)
             }
+            CMD_HYBRID_HANDSHAKE -> {
+                Log.d(TAG, "HYBRID_HANDSHAKE command received")
+                startReceiveActivity()
+                return handleHybridHandshake(commandApdu)
+            }
+            else -> {
+                Log.w(TAG, "Unknown command received: ${String.format("%02X", commandApdu[1])}")
+                return SW_ERROR
+            }
         }
-
-        return SW_ERROR
     }
 
     private fun isSelectAidCommand(apdu: ByteArray): Boolean {
@@ -910,6 +925,65 @@ class HostCardEmulatorLogic(
         } catch (e: Exception) {
             Log.e(TAG, "Error handling test PING", e)
             SW_ERROR
+        }
+    }
+    
+    private fun handleHybridHandshake(commandApdu: ByteArray): ByteArray {
+        try {
+            // Extract handshake data from APDU
+            if (commandApdu.size < 6) {
+                Log.e(TAG, "Invalid hybrid handshake command size")
+                return SW_ERROR
+            }
+            
+            val dataLength = commandApdu[4].toInt() and 0xFF
+            if (commandApdu.size < 5 + dataLength) {
+                Log.e(TAG, "Incomplete hybrid handshake data")
+                return SW_ERROR
+            }
+            
+            val handshakeData = commandApdu.sliceArray(5 until 5 + dataLength)
+            val handshakeJson = String(handshakeData)
+            Log.d(TAG, "Received hybrid handshake: $handshakeJson")
+            
+            // Parse the handshake
+            val handshake = BluetoothHandshake.fromJson(handshakeJson)
+            
+            // Get Bluetooth adapter
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager
+            val bluetoothAdapter = bluetoothManager.adapter
+            
+            // Create response with our Bluetooth MAC
+            val response = BluetoothHandshakeResponse(
+                receiverId = "receiver-${System.currentTimeMillis()}",
+                bluetoothMAC = bluetoothAdapter?.address ?: "00:00:00:00:00:00",
+                transferId = handshake.transferId,
+                accepted = true
+            )
+            
+            // Broadcast the handshake to ReceiveActivity to start Bluetooth receiver
+            val intent = Intent("com.unicity.nfcwalletdemo.HYBRID_HANDSHAKE_RECEIVED").apply {
+                putExtra("handshake", handshakeJson)
+                putExtra("sender_mac", handshake.bluetoothMAC)
+                putExtra("transfer_id", handshake.transferId)
+                putExtra("token_preview", gson.toJson(handshake.tokenPreview))
+                setPackage(context.packageName)
+            }
+            context.sendBroadcast(intent)
+            
+            // Return the response
+            val responseData = response.toJson().toByteArray()
+            val fullResponse = ByteArray(responseData.size + 2)
+            System.arraycopy(responseData, 0, fullResponse, 0, responseData.size)
+            fullResponse[fullResponse.size - 2] = 0x90.toByte()
+            fullResponse[fullResponse.size - 1] = 0x00.toByte()
+            
+            Log.d(TAG, "Sending hybrid handshake response: ${response.toJson()}")
+            return fullResponse
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling hybrid handshake", e)
+            return SW_ERROR
         }
     }
 }
