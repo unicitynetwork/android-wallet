@@ -1358,8 +1358,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showMeshMessage(message: String, fromDevice: String) {
-        // Create a material design snackbar to show the message
-        val fullMessage = "Bluetooth message from $fromDevice:\n$message"
+        // Shorten the device address to last 4 characters
+        val shortDevice = if (fromDevice.length > 8) {
+            "...${fromDevice.takeLast(8)}"
+        } else {
+            fromDevice
+        }
+        
+        // Create a more concise message format
+        val fullMessage = "From $shortDevice: $message"
         val snackbar = com.google.android.material.snackbar.Snackbar.make(
             binding.root,
             fullMessage,
