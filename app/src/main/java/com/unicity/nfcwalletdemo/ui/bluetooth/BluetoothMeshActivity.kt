@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -127,13 +129,21 @@ class BluetoothMeshActivity : AppCompatActivity() {
             
             // Force a layout refresh
             binding.recyclerViewDevices.requestLayout()
+            
+            // Restart scanning after clearing
+            stopDiscovery()
+            Handler(Looper.getMainLooper()).postDelayed({
+                startDiscovery()
+            }, 500)
         }
         
-        // Add a refresh button to manually update RSSI values
+        // Add a refresh button to manually restart scanning
         binding.btnClearList.setOnLongClickListener {
-            // Just refresh the list without sorting
-            deviceAdapter.notifyDataSetChanged()
-            Toast.makeText(this, "Refreshed list", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Restarting scan...", Toast.LENGTH_SHORT).show()
+            stopDiscovery()
+            Handler(Looper.getMainLooper()).postDelayed({
+                startDiscovery()
+            }, 500)
             true
         }
         
@@ -188,25 +198,74 @@ class BluetoothMeshActivity : AppCompatActivity() {
             return
         }
         
+        // Check if Bluetooth is enabled
+        if (bluetoothAdapter?.isEnabled != true) {
+            Toast.makeText(this, "Please enable Bluetooth", Toast.LENGTH_LONG).show()
+            binding.tvStatus.text = "Bluetooth is disabled"
+            return
+        }
+        
+        // Check if location is enabled (required for BLE scanning on some devices)
+        if (!isLocationEnabled()) {
+            Toast.makeText(this, "Location services required for BLE scanning. Please enable location.", Toast.LENGTH_LONG).show()
+            binding.tvStatus.text = "Location services disabled"
+            // Show dialog to enable location
+            showLocationSettingsDialog()
+            return
+        }
+        
         try {
             val scanner = bluetoothAdapter?.bluetoothLeScanner
             if (scanner == null) {
                 Toast.makeText(this, "BLE Scanner not available", Toast.LENGTH_SHORT).show()
+                binding.tvStatus.text = "BLE Scanner not available"
                 return
             }
             
-            // Start with no filters to see all BLE devices for debugging
+            // Start with no filters to see all BLE devices
             // We'll filter in the callback instead
             val scanFilters = emptyList<android.bluetooth.le.ScanFilter>()
             
-            val scanSettings = android.bluetooth.le.ScanSettings.Builder()
-                .setScanMode(android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build()
+            // Use different scan settings based on Android version
+            // For Honor devices, use BALANCED mode as LOW_LATENCY might be blocked
+            val isHonorDevice = Build.MANUFACTURER.equals("HONOR", ignoreCase = true) || 
+                               Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true)
             
-            scanner.startScan(scanFilters, scanSettings, scanCallback)
-            isScanning = true
-            binding.tvStatus.text = "Scanning for wallet devices..."
-            Log.d(TAG, "Started BLE scan without filters for debugging")
+            val scanMode = if (isHonorDevice) {
+                android.bluetooth.le.ScanSettings.SCAN_MODE_BALANCED
+            } else {
+                android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_LATENCY
+            }
+            
+            val scanSettings = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.bluetooth.le.ScanSettings.Builder()
+                    .setScanMode(scanMode)
+                    .setCallbackType(android.bluetooth.le.ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                    .setMatchMode(android.bluetooth.le.ScanSettings.MATCH_MODE_AGGRESSIVE)
+                    .setReportDelay(0)
+                    .build()
+            } else {
+                android.bluetooth.le.ScanSettings.Builder()
+                    .setScanMode(scanMode)
+                    .setReportDelay(0)
+                    .build()
+            }
+            
+            if (isHonorDevice) {
+                Log.d(TAG, "Detected Honor/Huawei device, using balanced scan mode")
+                binding.tvStatus.text = "Scanning (Honor mode)..."
+            }
+            
+            try {
+                scanner.startScan(scanFilters, scanSettings, scanCallback)
+                isScanning = true
+                binding.tvStatus.text = "Scanning for wallet devices..."
+                Log.d(TAG, "Started BLE scan successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start scan", e)
+                binding.tvStatus.text = "Scan failed: ${e.message}"
+                Toast.makeText(this, "Scan failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         } catch (e: SecurityException) {
             Log.e(TAG, "Security exception in startDiscovery", e)
             Toast.makeText(this, "Permission denied for Bluetooth scanning", Toast.LENGTH_SHORT).show()
@@ -241,6 +300,7 @@ class BluetoothMeshActivity : AppCompatActivity() {
                 val rssi = scanResult.rssi
                 val scanRecord = scanResult.scanRecord
                 
+                
                 // Check if device advertises our service UUID
                 val hasOurService = scanRecord?.serviceUuids?.any { 
                     it.uuid == MESH_SERVICE_UUID 
@@ -257,10 +317,6 @@ class BluetoothMeshActivity : AppCompatActivity() {
                     scanRecord?.deviceName
                 }
                 
-                // Log all discovered devices for debugging
-                if (hasOurService || deviceName?.contains("Unicity", ignoreCase = true) == true) {
-//                    Log.d(TAG, "Found wallet device: ${device.address} ($deviceName) RSSI: $rssi Service: $hasOurService")
-                }
                 
                 // Only show devices with our service UUID or "Unicity" in name
                 if (!hasOurService && deviceName?.contains("Unicity", ignoreCase = true) != true) {
@@ -490,5 +546,27 @@ class BluetoothMeshActivity : AppCompatActivity() {
     override fun onSupportNavigateUp(): Boolean {
         onBackPressed()
         return true
+    }
+    
+    private fun isLocationEnabled(): Boolean {
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            locationManager.isLocationEnabled
+        } else {
+            locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+            locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+        }
+    }
+    
+    private fun showLocationSettingsDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Location Required")
+            .setMessage("BLE scanning requires location services on some devices (including Honor). Would you like to enable it?")
+            .setPositiveButton("Settings") { _, _ ->
+                val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                startActivity(intent)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }
