@@ -132,6 +132,24 @@ class ReceiveActivity : AppCompatActivity() {
                         }, 3500) // Wait slightly longer than success dialog auto-dismiss
                     }
                 }
+                "com.unicity.nfcwalletdemo.HYBRID_HANDSHAKE_RECEIVED" -> {
+                    val handshakeJson = intent.getStringExtra("handshake") ?: ""
+                    val senderMAC = intent.getStringExtra("sender_mac") ?: ""
+                    val transferId = intent.getStringExtra("transfer_id") ?: ""
+                    val tokenPreviewJson = intent.getStringExtra("token_preview") ?: ""
+                    
+                    Log.d("ReceiveActivity", "Hybrid handshake received from $senderMAC")
+                    runOnUiThread {
+                        Toast.makeText(this@ReceiveActivity, "Bluetooth transfer incoming...", Toast.LENGTH_SHORT).show()
+                        binding.tvStatus.text = "Bluetooth transfer starting..."
+                        
+                        // TODO: Start Bluetooth receiver mode with the transfer info
+                        // For now, just show that we received the handshake
+                        lifecycleScope.launch {
+                            handleHybridHandshake(senderMAC, transferId, tokenPreviewJson)
+                        }
+                    }
+                }
             }
         }
     }
@@ -253,6 +271,7 @@ class ReceiveActivity : AppCompatActivity() {
             addAction("com.unicity.nfcwalletdemo.CRYPTO_RECEIVED")
             addAction("com.unicity.nfcwalletdemo.TRANSFER_PROGRESS")
             addAction("com.unicity.nfcwalletdemo.NFC_TEST_RECEIVED")
+            addAction("com.unicity.nfcwalletdemo.HYBRID_HANDSHAKE_RECEIVED")
         }
         
         // For Android 14+ (API 34+), we need to specify RECEIVER_NOT_EXPORTED
@@ -364,6 +383,17 @@ class ReceiveActivity : AppCompatActivity() {
         }
         startActivity(intent)
         finish()
+    }
+    
+    private suspend fun handleHybridHandshake(senderMAC: String, transferId: String, tokenPreviewJson: String) {
+        Log.d("ReceiveActivity", "Starting Bluetooth receiver for transfer $transferId from $senderMAC")
+        
+        // TODO: Implement actual Bluetooth receiver logic
+        // For now, just show progress
+        runOnUiThread {
+            binding.tvStatus.text = "Waiting for Bluetooth connection from $senderMAC..."
+            viewModel.onNfcDetected()
+        }
     }
     
     override fun onConfigurationChanged(newConfig: Configuration) {

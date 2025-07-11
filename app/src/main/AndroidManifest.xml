@@ -58,6 +58,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:label="User Profile" />
+            
+        <activity 
+            android:name=".ui.bluetooth.BluetoothMeshActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:label="Bluetooth Mesh Discovery" />
         
         <!-- NFC Host Card Emulation Service -->
         <service

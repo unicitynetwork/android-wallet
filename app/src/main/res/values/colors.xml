@@ -86,6 +86,12 @@
     <!-- App Background -->
     <color name="app_background">#F5F5FA</color>
     
+    <!-- Signal Strength Colors -->
+    <color name="signal_excellent">#4CAF50</color>
+    <color name="signal_good">#2196F3</color>
+    <color name="signal_fair">#FF9800</color>
+    <color name="signal_poor">#9E9E9E</color>
+    
     <!-- Legacy Android Colors (for compatibility) -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>

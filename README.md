@@ -5,11 +5,11 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
 ## 🚀 Current Implementation
 
 **Token Type**: Real Unicity Protocol tokens with cryptographic signatures  
-**Transfer Method**: NFC-only offline transfer using Android HCE  
+**Transfer Method**: Hybrid NFC + Bluetooth LE mesh for unlimited token sizes  
 **SDK Integration**: Unicity State Transition SDK v1.4.7 with offline transfer support  
-**Transfer Protocol**: Multi-phase handshake with receiver address generation  
-**Transfer Speed**: 3-60 seconds depending on token size (includes handshake)  
-**User Experience**: Hold phones together during entire transfer
+**Transfer Protocol**: NFC handshake for secure discovery, Bluetooth for data transfer  
+**Transfer Speed**: 1-2 seconds NFC handshake + ~50-100 KB/s Bluetooth transfer  
+**User Experience**: Quick NFC tap to initiate, automatic Bluetooth transfer
 
 ## ✨ Features
 
@@ -80,14 +80,21 @@ Data Layer (Models/Storage)
 - **MainActivity**: Token list and wallet management
 - **ReceiveActivity**: Handles incoming token transfers via HCE
 - **HostCardEmulatorService**: NFC HCE service for receiving tokens
-- **DirectNfcClient**: Handles outgoing token transfers
+- **HybridNfcBluetoothClient**: Orchestrates hybrid NFC + Bluetooth transfers
+- **BluetoothMeshTransferService**: Handles Bluetooth LE mesh data transfer
+- **DirectNfcClient**: Legacy NFC-only transfer implementation
 - **WalletRepository**: Manages token storage and Unicity SDK integration
 - **UnicitySdkService**: WebView-based bridge to Unicity State Transition SDK
 
-## 📡 NFC Transfer Flow
+## 📡 Transfer Flow
 
-### Offline Transfer Protocol (Real Unicity Tokens)
-The app implements a sophisticated offline transfer protocol for real Unicity tokens:
+### Hybrid NFC + Bluetooth Transfer Protocol
+The app now implements a hybrid approach that combines NFC for secure peer discovery with Bluetooth LE mesh networking for high-bandwidth data transfer. This eliminates the 64KB NFC payload limitation while maintaining security and ease of use.
+
+For detailed technical documentation, see [HYBRID_TRANSFER_IMPLEMENTATION.md](HYBRID_TRANSFER_IMPLEMENTATION.md).
+
+### Legacy NFC-Only Transfer Protocol
+The previous NFC-only implementation is still available but limited to tokens under 64KB:
 
 #### Sending a Token
 1. User taps "Send Token" and expands token card
@@ -252,11 +259,15 @@ app/src/main/
 │   │   └── CryptoCurrency.kt
 │   ├── nfc/                     # NFC implementation
 │   │   ├── ApduTransceiver.kt   # APDU command interface
-│   │   ├── DirectNfcClient.kt   # Sender implementation
+│   │   ├── BluetoothHandshake.kt # Bluetooth handshake data classes
+│   │   ├── DirectNfcClient.kt   # Legacy NFC-only sender
 │   │   ├── HostCardEmulatorLogic.kt # Receiver logic
 │   │   ├── HostCardEmulatorService.kt # HCE service
+│   │   ├── HybridNfcBluetoothClient.kt # Hybrid transfer orchestrator
 │   │   ├── NfcTestChannel.kt    # Test mode support
 │   │   └── RealNfcTransceiver.kt # NFC transceiver
+│   ├── bluetooth/               # Bluetooth implementation
+│   │   └── BluetoothMeshTransferService.kt # BLE mesh transfer
 │   ├── sdk/                     # Unicity SDK integration
 │   │   ├── UnicitySdkService.kt # WebView bridge service
 │   │   └── UnicityTokenData.kt  # SDK data models
@@ -365,10 +376,10 @@ app/src/main/
 - **Material Design**: Provides modern, accessible user interface
 
 ### Limitations
-- **Transfer size**: 64KB maximum due to Android HCE buffer limits
-- **NFC only**: No fallback for large files or long-distance transfers
-- **Android only**: iOS has different NFC capabilities
-- **Physical proximity**: Devices must touch during entire transfer
+- **Android only**: iOS has different NFC/Bluetooth capabilities
+- **Bluetooth availability**: Requires Bluetooth LE support
+- **Background transfers**: May be interrupted by battery optimization
+- **MAC address privacy**: Android 6.0+ uses randomized MACs
 
 ---
 

@@ -13,6 +13,11 @@
         app:showAsAction="never" />
         
     <item
+        android:id="@+id/action_bluetooth_mesh"
+        android:title="Bluetooth Mesh Discovery"
+        app:showAsAction="never" />
+        
+    <item
         android:id="@+id/action_reset_wallet"
         android:title="Reset Wallet"
         app:showAsAction="never" />
