@@ -7,7 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.Wallet
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
 import com.unicity.nfcwalletdemo.sdk.UnicityTokenData
 import com.unicity.nfcwalletdemo.sdk.UnicityMintResult
@@ -24,7 +24,7 @@ class WalletRepository(context: Context) {
     private val sharedPreferences: SharedPreferences = 
         context.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
     private val gson = Gson()
-    private val unicitySdkService = UnicitySdkService(context)
+    private val unicitySdkService = UnicityJavaSdkService()
     private val identityManager = IdentityManager(context)
     
     private val _wallet = MutableStateFlow<Wallet?>(null)
@@ -182,32 +182,29 @@ class WalletRepository(context: Context) {
         return UnicityIdentity(identity.secret, identity.nonce)
     }
     
-    private suspend fun mintToken(identity: UnicityIdentity, tokenData: UnicityTokenData): UnicityMintResult = 
-        suspendCancellableCoroutine { continuation ->
-            unicitySdkService.mintToken(identity.toJson(), tokenData.toJson()) { result ->
-                result.onSuccess { mintResultJson ->
-                    try {
-                        val mintResult = UnicityMintResult.fromJson(mintResultJson)
-                        continuation.resume(mintResult)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to parse mint result", e)
-                        // Throw exception instead of creating fallback
-                        continuation.resumeWith(Result.failure(Exception("Failed to parse mint result: ${e.message}", e)))
-                    }
+    private suspend fun mintToken(identity: UnicityIdentity, tokenData: UnicityTokenData): UnicityMintResult {
+        val result = unicitySdkService.mintToken(identity.toJson(), tokenData.toJson())
+        return result.fold(
+            onSuccess = { mintResultJson ->
+                try {
+                    UnicityMintResult.fromJson(mintResultJson)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse mint result", e)
+                    throw Exception("Failed to parse mint result: ${e.message}", e)
                 }
-                result.onFailure { error ->
-                    Log.e(TAG, "Failed to mint token", error)
-                    // Throw exception instead of creating fallback
-                    continuation.resumeWith(Result.failure(error))
-                }
+            },
+            onFailure = { error ->
+                Log.e(TAG, "Failed to mint token", error)
+                throw error
             }
-        }
+        )
+    }
     
     fun getSdkService() = unicitySdkService
     
     fun getIdentityManager() = identityManager
     
     fun destroy() {
-        unicitySdkService.destroy()
+        // No cleanup needed for Java SDK service
     }
 }

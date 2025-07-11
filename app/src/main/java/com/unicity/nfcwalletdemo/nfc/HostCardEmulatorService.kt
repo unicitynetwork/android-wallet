@@ -4,7 +4,7 @@ import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 
 class HostCardEmulatorService() : HostApduService() {
 
@@ -13,7 +13,7 @@ class HostCardEmulatorService() : HostApduService() {
     override fun onCreate() {
         super.onCreate()
         // Initialize HostCardEmulatorLogic here, passing the application context
-        hceLogic = HostCardEmulatorLogic(applicationContext, UnicitySdkService(applicationContext))
+        hceLogic = HostCardEmulatorLogic(applicationContext, UnicityJavaSdkService())
         Log.d(TAG, "HostCardEmulatorService created and initialized HostCardEmulatorLogic")
     }
 

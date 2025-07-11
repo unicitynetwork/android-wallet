@@ -4,7 +4,7 @@ import android.nfc.TagLostException
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,7 +21,7 @@ import com.unicity.nfcwalletdemo.nfc.OfflineTransactionPackage
 import com.unicity.nfcwalletdemo.nfc.TestPingMessage
 
 class DirectNfcClient(
-    private val sdkService: UnicitySdkService,
+    private val sdkService: UnicityJavaSdkService,
     private val apduTransceiver: ApduTransceiver,
     private val onTransferComplete: () -> Unit,
     private val onError: (String) -> Unit,
@@ -610,24 +610,28 @@ class DirectNfcClient(
                 ?: throw Exception("Token data not found in mint result")
             
             // Create offline transfer package using SDK
-            sdkService.createOfflineTransferPackage(
-                senderData.senderIdentity.toJson(),
-                receiverAddress,
-                gson.toJson(tokenData)
-            ) { result ->
-                result.onSuccess { offlineTransactionJson ->
-                    continuation.resume(offlineTransactionJson)
-                }
-                result.onFailure { error ->
-                    Log.e(TAG, "Failed to create offline transfer with SDK", error)
-                    // Return fallback offline transfer data
-                    val fallbackTransfer = mapOf(
-                        "error" to "sdk_offline_transfer_failed",
-                        "message" to error.message,
-                        "token" to gson.toJson(token)
-                    )
-                    continuation.resume(gson.toJson(fallbackTransfer))
-                }
+            CoroutineScope(Dispatchers.IO).launch {
+                val result = sdkService.createOfflineTransferPackage(
+                    senderData.senderIdentity.toJson(),
+                    receiverAddress,
+                    gson.toJson(tokenData)
+                )
+                
+                result.fold(
+                    onSuccess = { offlineTransactionJson ->
+                        continuation.resume(offlineTransactionJson)
+                    },
+                    onFailure = { error ->
+                        Log.e(TAG, "Failed to create offline transfer with SDK", error)
+                        // Return fallback offline transfer data
+                        val fallbackTransfer = mapOf(
+                            "error" to "sdk_offline_transfer_failed",
+                            "message" to error.message,
+                            "token" to gson.toJson(token)
+                        )
+                        continuation.resume(gson.toJson(fallbackTransfer))
+                    }
+                )
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create offline transfer package", e)
