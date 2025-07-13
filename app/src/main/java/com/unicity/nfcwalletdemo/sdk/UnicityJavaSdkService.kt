@@ -218,11 +218,12 @@ class UnicityJavaSdkService {
             random.nextBytes(salt)
             val message = "Offline transfer".toByteArray(StandardCharsets.UTF_8)
             
+            // Create transaction data - the SDK method expects specific parameters
             val transactionData = TransactionData.create(
                 tokenState,
                 recipientAddress,
                 salt,
-                null, // No state hash for now
+                tokenState.hash, // Pass the source state hash
                 message,
                 null  // No nametagData
             ).await()
@@ -373,7 +374,7 @@ class UnicityJavaSdkService {
             
             // Get the data (hex encoded)
             val dataHex = stateNode.get("data")?.asText() ?: ""
-            val data = if (dataHex.isNotEmpty()) {
+            val data = if (dataHex.isNotEmpty() && dataHex != "null") {
                 hexStringToByteArray(dataHex)
             } else {
                 ByteArray(0)
@@ -397,13 +398,30 @@ class UnicityJavaSdkService {
             val nonceHex = predicateData.get("nonce").asText()
             val nonce = hexStringToByteArray(nonceHex)
             
+            // Get token ID and type from predicate data
+            val tokenIdHex = predicateData.get("tokenId")?.asText()
+            val tokenTypeHex = predicateData.get("tokenType")?.asText()
+            
+            val tokenId = if (tokenIdHex != null && tokenIdHex != "null") {
+                TokenId.create(hexStringToByteArray(tokenIdHex))
+            } else {
+                TokenId.create(ByteArray(32))
+            }
+            
+            val tokenType = if (tokenTypeHex != null && tokenTypeHex != "null") {
+                TokenType.create(hexStringToByteArray(tokenTypeHex))
+            } else {
+                TokenType.create(ByteArray(32))
+            }
+            
             // Create a predicate that preserves the exact hash from the original token
             val predicate = object : com.unicity.sdk.predicate.IPredicate {
-                // Compute hash from the predicate structure
-                private val predicateHash = DataHasher.digest(
-                    HashAlgorithm.SHA256, 
-                    objectMapper.writeValueAsBytes(predicateNode)
-                )
+                // Use the predicate hash from the JSON if available
+                private val predicateHash = if (predicateHashHex != null && predicateHashHex != "null") {
+                    DataHash.fromJSON(predicateHashHex)
+                } else {
+                    DataHasher.digest(HashAlgorithm.SHA256, objectMapper.writeValueAsBytes(predicateNode))
+                }
                 
                 override fun getHash(): DataHash = predicateHash
                 override fun getReference(): DataHash = predicateHash
@@ -421,6 +439,12 @@ class UnicityJavaSdkService {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to deserialize token state", e)
             // Return a basic token state as fallback
+            val tokenIdData = ByteArray(32)
+            val tokenTypeData = ByteArray(32)
+            random.nextBytes(tokenIdData)
+            random.nextBytes(tokenTypeData)
+            
+            // Create a basic fallback predicate
             val fallbackPredicate = object : com.unicity.sdk.predicate.IPredicate {
                 private val hash = DataHasher.digest(HashAlgorithm.SHA256, ByteArray(32))
                 override fun getHash(): DataHash = hash
@@ -432,6 +456,7 @@ class UnicityJavaSdkService {
                 override fun toJSON(): Any = mapOf("type" to "fallback")
                 override fun toCBOR(): ByteArray = ByteArray(0)
             }
+            
             return TokenState.create(fallbackPredicate, ByteArray(0))
         }
     }
