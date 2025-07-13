@@ -89,9 +89,9 @@ class UnicityJavaSdkService {
             val nonce = identityData.get("nonce").asText().toByteArray(StandardCharsets.UTF_8)
             
             // Parse token data
-            val tokenData = objectMapper.readTree(tokenDataJson)
-            val data = tokenData.get("data").asText()
-            val amount = tokenData.get("amount")?.asLong() ?: 100L
+            val tokenDataNode = objectMapper.readTree(tokenDataJson)
+            val data = tokenDataNode.get("data").asText()
+            val amount = tokenDataNode.get("amount")?.asLong() ?: 100L
             
             // Create token ID and type
             val tokenIdData = ByteArray(32)
@@ -124,24 +124,24 @@ class UnicityJavaSdkService {
                 nonce
             ).await()
             
+            // Create token data implementation similar to TestTokenData
+            val dataBytes = data.toByteArray(StandardCharsets.UTF_8)
+            val tokenData = object : ISerializable {
+                override fun toJSON(): Any = dataBytes.toHexString()
+                override fun toCBOR(): ByteArray = dataBytes // In real implementation, should use CborEncoder
+            }
+            
             // Create mint transaction data
             val salt = ByteArray(32)
             random.nextBytes(salt)
-            val dataBytes = data.toByteArray(StandardCharsets.UTF_8)
-            val dataHash = DataHasher.digest(HashAlgorithm.SHA256, dataBytes)
-            
-            val emptyTokenData = object : ISerializable {
-                override fun toJSON(): Any = ""
-                override fun toCBOR(): ByteArray = ByteArray(0)
-            }
             
             val mintData = MintTransactionData<ISerializable>(
                 tokenId,
                 tokenType,
                 predicate,
-                emptyTokenData,
+                tokenData,  // Pass actual token data
                 coinData,
-                dataHash,
+                null,       // No data hash - data is stored directly in token
                 salt
             )
             
@@ -150,8 +150,8 @@ class UnicityJavaSdkService {
             val inclusionProof = InclusionProofUtils.waitInclusionProof(client, commitment).await()
             val mintTransaction = client.createTransaction(commitment, inclusionProof).await()
             
-            // Create token
-            val tokenState = TokenState.create(predicate, dataBytes)
+            // Create token with empty state data (matching CommonTestFlow)
+            val tokenState = TokenState.create(predicate, ByteArray(0))
             Log.d(TAG, "Minted token state hash: ${tokenState.hash.toJSON()}")
             Log.d(TAG, "Minted predicate hash: ${predicate.hash.toJSON()}")
             
@@ -218,12 +218,17 @@ class UnicityJavaSdkService {
             random.nextBytes(salt)
             val message = "Offline transfer".toByteArray(StandardCharsets.UTF_8)
             
-            // Create transaction data - the SDK method expects specific parameters
+            // For offline transfers, we need to specify what data the recipient will store
+            // This is typically custom data the recipient wants to associate with the token
+            val recipientData = "Received via offline transfer".toByteArray(StandardCharsets.UTF_8)
+            val recipientDataHash = DataHasher.digest(HashAlgorithm.SHA256, recipientData)
+            
+            // Create transaction data following CommonTestFlow pattern
             val transactionData = TransactionData.create(
                 tokenState,
                 recipientAddress,
                 salt,
-                tokenState.hash, // Pass the source state hash
+                recipientDataHash, // Data hash for recipient's custom data
                 message,
                 null  // No nametagData
             ).await()
@@ -233,11 +238,11 @@ class UnicityJavaSdkService {
             Log.d(TAG, "Source state hash: ${transactionData.sourceState.hash.toJSON()}")
             Log.d(TAG, "Public key: ${signingService.publicKey.toHexString()}")
             
-            // Create authenticator
+            // Create authenticator - following the SDK's internal pattern
             val authenticator = Authenticator.create(
                 signingService,
-                transactionData.hash,
-                transactionData.sourceState.hash
+                transactionData.hash, // Sign the transaction hash
+                transactionData.sourceState.hash // Source state hash for reference
             ).await()
             
             Log.d(TAG, "Authenticator created:")
@@ -266,7 +271,28 @@ class UnicityJavaSdkService {
             Log.d(TAG, "  Has transactionData: ${commitmentNode.has("transactionData")}")
             Log.d(TAG, "  Has authenticator: ${commitmentNode.has("authenticator")}")
             
-            Result.success(objectMapper.writeValueAsString(commitmentJson))
+            // For offline transfers, we should include the full token information
+            // that the receiver will need to reconstruct their token
+            val offlinePackage = mapOf(
+                "commitment" to commitmentJson,
+                "tokenInfo" to mapOf(
+                    "tokenId" to tokenState.unlockPredicate.toJSON().let { 
+                        (it as Map<*, *>)["data"]?.let { data ->
+                            (data as Map<*, *>)["tokenId"]
+                        }
+                    },
+                    "tokenType" to tokenState.unlockPredicate.toJSON().let { 
+                        (it as Map<*, *>)["data"]?.let { data ->
+                            (data as Map<*, *>)["tokenType"]
+                        }
+                    },
+                    "genesis" to tokenNode.get("genesis")?.let { 
+                        objectMapper.writeValueAsString(it)
+                    }
+                )
+            )
+            
+            Result.success(objectMapper.writeValueAsString(offlinePackage))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create offline transfer package", e)
             Result.failure(e)
@@ -291,8 +317,16 @@ class UnicityJavaSdkService {
             val secret = identityData.get("secret").asText().toByteArray(StandardCharsets.UTF_8)
             val nonce = identityData.get("nonce").asText().toByteArray(StandardCharsets.UTF_8)
             
-            // Parse commitment from offline transaction
-            val commitmentNode = objectMapper.readTree(offlineTransactionJson)
+            // Parse the complete offline package (should include both commitment and token info)
+            val packageNode = objectMapper.readTree(offlineTransactionJson)
+            
+            // Check if this is a commitment or a full package
+            val commitmentNode = if (packageNode.has("commitment")) {
+                packageNode.get("commitment")
+            } else {
+                // Direct commitment object
+                packageNode
+            }
             
             // Deserialize commitment components
             val requestIdHex = commitmentNode.get("requestId").asText()
@@ -312,11 +346,15 @@ class UnicityJavaSdkService {
             )
             val authenticator = Authenticator.fromJSON(authMap)
             
-            // Recreate commitment
+            // Recreate commitment from offline package (already signed by sender)
             val commitment = Commitment(requestId, transactionData, authenticator)
             
-            // Submit commitment to aggregator
-            val response = client.submitCommitment(commitment).await()
+            // Submit the pre-signed commitment to aggregator (receiver doesn't sign anything)
+            val response = aggregatorClient.submitTransaction(
+                commitment.requestId,
+                transactionData.hash,
+                commitment.authenticator
+            ).await()
             if (response.status != com.unicity.sdk.api.SubmitCommitmentStatus.SUCCESS) {
                 throw Exception("Failed to submit commitment: ${response.status}")
             }
@@ -325,20 +363,35 @@ class UnicityJavaSdkService {
             val inclusionProof = InclusionProofUtils.waitInclusionProof(client, commitment).await()
             val confirmedTx = client.createTransaction(commitment, inclusionProof).await()
             
-            // Create receiver's signing service and predicate
+            // Create receiver's signing service
             val signingService = SigningService.createFromSecret(secret, nonce).await()
             
-            // For receiver's predicate, we need to parse token info from the transaction
-            // In a real implementation, this would come from the offline package
-            val tokenIdData = ByteArray(32)
-            random.nextBytes(tokenIdData)
-            val tokenId = TokenId.create(tokenIdData)
+            // Extract token ID and type from the package
+            val tokenId: TokenId
+            val tokenType: TokenType
             
-            val tokenTypeData = ByteArray(32)
-            random.nextBytes(tokenTypeData)
-            val tokenType = TokenType.create(tokenTypeData)
+            if (packageNode.has("tokenInfo")) {
+                // New format with token info
+                val tokenInfo = packageNode.get("tokenInfo")
+                val tokenIdHex = tokenInfo.get("tokenId").asText()
+                tokenId = TokenId.create(hexStringToByteArray(tokenIdHex))
+                
+                val tokenTypeHex = tokenInfo.get("tokenType").asText()
+                tokenType = TokenType.create(hexStringToByteArray(tokenTypeHex))
+            } else {
+                // Fallback: extract from transaction data source state
+                val sourceState = transactionData.sourceState
+                val sourcePredicateData = sourceState.unlockPredicate.toJSON() as Map<*, *>
+                val predicateData = sourcePredicateData["data"] as Map<*, *>
+                
+                val tokenIdHex = predicateData["tokenId"] as String
+                tokenId = TokenId.create(hexStringToByteArray(tokenIdHex))
+                
+                val tokenTypeHex = predicateData["tokenType"] as String  
+                tokenType = TokenType.create(hexStringToByteArray(tokenTypeHex))
+            }
             
-            // Create receiver's predicate
+            // Create receiver's predicate matching the token
             val receiverPredicate = MaskedPredicate.create(
                 tokenId,
                 tokenType,
@@ -347,18 +400,35 @@ class UnicityJavaSdkService {
                 nonce
             ).await()
             
-            // Create new token state
-            val tokenState = TokenState.create(receiverPredicate, ByteArray(0))
+            // Get recipient's custom data from the transaction data hash
+            val recipientData = if (transactionData.data != null) {
+                // In a real app, receiver would know what data they provided
+                "Received via offline transfer".toByteArray(StandardCharsets.UTF_8)
+            } else {
+                ByteArray(0)
+            }
             
-            // For the token, we need the genesis transaction - simplified for now
-            // In real implementation, this would come from the offline package
-            @Suppress("UNCHECKED_CAST")
-            val receivedToken = Token<Transaction<MintTransactionData<*>>>(
-                tokenState,
-                confirmedTx as Transaction<MintTransactionData<*>>
+            // Create new token state with recipient's data
+            val tokenState = TokenState.create(receiverPredicate, recipientData)
+            
+            // For offline transfers, we need the genesis transaction from the sender
+            // This should be included in the offline package
+            // For now, we'll create a simple token structure
+            val receivedToken = mapOf(
+                "state" to tokenState.toJSON(),
+                "genesis" to mapOf(
+                    "data" to transactionData.toJSON(),
+                    "inclusionProof" to inclusionProof.toJSON()
+                ),
+                "transactions" to listOf(
+                    mapOf(
+                        "data" to confirmedTx.data.toJSON(),
+                        "inclusionProof" to confirmedTx.inclusionProof.toJSON()
+                    )
+                )
             )
             
-            Result.success(objectMapper.writeValueAsString(receivedToken.toJSON()))
+            Result.success(objectMapper.writeValueAsString(receivedToken))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to complete offline transfer", e)
             Result.failure(e)
@@ -477,20 +547,46 @@ class UnicityJavaSdkService {
     }
     
     private fun deserializeTransactionData(txDataNode: JsonNode): TransactionData {
-        // Simplified deserialization - in real implementation would properly deserialize
-        // For now, create dummy transaction data
-        val tokenState = deserializeTokenState(txDataNode)
-        val recipientAddress = txDataNode.get("recipient")?.asText() ?: "dummy-address"
-        val salt = ByteArray(32)
-        random.nextBytes(salt)
+        // Properly deserialize transaction data from the offline package
+        val tokenState = deserializeTokenState(txDataNode.get("sourceState"))
+        val recipientAddress = txDataNode.get("recipient").asText()
+        
+        // Preserve original salt (hex encoded)
+        val saltHex = txDataNode.get("salt").asText()
+        val salt = hexStringToByteArray(saltHex)
+        
+        // Preserve original data hash if present
+        val dataHashNode = txDataNode.get("data")
+        val dataHash = if (dataHashNode != null && !dataHashNode.isNull) {
+            DataHash.fromJSON(dataHashNode.asText())
+        } else {
+            null
+        }
+        
+        // Preserve original message if present
+        val messageNode = txDataNode.get("message")
+        val message = if (messageNode != null && !messageNode.isNull) {
+            hexStringToByteArray(messageNode.asText())
+        } else {
+            null
+        }
+        
+        // Preserve nametagData if present (usually null)
+        val nametagDataNode = txDataNode.get("nametagData")
+        val nametagData = if (nametagDataNode != null && !nametagDataNode.isNull) {
+            // For now, we don't support nametag data
+            null
+        } else {
+            null
+        }
         
         return TransactionData.create(
             tokenState,
             recipientAddress,
             salt,
-            null,
-            "Transfer".toByteArray(StandardCharsets.UTF_8),
-            null
+            dataHash,
+            message,
+            nametagData
         ).get()
     }
 }

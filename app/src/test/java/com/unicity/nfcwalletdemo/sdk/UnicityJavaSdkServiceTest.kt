@@ -269,7 +269,26 @@ class UnicityJavaSdkServiceTest {
         // Given
         val senderIdentityJson = """{"secret":"sendersecret","nonce":"sendernonce"}"""
         val recipientAddress = "recipient-test-address"
-        val tokenJson = """{"state":{"predicate":"test","data":"test"},"genesis":{"hash":"test"}}"""
+        // Provide a more complete token structure that matches what the service expects
+        val tokenJson = """{
+            "state": {
+                "data": "",
+                "unlockPredicate": {
+                    "type": "MASKED",
+                    "data": {
+                        "publicKey": "0123456789abcdef",
+                        "nonce": "fedcba9876543210",
+                        "tokenId": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                        "tokenType": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    },
+                    "hash": "0000123456789abcdef"
+                }
+            },
+            "genesis": {
+                "data": {},
+                "inclusionProof": {}
+            }
+        }"""
         
         // When
         val result = service.createOfflineTransferPackage(senderIdentityJson, recipientAddress, tokenJson)
