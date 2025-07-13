@@ -39,7 +39,7 @@ class UnicityJavaSdkService {
     
     companion object {
         private const val TAG = "UnicityJavaSdkService"
-        private const val AGGREGATOR_URL = "https://gateway-test.unicity.network"  // TODO: Make configurable
+        private const val AGGREGATOR_URL = "https://aggregator-test-1.mainnet.unicity.network"  // TODO: Make configurable
         private val random = SecureRandom()
         private val objectMapper = ObjectMapper()
     }
