@@ -126,10 +126,13 @@ class UnicityJavaSdkServiceIntegrationTest {
                 error.printStackTrace()
 
                 // Log more details about the failure
-                if (error.message?.contains("inclusion proof") == true) {
+                if (error.message?.contains("AUTHENTICATOR_VERIFICATION_FAILED") == true) {
                     println("\nLikely issue: Authenticator signature validation failed at aggregator")
                     println("This suggests the authenticator is not signing the correct data")
                 }
+                
+                // Fail the test
+                fail("Transfer failed: ${error.message}")
             }
         )
     }
