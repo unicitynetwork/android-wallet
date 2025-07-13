@@ -52,7 +52,7 @@ class UnicityJavaSdkServiceIntegrationTest {
     @Test
     fun testMintTokenWithRealAggregator() = runBlocking {
         println("Testing real token minting with Unicity aggregator...")
-        println("Using aggregator URL: https://gateway-test.unicity.network")
+        println("Using aggregator URL: https://aggregator-test-1.mainnet.unicity.network")
         
         // First generate an identity
         var identityJson: String? = null
