@@ -6,7 +6,7 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
 
 **Token Type**: Real Unicity Protocol tokens with cryptographic signatures  
 **Transfer Method**: Hybrid NFC + Bluetooth LE mesh for unlimited token sizes  
-**SDK Integration**: Unicity State Transition SDK v1.4.7 with offline transfer support  
+**SDK Integration**: Unicity Java SDK v1.0-SNAPSHOT (Native Android integration)  
 **Transfer Protocol**: NFC handshake for secure discovery, Bluetooth for data transfer  
 **Transfer Speed**: 1-2 seconds NFC handshake + ~50-100 KB/s Bluetooth transfer  
 **User Experience**: Quick NFC tap to initiate, automatic Bluetooth transfer
@@ -38,20 +38,20 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
    cd nfc-wallet-demo
    ```
 
-2. **Install Java 17** (required for Android development)
+2. **Install Java 11** (required for Unicity Java SDK)
    ```bash
-   brew install openjdk@17  # macOS
+   brew install openjdk@11  # macOS
    # or use your system's package manager
+   export JAVA_HOME=$(/usr/libexec/java_home -v 11)
    ```
 
 3. **Open in Android Studio**
    - Import the project
    - Sync Gradle dependencies
-   - Ensure Java 17 is selected in project structure
+   - Ensure Java 11 is selected in project structure
 
 4. **Build and install**
    ```bash
-   export JAVA_HOME=$(/usr/libexec/java_home -v 17)  # macOS
    ./gradlew assembleDebug
    adb install app/build/outputs/apk/debug/app-debug.apk
    ```
@@ -84,7 +84,7 @@ Data Layer (Models/Storage)
 - **BluetoothMeshTransferService**: Handles Bluetooth LE mesh data transfer
 - **DirectNfcClient**: Legacy NFC-only transfer implementation
 - **WalletRepository**: Manages token storage and Unicity SDK integration
-- **UnicitySdkService**: WebView-based bridge to Unicity State Transition SDK
+- **UnicityJavaSdkService**: Native Java SDK integration for Unicity Protocol operations
 
 ## 📡 Transfer Flow
 
@@ -208,8 +208,17 @@ The app uses the Unicity State Transition SDK to create real cryptographic token
 - **InclusionProof**: Proof of blockchain commitment with direct verification
 - **Commitment**: Standard commitment class for offline transfers
 - **CommitmentJsonSerializer**: JSON serialization for offline transfer packages
-- **TokenFactory**: Token reconstruction from JSON data
 - **Identity Generation**: Create new cryptographic identities for receiving tokens
+
+### Java SDK Integration (NEW)
+The app now uses the native Unicity Java SDK instead of the JavaScript SDK in WebView:
+- **Native Performance**: Direct JVM execution without WebView overhead
+- **Type Safety**: Compile-time type checking and better IDE support
+- **Reduced Memory**: No JavaScript bridge or WebView memory usage
+- **Better Integration**: Direct access to Android platform features
+- **Simplified Architecture**: No need for JavaScript bundling or bridge code
+
+For migration details, see [JAVA_SDK_MIGRATION.md](JAVA_SDK_MIGRATION.md).
 
 ## 🏭 Production Checklist
 
