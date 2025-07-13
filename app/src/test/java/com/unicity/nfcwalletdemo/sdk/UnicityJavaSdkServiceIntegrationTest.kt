@@ -1,10 +1,17 @@
 package com.unicity.nfcwalletdemo.sdk
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.unicity.sdk.address.DirectAddress
+import com.unicity.sdk.predicate.MaskedPredicate
+import com.unicity.sdk.shared.hash.HashAlgorithm
+import com.unicity.sdk.shared.signing.SigningService
+import com.unicity.sdk.token.TokenId
+import com.unicity.sdk.token.TokenType
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import java.nio.charset.StandardCharsets
 
 /**
  * Integration tests for UnicityJavaSdkService that use the real Unicity aggregator
@@ -18,6 +25,17 @@ class UnicityJavaSdkServiceIntegrationTest {
     @Before
     fun setup() {
         sdkService = UnicityJavaSdkService()
+    }
+    
+    private fun hexStringToByteArray(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
     }
     
     @Test
@@ -85,9 +103,36 @@ class UnicityJavaSdkServiceIntegrationTest {
         }
         Thread.sleep(1000)
 
-        // For testing, we need a proper recipient address
-        // In the real app, this would come from the receiver's identity
-        val recipientAddress = "test-recipient-address"
+        // Calculate the recipient address from receiver's identity
+        // We need to derive the address that matches the receiver's predicate
+        val receiverIdData = objectMapper.readTree(receiverIdentity!!)
+        val receiverSecret = receiverIdData.get("secret").asText().toByteArray(StandardCharsets.UTF_8)
+        val receiverNonce = receiverIdData.get("nonce").asText().toByteArray(StandardCharsets.UTF_8)
+        
+        // Get token info from minted token to create matching predicate
+        val mintedToken = objectMapper.readTree(tokenJson!!)
+        
+        // In the Java SDK, tokenId and tokenType are in genesis.data
+        val genesis = mintedToken.get("genesis")
+        val genesisData = genesis.get("data")
+        
+        val tokenIdHex = genesisData.get("tokenId").asText()
+        val tokenTypeHex = genesisData.get("tokenType").asText()
+        
+        // Create receiver's signing service and predicate to get the correct address
+        val receiverSigningService = SigningService.createFromSecret(receiverSecret, receiverNonce).get()
+        val tokenId = TokenId.create(hexStringToByteArray(tokenIdHex))
+        val tokenType = TokenType.create(hexStringToByteArray(tokenTypeHex))
+        
+        val receiverPredicate = MaskedPredicate.create(
+            tokenId,
+            tokenType,
+            receiverSigningService,
+            HashAlgorithm.SHA256,
+            receiverNonce
+        ).get()
+        
+        val recipientAddress = DirectAddress.create(receiverPredicate.reference).get().toString()
 
         // Create offline transfer
         println("\nCreating offline transfer...")
