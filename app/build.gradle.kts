@@ -67,6 +67,11 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk15on:1.70")
     implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
     implementation("com.google.guava:guava:33.0.0-android")
+    
+    // SLF4J dependencies for Android (required by Unicity SDK)
+    implementation("org.slf4j:slf4j-api:2.0.9")
+    implementation("com.github.tony19:logback-android:3.0.0")
+    
     // OkHttp already included below
     
     implementation("androidx.core:core-ktx:1.12.0")
@@ -119,6 +124,11 @@ dependencies {
     
     // Testing
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:4.11.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:4.1.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.5.4")

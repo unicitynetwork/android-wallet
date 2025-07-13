@@ -491,6 +491,7 @@ class HostCardEmulatorLogic(
             sdkService.generateIdentity { identityResult ->
                 identityResult.onSuccess { identityJson ->
                     try {
+                        @Suppress("UNCHECKED_CAST")
                         val receiverIdentity = gson.fromJson(identityJson, Map::class.java) as Map<String, String>
                         generatedReceiverIdentity = receiverIdentity
                         generatedReceiverIdentityStatic = receiverIdentity // Store in static for ReceiveActivity

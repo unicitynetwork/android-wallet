@@ -46,3 +46,9 @@
     public <methods>;
     public <fields>;
 }
+
+# SLF4J
+-keep class org.slf4j.** { *; }
+-keep class ch.qos.logback.** { *; }
+-dontwarn org.slf4j.**
+-dontwarn ch.qos.logback.**
