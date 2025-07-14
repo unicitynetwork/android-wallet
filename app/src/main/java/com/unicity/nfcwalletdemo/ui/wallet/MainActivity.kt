@@ -52,6 +52,7 @@ import com.unicity.nfcwalletdemo.network.*
 import kotlinx.coroutines.delay
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.unicity.nfcwalletdemo.ui.scanner.PortraitCaptureActivity
 import android.net.Uri
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -2402,7 +2403,8 @@ class MainActivity : AppCompatActivity() {
             .setPrompt("Scan payment request QR code")
             .setCameraId(0)
             .setBeepEnabled(true)
-            .setOrientationLocked(false)
+            .setOrientationLocked(true)
+            .setCaptureActivity(PortraitCaptureActivity::class.java) // Force portrait mode
         
         barcodeLauncher.launch(options)
     }
@@ -2432,7 +2434,7 @@ class MainActivity : AppCompatActivity() {
     private fun showPaymentDialog(requestId: String, recipientAddress: String) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_send_payment, null)
         
-        val dialog = AlertDialog.Builder(this, R.style.Theme_MaterialComponents_DayNight_Dialog_Alert)
+        val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .setTitle("Send Payment")
             .create()

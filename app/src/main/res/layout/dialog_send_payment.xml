@@ -4,8 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="24dp"
-    android:background="?android:attr/windowBackground">
+    android:padding="24dp">
 
     <!-- Currency Selection -->
     <TextView
@@ -20,10 +19,7 @@
         android:id="@+id/currencySpinner"
         android:layout_width="match_parent"
         android:layout_height="48dp"
-        android:layout_marginBottom="16dp"
-        android:padding="12dp"
-        style="@style/Widget.AppCompat.Spinner"
-        android:popupBackground="?android:attr/colorSurface" />
+        android:layout_marginBottom="16dp" />
 
     <!-- Amount Input -->
     <com.google.android.material.textfield.TextInputLayout
@@ -32,8 +28,8 @@
         android:layout_marginBottom="24dp"
         android:hint="Amount"
         app:boxBackgroundMode="outline"
-        app:boxStrokeColor="?attr/colorPrimary"
-        app:hintTextColor="?attr/colorPrimary"
+        app:boxStrokeColor="@color/primary_blue"
+        app:hintTextColor="@color/primary_blue"
         app:boxCornerRadiusTopStart="12dp"
         app:boxCornerRadiusTopEnd="12dp"
         app:boxCornerRadiusBottomStart="12dp"
@@ -43,8 +39,7 @@
             android:id="@+id/amountInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="numberDecimal"
-            android:textColor="?android:attr/textColorPrimary" />
+            android:inputType="numberDecimal" />
 
     </com.google.android.material.textfield.TextInputLayout>
 
@@ -63,8 +58,7 @@
             android:layout_marginEnd="8dp"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             app:cornerRadius="12dp"
-            app:strokeColor="?attr/colorPrimary"
-            android:textColor="?attr/colorPrimary" />
+            app:strokeColor="@color/primary_blue" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSend"
@@ -73,7 +67,7 @@
             android:layout_weight="1"
             android:text="Send"
             android:layout_marginStart="8dp"
-            android:backgroundTint="?attr/colorPrimary"
+            android:backgroundTint="@color/primary_blue"
             app:cornerRadius="12dp" />
 
     </LinearLayout>
