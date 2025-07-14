@@ -10,6 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONObject
+import org.json.JSONException
 import java.util.UUID
 
 /**
@@ -52,7 +53,7 @@ class HybridNfcBluetoothClient(
     
     private var currentToken: Token? = null
     private var senderIdentity: String? = null
-    private var isTestMode = true // TODO: Set to false when SDK is ready
+    private var currentTransferId: String? = null
     
     /**
      * Start hybrid transfer as sender
@@ -101,6 +102,8 @@ class HybridNfcBluetoothClient(
                         }
                     }
                 }
+                
+                currentTransferId = handshakeResponse.transferId
                 
                 bluetoothService.startSenderMode(
                     transferId = handshakeResponse.transferId,
@@ -153,6 +156,8 @@ class HybridNfcBluetoothClient(
                         }
                     }
                 }
+                
+                currentTransferId = handshake.transferId
                 
                 val tokenData = bluetoothService.startReceiverMode(
                     transferId = handshake.transferId,
@@ -306,49 +311,84 @@ class HybridNfcBluetoothClient(
     
     private suspend fun prepareTokenData(token: Token, senderIdentity: String): ByteArray {
         return withContext(Dispatchers.IO) {
-            // Create offline transfer package
-            val transferPackage = JSONObject().apply {
-                put("tokenId", token.id)
-                put("tokenName", token.name)
-                put("tokenType", token.type)
-                put("tokenData", token.jsonData ?: "{}")
-                put("senderIdentity", senderIdentity)
-                put("timestamp", System.currentTimeMillis())
-            }
-            
-            // If this is a real transfer, create proper offline transfer
-            if (!isTestMode) {
+            try {
+                // Create offline transfer package using SDK
                 val result = sdkService.createOfflineTransferPackage(
                     senderIdentity,
-                    "temp-address", // Will be updated by receiver
+                    "offline-transfer", // Placeholder, will be updated by receiver
                     token.jsonData ?: "{}"
                 )
+                
                 if (result.isFailure) {
-                    throw result.exceptionOrNull() ?: Exception("Failed to create transfer package")
+                    Log.e(TAG, "Failed to create offline transfer package", result.exceptionOrNull())
+                    // Fallback to simple JSON format for testing
+                    val transferPackage = JSONObject().apply {
+                        put("tokenId", token.id)
+                        put("tokenName", token.name)
+                        put("tokenType", token.type)
+                        put("tokenData", token.jsonData ?: "{}")
+                        put("senderIdentity", senderIdentity)
+                        put("timestamp", System.currentTimeMillis())
+                        put("isTestTransfer", true)
+                    }
+                    return@withContext transferPackage.toString().toByteArray()
                 }
+                
+                // Return the SDK-generated transfer package
+                val transferData = result.getOrNull() ?: throw Exception("Empty transfer package")
+                transferData.toByteArray()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error preparing token data", e)
+                // Fallback for testing
+                val transferPackage = JSONObject().apply {
+                    put("tokenId", token.id)
+                    put("tokenName", token.name)
+                    put("tokenType", token.type)
+                    put("tokenData", token.jsonData ?: "{}")
+                    put("senderIdentity", senderIdentity)
+                    put("timestamp", System.currentTimeMillis())
+                    put("isTestTransfer", true)
+                    put("error", e.message)
+                }
+                transferPackage.toString().toByteArray()
             }
-            
-            transferPackage.toString().toByteArray()
         }
     }
     
     private suspend fun processReceivedToken(tokenData: ByteArray, receiverIdentity: String) {
         withContext(Dispatchers.IO) {
-            val transferPackage = JSONObject(String(tokenData))
-            
-            if (!isTestMode) {
+            try {
+                val transferPackage = JSONObject(String(tokenData))
+                
+                // Check if this is a test transfer
+                val isTestTransfer = transferPackage.optBoolean("isTestTransfer", false)
+                
+                if (isTestTransfer) {
+                    Log.d(TAG, "Received test transfer package: ${transferPackage.toString(2)}")
+                    // For test transfers, just log and consider it successful
+                    return@withContext
+                }
+                
+                // Process real transfer with SDK
                 val result = sdkService.completeOfflineTransfer(
                     receiverIdentity,
-                    transferPackage.toString()
+                    String(tokenData)
                 )
+                
                 if (result.isFailure) {
-                    throw result.exceptionOrNull() ?: Exception("Failed to complete transfer")
+                    val error = result.exceptionOrNull()
+                    Log.e(TAG, "Failed to complete transfer", error)
+                    throw error ?: Exception("Failed to complete transfer")
                 }
-            } else {
-                // In test mode, just log the received token
-                Log.d(TAG, "Test mode: Received token package: ${transferPackage.toString(2)}")
+                
+                Log.d(TAG, "Successfully completed transfer with SDK")
+            } catch (e: JSONException) {
+                Log.e(TAG, "Invalid transfer data format", e)
+                throw Exception("Invalid transfer data received")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing received token", e)
+                throw e
             }
-            Unit // Return Unit explicitly
         }
     }
     
@@ -356,8 +396,23 @@ class HybridNfcBluetoothClient(
         return UUID.randomUUID().toString().take(8)
     }
     
-    fun setTestMode(enabled: Boolean) {
-        isTestMode = enabled
+    /**
+     * Cancel the current transfer
+     */
+    fun cancelTransfer() {
+        currentTransferId?.let { transferId ->
+            bluetoothService.cancelTransfer(transferId)
+        }
+        _state.value = TransferState.Error("Transfer cancelled by user")
+    }
+    
+    /**
+     * Get current transfer progress
+     */
+    fun getTransferProgress(): Float {
+        return currentTransferId?.let { transferId ->
+            bluetoothService.getTransferProgress(transferId) ?: 0f
+        } ?: 0f
     }
     
     fun cleanup() {

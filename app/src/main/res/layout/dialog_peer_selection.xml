@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- NFC Option -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/nfcOption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        app:cardElevation="2dp"
+        app:cardCornerRadius="8dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?android:attr/selectableItemBackground">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_nfc"
+                android:tint="@color/primary_blue" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Tap phones together"
+                    android:textAppearance="?attr/textAppearanceBodyLarge"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Use NFC for secure face-to-face transfer"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Separator -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Or select from visible peers"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="?android:attr/textColorSecondary"
+        android:gravity="center"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Peers List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/peersRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:minHeight="200dp"
+        android:maxHeight="300dp" />
+
+    <!-- Empty State -->
+    <TextView
+        android:id="@+id/emptyView"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:text="No peers discovered.\nMake sure Bluetooth is enabled and the recipient's wallet is open."
+        android:textAppearance="?attr/textAppearanceBodyLarge"
+        android:textColor="?android:attr/textColorSecondary"
+        android:gravity="center"
+        android:visibility="gone" />
+
+</LinearLayout>

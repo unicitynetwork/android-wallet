@@ -57,6 +57,11 @@ import androidx.core.content.FileProvider
 import java.io.File
 import android.os.Build
 import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshManager
+import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshTransferService
+import com.unicity.nfcwalletdemo.bluetooth.BTMeshTransferCoordinator
+import com.unicity.nfcwalletdemo.bluetooth.DiscoveredPeer
+import com.unicity.nfcwalletdemo.ui.bluetooth.PeerSelectionDialog
+import com.unicity.nfcwalletdemo.ui.bluetooth.TransferApprovalDialog
 import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : AppCompatActivity() {
@@ -78,6 +83,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sdkService: UnicityJavaSdkService
     private val gson = Gson()
     
+    // BT Mesh components
+    private lateinit var bluetoothMeshTransferService: BluetoothMeshTransferService
+    
     // Success dialog properties
     private lateinit var confettiContainer: FrameLayout
     private lateinit var transferDetailsText: TextView
@@ -94,6 +102,9 @@ class MainActivity : AppCompatActivity() {
         
         sdkService = UnicityJavaSdkService()
         
+        // Initialize BT Mesh components
+        initializeBTMesh()
+        
         setupActionBar()
         setupNfc()
         setupUI()
@@ -102,6 +113,7 @@ class MainActivity : AppCompatActivity() {
         setupSwipeRefresh()
         setupSuccessDialog()
         setupTestTrigger()
+        setupTransferApprovalListener()
         
         // Request Bluetooth permissions on first launch
         val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
@@ -313,9 +325,17 @@ class MainActivity : AppCompatActivity() {
     private fun observeViewModel() {
         lifecycleScope.launch {
             viewModel.tokens.collect { tokens ->
+                Log.d("MainActivity", "=== Tokens collected: ${tokens.size} tokens, currentTab=$currentTab ===")
+                tokens.forEach { token ->
+                    Log.d("MainActivity", "Token: ${token.name} (${token.type})")
+                }
+                
                 if (currentTab == 1) {
+                    Log.d("MainActivity", "Updating NFTs tab with ${tokens.size} tokens")
                     tokenAdapter.submitList(tokens)
                     binding.emptyStateContainer.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
+                } else {
+                    Log.d("MainActivity", "Not updating UI - wrong tab (currentTab=$currentTab)")
                 }
             }
         }
@@ -473,13 +493,18 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun startHybridTokenTransfer(token: Token) {
+        // Show BT mesh peer selection dialog which includes NFC option
+        showBTMeshPeerSelection(token)
+    }
+    
+    private fun startNfcTokenTransfer(token: Token) {
         currentTransferringToken = token
         tokenAdapter.setTransferring(token, true)
         viewModel.selectToken(token)
         
-        Log.d("MainActivity", "Starting hybrid NFC+Bluetooth transfer for token: ${token.name}")
+        Log.d("MainActivity", "Starting NFC transfer for token: ${token.name}")
         
-        // Check Bluetooth permissions first
+        // Check Bluetooth permissions first for hybrid transfer
         if (!checkBluetoothPermissions()) {
             requestBluetoothPermissions()
             tokenAdapter.setTransferring(token, false)
@@ -1356,69 +1381,10 @@ class MainActivity : AppCompatActivity() {
         // Initialize the Bluetooth mesh manager
         BluetoothMeshManager.initialize(this)
         
-        // Observe mesh events
-        lifecycleScope.launch {
-            BluetoothMeshManager.meshEvents.collectLatest { event ->
-                when (event) {
-                    is BluetoothMeshManager.MeshEvent.MessageReceived -> {
-                        // Show received message in the UI
-                        runOnUiThread {
-                            showMeshMessage(event.message, event.fromDevice)
-                        }
-                    }
-                    is BluetoothMeshManager.MeshEvent.Error -> {
-                        Log.e("MainActivity", "Bluetooth mesh error: ${event.message}")
-                    }
-                    is BluetoothMeshManager.MeshEvent.Initialized -> {
-                        Log.d("MainActivity", "Bluetooth mesh initialized")
-                    }
-                    else -> {
-                        // Handle other events if needed
-                    }
-                }
-            }
-        }
+        // Don't observe mesh events here - let BTMeshTransferCoordinator handle all messages
+        // This prevents MainActivity from showing transfer messages as toasts
     }
     
-    private fun showMeshMessage(message: String, fromDevice: String) {
-        // Shorten the device address to last 4 characters
-        val shortDevice = if (fromDevice.length > 8) {
-            "...${fromDevice.takeLast(8)}"
-        } else {
-            fromDevice
-        }
-        
-        // Create a more concise message format
-        val fullMessage = "From $shortDevice: $message"
-        val snackbar = com.google.android.material.snackbar.Snackbar.make(
-            binding.root,
-            fullMessage,
-            com.google.android.material.snackbar.Snackbar.LENGTH_LONG
-        )
-        
-        // Customize the snackbar
-        snackbar.setBackgroundTint(getColor(R.color.purple_700))
-        snackbar.setTextColor(Color.WHITE)
-        snackbar.setAction("Reply") {
-            // Open Bluetooth mesh discovery to reply
-            startActivity(Intent(this, com.unicity.nfcwalletdemo.ui.bluetooth.BluetoothMeshActivity::class.java))
-        }
-        snackbar.setActionTextColor(Color.YELLOW)
-        
-        // Set max lines to show more content
-        val snackbarView = snackbar.view
-        val textView = snackbarView.findViewById<TextView>(com.google.android.material.R.id.snackbar_text)
-        textView?.maxLines = 3
-        
-        // Show the snackbar
-        snackbar.show()
-        
-        // Also show as a toast for debugging
-        Toast.makeText(this, fullMessage, Toast.LENGTH_LONG).show()
-        
-        // Also log for debugging
-        Log.d("MainActivity", "Received mesh message from $fromDevice: $message")
-    }
     
     private fun showNfcWaitingDialog(crypto: CryptoCurrency, amount: Double) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_nfc_waiting, null)
@@ -1832,5 +1798,185 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Bluetooth permissions are required for token transfer", Toast.LENGTH_LONG).show()
             }
         }
+    }
+    
+    // BT Mesh Transfer Methods
+    private fun initializeBTMesh() {
+        Log.d("MainActivity", "=== initializeBTMesh STARTED ===")
+        
+        bluetoothMeshTransferService = BluetoothMeshTransferService(this)
+        Log.d("MainActivity", "BluetoothMeshTransferService created")
+        
+        // Initialize the singleton BTMeshTransferCoordinator FIRST
+        // This ensures it's ready to receive messages before BluetoothMeshManager starts
+        BTMeshTransferCoordinator.initialize(
+            appContext = applicationContext,
+            transferService = bluetoothMeshTransferService,
+            sdk = sdkService
+        )
+        Log.d("MainActivity", "BTMeshTransferCoordinator initialized")
+        
+        // Initialize BluetoothMeshManager AFTER coordinator is ready
+        if (checkBluetoothPermissions()) {
+            Log.d("MainActivity", "Bluetooth permissions granted, initializing BluetoothMeshManager")
+            BluetoothMeshManager.initialize(this)
+        } else {
+            Log.e("MainActivity", "Bluetooth permissions NOT granted!")
+        }
+        
+        Log.d("MainActivity", "=== initializeBTMesh COMPLETED ===")
+    }
+    
+    private val shownApprovals = mutableSetOf<String>()
+    
+    private fun setupTransferApprovalListener() {
+        // Observe pending transfer approvals
+        lifecycleScope.launch {
+            BTMeshTransferCoordinator.pendingApprovals.collectLatest { approvals ->
+                approvals.forEach { approval ->
+                    // Only show dialog if we haven't shown it already
+                    if (!shownApprovals.contains(approval.transferId)) {
+                        shownApprovals.add(approval.transferId)
+                        showTransferApprovalDialog(approval)
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun showTransferApprovalDialog(approval: com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest) {
+        val dialog = TransferApprovalDialog()
+        dialog.setApprovalRequest(approval)
+        dialog.setListener(object : TransferApprovalDialog.ApprovalListener {
+            override fun onApproved(transferId: String) {
+                BTMeshTransferCoordinator.approveTransfer(transferId)
+                vibrateSuccess()
+            }
+            
+            override fun onRejected(transferId: String) {
+                BTMeshTransferCoordinator.rejectTransfer(transferId)
+            }
+        })
+        dialog.show(supportFragmentManager, "transfer_approval")
+    }
+    
+    private fun showBTMeshPeerSelection(token: Token) {
+        // Show peer selection dialog
+        val dialog = PeerSelectionDialog()
+        
+        // Get discovered peers
+        val peers = getDiscoveredPeers()
+        dialog.setPeers(peers)
+        
+        dialog.setListener(object : PeerSelectionDialog.PeerSelectionListener {
+            override fun onPeerSelected(peer: DiscoveredPeer) {
+                // Start BT mesh transfer directly - NO NFC TAP NEEDED!
+                currentTransferringToken = token
+                tokenAdapter.setTransferring(token, true)
+                
+                // Show initial progress (1 of 10 steps)
+                tokenAdapter.updateTransferProgress(token, 1, 10)
+                
+                // Initiate the BT mesh transfer
+                BTMeshTransferCoordinator.initiateTransfer(token, peer.peerId, peer.deviceName)
+                
+                // Start observing the transfer progress
+                observeTransferProgress(token.id)
+                
+                // Show a toast to indicate transfer started
+                Toast.makeText(this@MainActivity, "Requesting permission from ${peer.deviceName}...", Toast.LENGTH_SHORT).show()
+            }
+            
+            override fun onNfcSelected() {
+                // Use existing NFC flow
+                startNfcTokenTransfer(token)
+            }
+            
+            override fun onCancelled() {
+                // Do nothing
+            }
+        })
+        
+        dialog.show(supportFragmentManager, "peer_selection")
+    }
+    
+    private fun getDiscoveredPeers(): List<DiscoveredPeer> {
+        // Get peers from BTMeshTransferCoordinator
+        return BTMeshTransferCoordinator.getDiscoveredPeers()
+    }
+    
+    private fun getTokenById(tokenId: String): Token? {
+        return viewModel.tokens.value.find { it.id == tokenId }
+    }
+    
+    private fun observeTransferProgress(tokenId: String) {
+        lifecycleScope.launch {
+            BTMeshTransferCoordinator.activeTransferStates.collectLatest { states ->
+                val transferState = states.entries.find { 
+                    val transfer = BTMeshTransferCoordinator.getActiveTransfer(it.key)
+                    transfer?.tokenId == tokenId
+                }
+                
+                transferState?.let { (transferId, state) ->
+                    when (state) {
+                        com.unicity.nfcwalletdemo.bluetooth.TransferState.COMPLETED -> {
+                            val token = getTokenById(tokenId)
+                            token?.let { tokenAdapter.setTransferring(it, false) }
+                            hideNfcWaitingDialog()
+                            vibrateSuccess()
+                            showSuccessDialog("Token transferred successfully!")
+                            
+                            // Remove token from wallet
+                            viewModel.removeToken(tokenId)
+                        }
+                        com.unicity.nfcwalletdemo.bluetooth.TransferState.FAILED, 
+                        com.unicity.nfcwalletdemo.bluetooth.TransferState.REJECTED -> {
+                            val token = getTokenById(tokenId)
+                            token?.let { tokenAdapter.setTransferring(it, false) }
+                            hideNfcWaitingDialog()
+                            vibrateError()
+                            showErrorDialog("Transfer failed", "The token transfer could not be completed.")
+                        }
+                        else -> {
+                            // Update progress UI if needed
+                            val progressText = when (state) {
+                                com.unicity.nfcwalletdemo.bluetooth.TransferState.REQUESTING_PERMISSION -> "Requesting permission..."
+                                com.unicity.nfcwalletdemo.bluetooth.TransferState.WAITING_FOR_ADDRESS -> "Waiting for recipient..."
+                                com.unicity.nfcwalletdemo.bluetooth.TransferState.CREATING_PACKAGE -> "Creating transfer..."
+                                com.unicity.nfcwalletdemo.bluetooth.TransferState.SENDING_PACKAGE -> "Sending token..."
+                                com.unicity.nfcwalletdemo.bluetooth.TransferState.APPROVED -> "Transfer approved..."
+                                else -> "Processing..."
+                            }
+                            val token = getTokenById(tokenId)
+                            token?.let { 
+                                tokenAdapter.setTransferring(it, true)
+                                // Update the progress based on state
+                                val progress = when (state) {
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.REQUESTING_PERMISSION -> Pair(2, 10)
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.APPROVED -> Pair(3, 10)
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.WAITING_FOR_ADDRESS -> Pair(4, 10)
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.GENERATING_ADDRESS -> Pair(5, 10)
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.CREATING_PACKAGE -> Pair(6, 10)
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.SENDING_PACKAGE -> Pair(8, 10)
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.WAITING_FOR_PACKAGE -> Pair(7, 10)
+                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.COMPLETING_TRANSFER -> Pair(9, 10)
+                                    else -> Pair(1, 10)
+                                }
+                                tokenAdapter.updateTransferProgress(it, progress.first, progress.second)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    
+    private fun showErrorDialog(title: String, message: String) {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
     }
 }

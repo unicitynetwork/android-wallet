@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="4dp"
+    app:cardElevation="1dp"
+    app:cardCornerRadius="8dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?android:attr/selectableItemBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_sphere"
+            android:tint="@color/primary_blue"
+            android:padding="8dp"
+            android:background="@drawable/rounded_background"
+            android:backgroundTint="@color/card_background" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/peerName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Device Name"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/peerId"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ID: 12345678..."
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/peerStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Active"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="@color/green"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:background="@drawable/rounded_background"
+            android:backgroundTint="@color/green_light" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>
