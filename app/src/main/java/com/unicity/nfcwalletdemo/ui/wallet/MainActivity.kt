@@ -48,10 +48,18 @@ import com.unicity.nfcwalletdemo.nfc.SimpleNfcTransceiver
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.google.gson.Gson
+import com.unicity.nfcwalletdemo.network.*
+import kotlinx.coroutines.delay
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import android.net.Uri
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.os.VibrationEffect
+import java.util.UUID
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import android.os.Vibrator
 import androidx.core.content.FileProvider
 import java.io.File
@@ -148,6 +156,27 @@ class MainActivity : AppCompatActivity() {
         realNfcTransceiver = nfcAdapter?.let { RealNfcTransceiver(it) }
         
         // Don't load cryptocurrencies here - ViewModel init handles it
+        
+        // Handle deep links
+        handleDeepLink(intent)
+    }
+    
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.let { handleDeepLink(it) }
+    }
+    
+    private fun handleDeepLink(intent: Intent) {
+        val data = intent.data
+        if (data != null && data.scheme == "nfcwallet" && data.host == "payment-request") {
+            val requestId = data.getQueryParameter("id")
+            val recipientAddress = data.getQueryParameter("recipient")
+            
+            if (requestId != null && recipientAddress != null) {
+                // Show payment dialog
+                showPaymentDialog(requestId, recipientAddress)
+            }
+        }
     }
     
     private fun setupActionBar() {
@@ -171,6 +200,11 @@ class MainActivity : AppCompatActivity() {
         
         binding.navSettings.setOnClickListener {
             showSettingsDialog()
+        }
+        
+        // Setup QR scanner button
+        binding.btnScanQr.setOnClickListener {
+            scanQRCode()
         }
         
         // Setup action buttons
@@ -752,6 +786,10 @@ class MainActivity : AppCompatActivity() {
     
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            com.unicity.nfcwalletdemo.R.id.action_scan_qr -> {
+                scanQRCode()
+                true
+            }
             com.unicity.nfcwalletdemo.R.id.action_mint_token -> {
                 showMintTokenDialog()
                 true
@@ -1138,32 +1176,108 @@ class MainActivity : AppCompatActivity() {
         val qrCodeImage = dialogView.findViewById<ImageView>(R.id.qrCodeImage)
         val btnShare = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnShare)
         val btnClose = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnClose)
-        
-        // Generate QR code
-        val url = "https://github.com/unicitynetwork/"
-        
-        try {
-            val qrCodeBitmap = generateQRCode(url)
-            qrCodeImage.setImageBitmap(qrCodeBitmap)
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error generating QR code", e)
-            Toast.makeText(this, "Error generating QR code", Toast.LENGTH_SHORT).show()
-        }
+        val statusText = dialogView.findViewById<TextView>(R.id.statusText)
+        val timerText = dialogView.findViewById<TextView>(R.id.timerText)
         
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .create()
         
-        btnShare.setOnClickListener {
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, url)
+        var currentRequestJob: kotlinx.coroutines.Job? = null
+        var timerJob: kotlinx.coroutines.Job? = null
+        var pollingJob: kotlinx.coroutines.Job? = null
+        
+        fun createPaymentRequest() {
+            // Cancel any existing jobs
+            currentRequestJob?.cancel()
+            timerJob?.cancel()
+            pollingJob?.cancel()
+            
+            // Show loading state
+            qrCodeImage.visibility = View.GONE
+            statusText?.text = "Generating payment request..."
+            timerText?.visibility = View.GONE
+            
+            // Get wallet address
+            val sharedPrefs = getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
+            val walletAddress = sharedPrefs.getString("wallet_address", null) ?: run {
+                val newAddress = "wallet_${java.util.UUID.randomUUID().toString().take(8)}"
+                sharedPrefs.edit().putString("wallet_address", newAddress).apply()
+                newAddress
             }
-            startActivity(Intent.createChooser(shareIntent, "Share Unicity Network"))
+            
+            currentRequestJob = lifecycleScope.launch {
+                try {
+                    val request = PaymentRequestService.api.createPaymentRequest(
+                        CreatePaymentRequestDto(walletAddress)
+                    )
+                    
+                    // Generate QR code
+                    val qrCodeBitmap = generateQRCode(request.qrData)
+                    qrCodeImage.setImageBitmap(qrCodeBitmap)
+                    qrCodeImage.visibility = View.VISIBLE
+                    statusText?.text = "Scan this QR code to send payment"
+                    timerText?.visibility = View.VISIBLE
+                    
+                    // Update share button
+                    btnShare.setOnClickListener {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, request.qrData)
+                        }
+                        startActivity(Intent.createChooser(shareIntent, "Share Payment Request"))
+                    }
+                    
+                    // Start countdown timer
+                    var remainingSeconds = 60
+                    timerJob = lifecycleScope.launch {
+                        while (remainingSeconds > 0 && isActive) {
+                            timerText?.text = "Expires in ${remainingSeconds}s"
+                            delay(1000)
+                            remainingSeconds--
+                        }
+                        if (remainingSeconds == 0 && dialog.isShowing) {
+                            // QR code expired, create a new one
+                            createPaymentRequest()
+                        }
+                    }
+                    
+                    // Start polling for payment
+                    pollingJob = lifecycleScope.launch {
+                        pollForPaymentWithCallback(request.id) { payment ->
+                            // Cancel all jobs
+                            currentRequestJob?.cancel()
+                            timerJob?.cancel()
+                            pollingJob?.cancel()
+                            
+                            // Dismiss dialog and show success
+                            dialog.dismiss()
+                            showPaymentReceivedDialog(payment)
+                        }
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error creating payment request", e)
+                    Toast.makeText(this@MainActivity, "Error creating payment request", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                }
+            }
         }
         
+        // Create initial payment request
+        createPaymentRequest()
+        
         btnClose.setOnClickListener {
+            currentRequestJob?.cancel()
+            timerJob?.cancel()
+            pollingJob?.cancel()
             dialog.dismiss()
+        }
+        
+        dialog.setOnDismissListener {
+            currentRequestJob?.cancel()
+            timerJob?.cancel()
+            pollingJob?.cancel()
         }
         
         dialog.show()
@@ -2273,5 +2387,237 @@ class MainActivity : AppCompatActivity() {
             .setMessage(message)
             .setPositiveButton("OK", null)
             .show()
+    }
+    
+    // QR Code Scanner
+    private val barcodeLauncher = registerForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            handleScannedQRCode(result.contents)
+        }
+    }
+    
+    private fun scanQRCode() {
+        val options = ScanOptions()
+            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            .setPrompt("Scan payment request QR code")
+            .setCameraId(0)
+            .setBeepEnabled(true)
+            .setOrientationLocked(false)
+        
+        barcodeLauncher.launch(options)
+    }
+    
+    private fun handleScannedQRCode(content: String) {
+        // Check if it's a payment request deep link
+        if (content.startsWith("nfcwallet://payment-request")) {
+            try {
+                val uri = Uri.parse(content)
+                val requestId = uri.getQueryParameter("id")
+                val recipientAddress = uri.getQueryParameter("recipient")
+                
+                if (requestId != null && recipientAddress != null) {
+                    showPaymentDialog(requestId, recipientAddress)
+                } else {
+                    Toast.makeText(this, "Invalid payment request", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error parsing QR code", e)
+                Toast.makeText(this, "Error parsing QR code", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "Not a valid payment request QR code", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun showPaymentDialog(requestId: String, recipientAddress: String) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_send_payment, null)
+        
+        val dialog = AlertDialog.Builder(this, R.style.Theme_MaterialComponents_DayNight_Dialog_Alert)
+            .setView(dialogView)
+            .setTitle("Send Payment")
+            .create()
+        
+        // Get crypto list for spinner
+        val cryptoList = viewModel.cryptocurrencies.value
+        val cryptoNames = cryptoList.map { "${it.name} (${it.symbol})" }
+        
+        val currencySpinner = dialogView.findViewById<android.widget.Spinner>(R.id.currencySpinner)
+        val amountInput = dialogView.findViewById<EditText>(R.id.amountInput)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+        val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
+        
+        // Set up spinner
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, cryptoNames)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        currencySpinner.adapter = adapter
+        
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        btnSend.setOnClickListener {
+            val selectedIndex = currencySpinner.selectedItemPosition
+            if (selectedIndex >= 0 && selectedIndex < cryptoList.size) {
+                val selectedCrypto = cryptoList[selectedIndex]
+                val amount = amountInput.text.toString().toDoubleOrNull()
+                
+                if (amount != null && amount > 0 && amount <= selectedCrypto.balance) {
+                    dialog.dismiss()
+                    sendPaymentRequest(requestId, recipientAddress, selectedCrypto, amount)
+                } else {
+                    Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        
+        dialog.show()
+    }
+    
+    private fun sendPaymentRequest(requestId: String, recipientAddress: String, crypto: CryptoCurrency, amount: Double) {
+        lifecycleScope.launch {
+            try {
+                // Show loading
+                Toast.makeText(this@MainActivity, "Sending payment...", Toast.LENGTH_SHORT).show()
+                
+                // Complete the payment request
+                val sharedPrefs = getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
+                val senderAddress = sharedPrefs.getString("wallet_address", null) ?: run {
+                    val newAddress = "wallet_${java.util.UUID.randomUUID().toString().take(8)}"
+                    sharedPrefs.edit().putString("wallet_address", newAddress).apply()
+                    newAddress
+                }
+                val response = PaymentRequestService.api.completePaymentRequest(
+                    requestId,
+                    CompletePaymentRequestDto(
+                        senderAddress = senderAddress,
+                        currencySymbol = crypto.symbol,
+                        amount = amount.toString()
+                    )
+                )
+                
+                // Update local balance
+                viewModel.updateCryptoBalance(crypto.id, crypto.balance - amount)
+                
+                Toast.makeText(this@MainActivity, 
+                    "Payment sent: $amount ${crypto.symbol}", 
+                    Toast.LENGTH_LONG).show()
+                    
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error sending payment", e)
+                Toast.makeText(this@MainActivity, 
+                    "Error sending payment: ${e.message}", 
+                    Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    private fun showPaymentReceivedDialog(payment: Payment) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_payment_received, null)
+        
+        val currencyIcon = dialogView.findViewById<ImageView>(R.id.currencyIcon)
+        val amountText = dialogView.findViewById<TextView>(R.id.amountText)
+        val btnOk = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnOk)
+        
+        // Set currency icon
+        val crypto = viewModel.cryptocurrencies.value.find { it.symbol == payment.currencySymbol }
+        currencyIcon.setImageResource(crypto?.iconResId ?: R.drawable.ic_bitcoin)
+        
+        // Set amount text
+        amountText.text = "${payment.amount} ${payment.currencySymbol}"
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+        
+        btnOk.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        dialog.show()
+        
+        // Also update the local balance
+        crypto?.let {
+            val newBalance = it.balance + (payment.amount.toDoubleOrNull() ?: 0.0)
+            viewModel.updateCryptoBalance(it.id, newBalance)
+        }
+    }
+    
+    private fun pollForPaymentWithCallback(requestId: String, onPaymentReceived: (Payment) -> Unit) {
+        lifecycleScope.launch {
+            var polling = true
+            var attempts = 0
+            val maxAttempts = 60 // Poll for 1 minute
+            
+            while (polling && attempts < maxAttempts && isActive) {
+                try {
+                    val response = PaymentRequestService.api.pollPaymentRequest(requestId)
+                    
+                    when (response.status) {
+                        "completed" -> {
+                            response.payment?.let { payment ->
+                                onPaymentReceived(payment)
+                                polling = false
+                            }
+                        }
+                        "expired" -> {
+                            // Don't show toast, just stop polling as we'll auto-renew
+                            polling = false
+                        }
+                    }
+                    
+                    attempts++
+                    if (polling) {
+                        delay(1000) // Poll every second
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error polling payment request", e)
+                    attempts++
+                    delay(1000)
+                }
+            }
+        }
+    }
+    
+    private fun pollForPayment(requestId: String, onPaymentReceived: (Payment) -> Unit) {
+        lifecycleScope.launch {
+            var polling = true
+            var attempts = 0
+            val maxAttempts = 60 // Poll for 1 minute
+            
+            while (polling && attempts < maxAttempts) {
+                try {
+                    val response = PaymentRequestService.api.pollPaymentRequest(requestId)
+                    
+                    when (response.status) {
+                        "completed" -> {
+                            response.payment?.let { payment ->
+                                onPaymentReceived(payment)
+                                polling = false
+                            }
+                        }
+                        "expired" -> {
+                            Toast.makeText(this@MainActivity, "Payment request expired", Toast.LENGTH_SHORT).show()
+                            polling = false
+                        }
+                    }
+                    
+                    attempts++
+                    if (polling) {
+                        delay(1000) // Poll every second
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error polling payment request", e)
+                    attempts++
+                    delay(1000)
+                }
+            }
+            
+            if (attempts >= maxAttempts) {
+                Toast.makeText(this@MainActivity, "Payment request timed out", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 }

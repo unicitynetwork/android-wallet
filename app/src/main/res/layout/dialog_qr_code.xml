@@ -42,13 +42,25 @@
 
     <!-- Info Text -->
     <TextView
+        android:id="@+id/statusText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Scan this QR code to receive assets"
         android:textSize="14sp"
         android:textColor="?android:attr/textColorSecondary"
+        android:gravity="center" />
+        
+    <!-- Timer Text -->
+    <TextView
+        android:id="@+id/timerText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Expires in 60s"
+        android:textSize="12sp"
+        android:textColor="#FF5252"
         android:gravity="center"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="16dp" />
 
     <!-- Buttons -->
     <LinearLayout
