@@ -1245,7 +1245,7 @@ class MainActivity : AppCompatActivity() {
                     
                     // Start polling for payment
                     pollingJob = lifecycleScope.launch {
-                        pollForPaymentWithCallback(request.id) { payment ->
+                        pollForPaymentWithCallback(request.requestId) { payment ->
                             // Cancel all jobs
                             currentRequestJob?.cancel()
                             timerJob?.cancel()
@@ -2581,7 +2581,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun showPaymentReceivedDialog(payment: Payment) {
+    private fun showPaymentReceivedDialog(payment: PaymentDetails) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_payment_received, null)
         
         val currencyIcon = dialogView.findViewById<ImageView>(R.id.currencyIcon)
@@ -2613,7 +2613,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun pollForPaymentWithCallback(requestId: String, onPaymentReceived: (Payment) -> Unit) {
+    private fun pollForPaymentWithCallback(requestId: String, onPaymentReceived: (PaymentDetails) -> Unit) {
         lifecycleScope.launch {
             var polling = true
             var attempts = 0
@@ -2625,7 +2625,7 @@ class MainActivity : AppCompatActivity() {
                     
                     when (response.status) {
                         "completed" -> {
-                            response.payment?.let { payment ->
+                            response.paymentDetails?.let { payment ->
                                 onPaymentReceived(payment)
                                 polling = false
                             }
@@ -2650,7 +2650,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun pollForPayment(requestId: String, onPaymentReceived: (Payment) -> Unit) {
+    private fun pollForPayment(requestId: String, onPaymentReceived: (PaymentDetails) -> Unit) {
         lifecycleScope.launch {
             var polling = true
             var attempts = 0
@@ -2662,7 +2662,7 @@ class MainActivity : AppCompatActivity() {
                     
                     when (response.status) {
                         "completed" -> {
-                            response.payment?.let { payment ->
+                            response.paymentDetails?.let { payment ->
                                 onPaymentReceived(payment)
                                 polling = false
                             }

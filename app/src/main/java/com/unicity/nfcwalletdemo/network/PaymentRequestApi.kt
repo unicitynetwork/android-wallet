@@ -3,19 +3,19 @@ package com.unicity.nfcwalletdemo.network
 import retrofit2.http.*
 
 interface PaymentRequestApi {
-    @POST("api/payment-requests")
+    @POST("payment-requests")
     suspend fun createPaymentRequest(@Body request: CreatePaymentRequestDto): PaymentRequestResponse
 
-    @GET("api/payment-requests/{id}")
+    @GET("payment-requests/{id}")
     suspend fun getPaymentRequest(@Path("id") id: String): PaymentRequest
 
-    @POST("api/payment-requests/{id}/complete")
+    @PUT("payment-requests/{id}/complete")
     suspend fun completePaymentRequest(
         @Path("id") id: String,
         @Body request: CompletePaymentRequestDto
     ): PaymentRequest
 
-    @GET("api/payment-requests/{id}/poll")
+    @GET("payment-requests/{id}")
     suspend fun pollPaymentRequest(@Path("id") id: String): PaymentStatusResponse
 }
 
@@ -31,16 +31,16 @@ data class CompletePaymentRequestDto(
 )
 
 data class PaymentRequest(
-    val id: String,
+    val requestId: String,
     val recipientAddress: String,
     val status: String,
     val createdAt: String,
     val expiresAt: String,
     val completedAt: String? = null,
-    val payment: Payment? = null
+    val paymentDetails: PaymentDetails? = null
 )
 
-data class Payment(
+data class PaymentDetails(
     val senderAddress: String,
     val currencySymbol: String,
     val amount: String,
@@ -48,7 +48,7 @@ data class Payment(
 )
 
 data class PaymentRequestResponse(
-    val id: String,
+    val requestId: String,
     val recipientAddress: String,
     val status: String,
     val createdAt: String,
@@ -56,8 +56,5 @@ data class PaymentRequestResponse(
     val qrData: String
 )
 
-data class PaymentStatusResponse(
-    val status: String,
-    val payment: Payment? = null,
-    val updatedAt: String
-)
+// PaymentStatusResponse is the same as PaymentRequest for polling
+typealias PaymentStatusResponse = PaymentRequest

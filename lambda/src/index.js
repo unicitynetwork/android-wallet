@@ -42,7 +42,7 @@ exports.handler = async (event) => {
 
       const item = {
         requestId,
-        walletAddress: body.walletAddress,
+        recipientAddress: body.recipientAddress,
         createdAt: new Date(timestamp).toISOString(),
         expiresAt: new Date(timestamp + TTL_SECONDS * 1000).toISOString(),
         status: 'pending',
