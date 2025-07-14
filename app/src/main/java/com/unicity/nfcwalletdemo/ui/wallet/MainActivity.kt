@@ -1417,6 +1417,37 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "No peers discovered", Toast.LENGTH_SHORT).show()
                 }
             }
+            .setNeutralButton("Test Transfer") { _, _ ->
+                // Send trigger for token transfer test
+                val peers = BTMeshTransferCoordinator.getDiscoveredPeers()
+                if (peers.isNotEmpty()) {
+                    val peer = peers.first()
+                    val testMessage = "TRIGGER_TRANSFER" // Shortened to fit in 20 chars
+                    
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Sending to ${peer.deviceName}: $testMessage",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    
+                    lifecycleScope.launch {
+                        Log.d("MainActivity", "Sending test transfer trigger to ${peer.peerId}")
+                        val result = BluetoothMeshManager.sendMessage(
+                            peer.peerId,
+                            testMessage
+                        )
+                        Log.d("MainActivity", "Send result: $result")
+                        
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Send result to ${peer.deviceName}: ${if (result) "SUCCESS" else "FAILED"}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } else {
+                    Toast.makeText(this, "No peers discovered", Toast.LENGTH_SHORT).show()
+                }
+            }
             .setNegativeButton("Close", null)
             .show()
     }
@@ -1929,16 +1960,132 @@ class MainActivity : AppCompatActivity() {
                             is BluetoothMeshManager.MeshEvent.MessageReceived -> {
                                 Log.d("MainActivity", "!!! Message from ${event.fromDevice}: ${event.message}")
                                 
-                                // Check if it's a diagnostic test message
-                                if (event.message.startsWith("DIAGNOSTIC_TEST_")) {
-                                    runOnUiThread {
-                                        showTestMessageDialog(event.message, event.fromDevice)
+                                // ALWAYS show a toast for ANY message to debug
+                                runOnUiThread {
+                                    val messagePreview = event.message.take(40)
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Msg: $messagePreview...",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    
+                                    // Handle TRIGGER_TRANSFER message for testing
+                                    if (event.message == "TRIGGER_TRANSFER") {
+                                        Log.d("MainActivity", "!!! RECEIVED TRIGGER_TRANSFER - Creating test approval")
+                                        
+                                        // Create a test transfer ID
+                                        val testTransferId = "TEST${(1000..9999).random()}"
+                                        
+                                        // Create test approval request
+                                        val testApproval = com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest(
+                                            transferId = testTransferId,
+                                            senderPeerId = event.fromDevice,
+                                            senderName = "Test Device ${event.fromDevice.takeLast(6)}",
+                                            tokenType = "Unicity Token",
+                                            tokenName = "Demo Token",
+                                            tokenPreview = "Demo Token for testing",
+                                            timestamp = System.currentTimeMillis()
+                                        )
+                                        
+                                        // Show the approval dialog immediately
+                                        runOnUiThread {
+                                            showTransferApprovalDialog(testApproval)
+                                        }
+                                    }
+                                    
+                                    // Force show dialog for ANY message containing "TRIGGER" (legacy)
+                                    if (event.message.contains("TRIGGER", ignoreCase = true) && event.message != "TRIGGER_TRANSFER") {
+                                        AlertDialog.Builder(this@MainActivity)
+                                            .setTitle("TRIGGER Found!")
+                                            .setMessage("Full message:\n\n${event.message}\n\nLength: ${event.message.length}")
+                                            .setPositiveButton("Show Transfer Dialog") { _, _ ->
+                                                // Show the transfer approval dialog
+                                                val testApproval = com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest(
+                                                    transferId = "TRIGGER_TEST_${System.currentTimeMillis()}",
+                                                    senderPeerId = event.fromDevice,
+                                                    senderName = "Test Device",
+                                                    tokenType = "Unicity Token",
+                                                    tokenName = "Test Token from Trigger",
+                                                    tokenPreview = "Test Token Preview",
+                                                    timestamp = System.currentTimeMillis()
+                                                )
+                                                showTransferApprovalDialog(testApproval)
+                                            }
+                                            .setNegativeButton("Cancel", null)
+                                            .show()
                                     }
                                 }
                                 
+                                // Debug all messages that start with specific patterns
+                                when {
+                                    event.message.startsWith("DIAGNOSTIC_TEST_") -> {
+                                        Log.d("MainActivity", "MATCHED: DIAGNOSTIC_TEST_")
+                                        runOnUiThread {
+                                            showTestMessageDialog(event.message, event.fromDevice)
+                                        }
+                                    }
+                                    event.message.contains("TRIGGER_TOKEN_TRANSFER_TEST") -> {
+                                        Log.d("MainActivity", "MATCHED: Contains TRIGGER_TOKEN_TRANSFER_TEST")
+                                        runOnUiThread {
+                                            AlertDialog.Builder(this@MainActivity)
+                                                .setTitle("Contains Trigger!")
+                                                .setMessage("Message: ${event.message}")
+                                                .setPositiveButton("Show Approval") { _, _ ->
+                                                    val testApproval = com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest(
+                                                        transferId = "CONTAINS_TEST_${System.currentTimeMillis()}",
+                                                        senderPeerId = event.fromDevice,
+                                                        senderName = "Test Device",
+                                                        tokenType = "Unicity Token",
+                                                        tokenName = "Test Token via Contains",
+                                                        tokenPreview = "Test Token Preview",
+                                                        timestamp = System.currentTimeMillis()
+                                                    )
+                                                    showTransferApprovalDialog(testApproval)
+                                                }
+                                                .show()
+                                        }
+                                    }
+                                    else -> {
+                                        Log.d("MainActivity", "NO MATCH for message: '${event.message}'")
+                                    }
+                                }
+                                
+                                // Check if it's a simple token transfer notification
+                                if (event.message.startsWith("TOKEN_TRANSFER_REQUEST:")) {
+                                    Log.d("MainActivity", "!!! RECEIVED TOKEN TRANSFER NOTIFICATION !!!")
+                                    runOnUiThread {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Token transfer notification received!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                                
+                                
                                 // Check if it's a JSON transfer message
-                                if (event.message.trim().startsWith("{") && event.message.contains("TRANSFER_PERMISSION_REQUEST")) {
-                                    Log.d("MainActivity", "!!! This is a TRANSFER REQUEST - should show approval dialog!")
+                                if (event.message.trim().startsWith("{")) {
+                                    Log.d("MainActivity", "Received JSON message")
+                                    
+                                    // Try to parse and check if it's a transfer message
+                                    try {
+                                        val jsonObj = com.google.gson.JsonParser.parseString(event.message).asJsonObject
+                                        val type = jsonObj.get("type")?.asString
+                                        
+                                        if (type == "TRANSFER_PERMISSION_REQUEST") {
+                                            Log.d("MainActivity", "!!! This is a TRANSFER REQUEST !!!")
+                                            
+                                            // Since BTMeshTransferCoordinator might not be catching it,
+                                            // let's manually feed it
+                                            lifecycleScope.launch {
+                                                Log.d("MainActivity", "Manually feeding to BTMeshTransferCoordinator")
+                                                val messageData = event.message.toByteArray(Charsets.UTF_8)
+                                                BTMeshTransferCoordinator.handleIncomingMessage(messageData, event.fromDevice)
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("MainActivity", "Failed to parse JSON", e)
+                                    }
                                 }
                             }
                             else -> {}
@@ -1959,14 +2106,26 @@ class MainActivity : AppCompatActivity() {
     private val shownApprovals = mutableSetOf<String>()
     
     private fun setupTransferApprovalListener() {
+        Log.d("MainActivity", "Setting up transfer approval listener")
+        
         // Observe pending transfer approvals
         lifecycleScope.launch {
+            Log.d("MainActivity", "Starting to collect pending approvals")
             BTMeshTransferCoordinator.pendingApprovals.collectLatest { approvals ->
+                Log.d("MainActivity", "Pending approvals updated: ${approvals.size} approvals")
                 approvals.forEach { approval ->
+                    Log.d("MainActivity", "Approval: ${approval.transferId} from ${approval.senderName}")
+                    
                     // Only show dialog if we haven't shown it already
                     if (!shownApprovals.contains(approval.transferId)) {
+                        Log.d("MainActivity", "Showing approval dialog for ${approval.transferId}")
                         shownApprovals.add(approval.transferId)
-                        showTransferApprovalDialog(approval)
+                        
+                        runOnUiThread {
+                            showTransferApprovalDialog(approval)
+                        }
+                    } else {
+                        Log.d("MainActivity", "Already shown approval for ${approval.transferId}")
                     }
                 }
             }
