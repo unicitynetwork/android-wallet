@@ -7,9 +7,8 @@ import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 
 object PaymentRequestService {
-    private const val BASE_URL = "http://10.0.2.2:3001/" // For Android emulator
-    // For physical device on same network, use actual IP like "http://192.168.1.100:3001/"
-    
+    private const val BASE_URL = "https://7jmtgxyogc.execute-api.me-central-1.amazonaws.com/Prod"
+
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
     }
