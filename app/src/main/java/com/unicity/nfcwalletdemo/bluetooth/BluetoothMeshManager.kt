@@ -46,6 +46,24 @@ object BluetoothMeshManager {
     // Connected devices
     private val connectedDevices = mutableSetOf<BluetoothDevice>()
     
+    // Buffer for prepared writes (for messages larger than MTU)
+    private val preparedWriteBuffers = mutableMapOf<String, MutableList<PreparedWriteData>>()
+    
+    data class PreparedWriteData(
+        val offset: Int,
+        val data: ByteArray
+    )
+    
+    // Track pending writes during MTU negotiation
+    private val pendingWrites = mutableMapOf<BluetoothGatt, PendingWrite>()
+    private var currentMtu = 23 // Default BLE MTU
+    
+    data class PendingWrite(
+        val characteristic: BluetoothGattCharacteristic,
+        val data: ByteArray,
+        val result: CompletableDeferred<Boolean>
+    )
+    
     sealed class MeshEvent {
         object Idle : MeshEvent()
         object Initialized : MeshEvent()
@@ -111,6 +129,37 @@ object BluetoothMeshManager {
             Log.d(TAG, "=== STARTING GATT SERVER ===")
             
             val gattServerCallback = object : BluetoothGattServerCallback() {
+                override fun onExecuteWrite(device: BluetoothDevice, requestId: Int, execute: Boolean) {
+                    Log.d(TAG, "onExecuteWrite - device: ${device.address}, execute: $execute")
+                    
+                    if (execute) {
+                        // Combine all prepared writes
+                        val deviceId = device.address
+                        val writes = preparedWriteBuffers[deviceId]
+                        
+                        if (writes != null && writes.isNotEmpty()) {
+                            // Sort by offset and combine
+                            val sortedWrites = writes.sortedBy { it.offset }
+                            val totalSize = sortedWrites.sumOf { it.data.size }
+                            val combinedData = ByteArray(totalSize)
+                            
+                            var currentOffset = 0
+                            sortedWrites.forEach { write ->
+                                write.data.copyInto(combinedData, currentOffset)
+                                currentOffset += write.data.size
+                            }
+                            
+                            val message = String(combinedData, StandardCharsets.UTF_8)
+                            Log.d(TAG, "Combined prepared write message: length=${message.length}")
+                            handleMessage(message, device.address)
+                        }
+                    }
+                    
+                    // Clear the buffer
+                    preparedWriteBuffers.remove(device.address)
+                    
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                }
                 override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
                     Log.d(TAG, "=== GATT CONNECTION STATE CHANGE ===")
                     Log.d(TAG, "Device: ${device.address}")
@@ -136,31 +185,23 @@ object BluetoothMeshManager {
                     value: ByteArray
                 ) {
                     Log.d(TAG, "onCharacteristicWriteRequest - device: ${device.address}, characteristic: ${characteristic.uuid}, responseNeeded: $responseNeeded")
+                    Log.d(TAG, "Offset: $offset, preparedWrite: $preparedWrite, value size: ${value.size}")
                     
                     if (characteristic.uuid == MESH_MESSAGE_UUID) {
-                        val message = String(value, StandardCharsets.UTF_8)
-                        Log.d(TAG, "=== BLUETOOTH MESSAGE RECEIVED ===")
-                        Log.d(TAG, "From device: ${device.address}")
-                        Log.d(TAG, "Message length: ${message.length}")
-                        Log.d(TAG, "Message content: $message")
-                        
-                        // Log that we received a message
-                        Log.d(TAG, "Message received and will be emitted to collectors")
-                        
-                        // Check if it looks like JSON
-                        val isJson = message.trim().startsWith("{") && message.trim().endsWith("}")
-                        Log.d(TAG, "Is JSON message: $isJson")
-                        
-                        // Emit the message event
-                        val emitResult = _meshEvents.tryEmit(MeshEvent.MessageReceived(
-                            message = message,
-                            fromDevice = device.address
-                        ))
-                        
-                        Log.d(TAG, "Message event emit result: $emitResult")
-                        
-                        if (!emitResult) {
-                            Log.e(TAG, "!!! FAILED TO EMIT MESSAGE EVENT !!!")
+                        // Handle prepared writes for larger messages
+                        if (preparedWrite) {
+                            Log.d(TAG, "Prepared write received, offset: $offset, size: ${value.size}")
+                            handlePreparedWrite(device, requestId, offset, value)
+                        } else {
+                            val message = String(value, StandardCharsets.UTF_8)
+                            Log.d(TAG, "=== BLUETOOTH MESSAGE RECEIVED ===")
+                            Log.d(TAG, "From device: ${device.address}")
+                            Log.d(TAG, "Message length: ${message.length}")
+                            Log.d(TAG, "Message content: $message")
+                            
+                            // All messages should be handled the same way
+                            // The MTU negotiation ensures we can receive the full message
+                            handleMessage(message, device.address)
                         }
                     }
                     
@@ -194,6 +235,10 @@ object BluetoothMeshManager {
                 BluetoothGattCharacteristic.PERMISSION_WRITE or 
                 BluetoothGattCharacteristic.PERMISSION_READ
             )
+            
+            // Important: Set the characteristic to support variable length
+            // This allows messages larger than the default MTU
+            messageCharacteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             
             service.addCharacteristic(messageCharacteristic)
             val serviceAdded = gattServer?.addService(service) ?: false
@@ -426,82 +471,28 @@ object BluetoothMeshManager {
                         
                         val characteristic = service.getCharacteristic(MESH_MESSAGE_UUID)
                         if (characteristic != null) {
-                            Log.d(TAG, "Found message characteristic, writing message...")
-                            val messageBytes = message.toByteArray(StandardCharsets.UTF_8)
+                            Log.d(TAG, "Found message characteristic")
                             
-                            // Check characteristic properties
-                            val properties = characteristic.properties
-                            val writeType = when {
-                                (properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 -> {
-                                    Log.d(TAG, "Using WRITE_TYPE_NO_RESPONSE")
-                                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                                }
-                                (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 -> {
-                                    Log.d(TAG, "Using WRITE_TYPE_DEFAULT")
-                                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                                }
-                                else -> {
-                                    Log.e(TAG, "Characteristic doesn't support writing")
-                                    result.complete(false)
-                                    gatt.disconnect()
-                                    return
-                                }
+                            // Store the data to send after MTU negotiation
+                            gattConnection?.let { connection ->
+                                pendingWrites[connection] = PendingWrite(
+                                    characteristic = characteristic,
+                                    data = message.toByteArray(StandardCharsets.UTF_8),
+                                    result = result
+                                )
                             }
                             
-                            // Try WRITE_TYPE_NO_RESPONSE first for better compatibility
-                            val preferredWriteType = if ((properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
-                                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                            } else {
-                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                            }
+                            // Request larger MTU
+                            val mtuResult = gatt.requestMtu(512)
+                            Log.d(TAG, "Requested MTU: 512, result: $mtuResult")
                             
-                            Log.d(TAG, "Message bytes size: ${messageBytes.size}")
-                            Log.d(TAG, "Using write type: $preferredWriteType")
-                            
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                val writeResult = gatt.writeCharacteristic(characteristic, messageBytes, preferredWriteType)
-                                Log.d(TAG, "Write initiated (API 33+): $writeResult with writeType: $preferredWriteType")
-                                if (writeResult != BluetoothGatt.GATT_SUCCESS) {
-                                    Log.e(TAG, "Write failed with result: $writeResult")
-                                    
-                                    // If NO_RESPONSE failed, try DEFAULT
-                                    if (preferredWriteType == BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE && 
-                                        (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) {
-                                        Log.d(TAG, "Retrying with WRITE_TYPE_DEFAULT...")
-                                        val retryResult = gatt.writeCharacteristic(characteristic, messageBytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                                        if (retryResult == BluetoothGatt.GATT_SUCCESS) {
-                                            Log.d(TAG, "Retry successful")
-                                            return
-                                        }
-                                    }
-                                    
-                                    result.complete(false)
-                                    gatt.disconnect()
-                                }
-                            } else {
-                                characteristic.writeType = preferredWriteType
-                                characteristic.value = messageBytes
-                                val writeResult = gatt.writeCharacteristic(characteristic)
-                                Log.d(TAG, "Write initiated (legacy): $writeResult with writeType: $preferredWriteType")
-                                if (!writeResult) {
-                                    Log.e(TAG, "Write failed")
-                                    
-                                    // If NO_RESPONSE failed, try DEFAULT
-                                    if (preferredWriteType == BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE && 
-                                        (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) {
-                                        Log.d(TAG, "Retrying with WRITE_TYPE_DEFAULT...")
-                                        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                                        val retryResult = gatt.writeCharacteristic(characteristic)
-                                        if (retryResult) {
-                                            Log.d(TAG, "Retry successful")
-                                            return
-                                        }
-                                    }
-                                    
-                                    result.complete(false)
-                                    gatt.disconnect()
-                                }
+                            if (!mtuResult) {
+                                // If MTU request fails, try to send with default MTU
+                                Log.w(TAG, "MTU request failed, sending with default MTU")
+                                val messageBytes = message.toByteArray(StandardCharsets.UTF_8)
+                                sendCharacteristicWrite(gatt, characteristic, messageBytes, result)
                             }
+                            // If MTU request succeeds, wait for onMtuChanged callback
                         } else {
                             Log.e(TAG, "Message characteristic $MESH_MESSAGE_UUID not found")
                             result.complete(false)
@@ -520,6 +511,31 @@ object BluetoothMeshManager {
                     result.complete(success)
                     gatt.disconnect()
                     gatt.close()
+                }
+                
+                override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                    Log.d(TAG, "MTU changed to: $mtu, status: $status")
+                    
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        Log.d(TAG, "New MTU size: $mtu bytes (usable: ${mtu - 3} bytes)")
+                        currentMtu = mtu
+                        
+                        // Now send the pending data with the new MTU
+                        val pending = pendingWrites[gatt]
+                        if (pending != null) {
+                            Log.d(TAG, "Sending pending data with new MTU: ${pending.data.size} bytes")
+                            sendCharacteristicWrite(gatt, pending.characteristic, pending.data, pending.result)
+                            pendingWrites.remove(gatt)
+                        }
+                    } else {
+                        Log.e(TAG, "MTU change failed, using default MTU")
+                        // Send with default MTU
+                        val pending = pendingWrites[gatt]
+                        if (pending != null) {
+                            sendCharacteristicWrite(gatt, pending.characteristic, pending.data, pending.result)
+                            pendingWrites.remove(gatt)
+                        }
+                    }
                 }
             }
             
@@ -551,8 +567,11 @@ object BluetoothMeshManager {
                 result.complete(false)
             }
             try {
-                gattConnection?.disconnect()
-                gattConnection?.close()
+                gattConnection?.let {
+                    pendingWrites.remove(it)
+                    it.disconnect()
+                    it.close()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during cleanup", e)
             }
@@ -580,6 +599,56 @@ object BluetoothMeshManager {
         Log.d(TAG, "Is initialized: $isInitialized")
     }
     
+    private fun sendCharacteristicWrite(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        data: ByteArray,
+        result: CompletableDeferred<Boolean>
+    ) {
+        try {
+            // Check characteristic properties
+            val properties = characteristic.properties
+            val writeType = when {
+                (properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 -> {
+                    Log.d(TAG, "Using WRITE_TYPE_NO_RESPONSE")
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                }
+                (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 -> {
+                    Log.d(TAG, "Using WRITE_TYPE_DEFAULT")
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                }
+                else -> {
+                    Log.e(TAG, "Characteristic doesn't support writing")
+                    result.complete(false)
+                    gatt.disconnect()
+                    return
+                }
+            }
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val writeResult = gatt.writeCharacteristic(characteristic, data, writeType)
+                Log.d(TAG, "Write initiated (API 33+): $writeResult")
+                if (writeResult != BluetoothGatt.GATT_SUCCESS) {
+                    result.complete(false)
+                    gatt.disconnect()
+                }
+            } else {
+                characteristic.writeType = writeType
+                characteristic.value = data
+                val writeResult = gatt.writeCharacteristic(characteristic)
+                Log.d(TAG, "Write initiated (legacy): $writeResult")
+                if (!writeResult) {
+                    result.complete(false)
+                    gatt.disconnect()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error writing characteristic", e)
+            result.complete(false)
+            gatt.disconnect()
+        }
+    }
+    
     /**
      * Get diagnostic info
      */
@@ -592,6 +661,33 @@ object BluetoothMeshManager {
             - Bluetooth enabled: ${bluetoothAdapter?.isEnabled ?: false}
             - Scanning: $isScanning
         """.trimIndent()
+    }
+    
+    private fun handlePreparedWrite(device: BluetoothDevice, requestId: Int, offset: Int, value: ByteArray) {
+        val deviceId = device.address
+        val writes = preparedWriteBuffers.getOrPut(deviceId) { mutableListOf() }
+        writes.add(PreparedWriteData(offset, value))
+        Log.d(TAG, "Stored prepared write for $deviceId: offset=$offset, size=${value.size}")
+    }
+    
+    private fun handleMessage(message: String, fromDevice: String) {
+        Log.d(TAG, "handleMessage called: length=${message.length}")
+        
+        // Check if it looks like JSON
+        val isJson = message.trim().startsWith("{") && message.trim().endsWith("}")
+        Log.d(TAG, "Is JSON message: $isJson")
+        
+        // Emit the message event
+        val emitResult = _meshEvents.tryEmit(MeshEvent.MessageReceived(
+            message = message,
+            fromDevice = fromDevice
+        ))
+        
+        Log.d(TAG, "Message event emit result: $emitResult")
+        
+        if (!emitResult) {
+            Log.e(TAG, "!!! FAILED TO EMIT MESSAGE EVENT !!!")
+        }
     }
     
     /**
