@@ -3,6 +3,7 @@ package com.unicity.nfcwalletdemo.bluetooth
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
+import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import kotlinx.coroutines.*
@@ -59,11 +60,13 @@ class BluetoothMeshTransferService(private val context: Context) {
         val transferId: String,
         val role: TransferRole,
         val tokenData: ByteArray? = null,
-        var chunksReceived: MutableList<ByteArray> = mutableListOf(),
+        var chunksReceived: MutableMap<Int, ByteArray> = mutableMapOf(), // Changed to Map for proper ordering
         var totalChunks: Int = 0,
         var device: BluetoothDevice? = null,
         var gatt: BluetoothGatt? = null,
-        val startTime: Long = System.currentTimeMillis()
+        val startTime: Long = System.currentTimeMillis(),
+        var lastActivityTime: Long = System.currentTimeMillis(),
+        var retryCount: Int = 0
     )
     
     enum class TransferRole {
@@ -217,15 +220,87 @@ class BluetoothMeshTransferService(private val context: Context) {
     private suspend fun connectAndTransfer(device: BluetoothDevice, session: TransferSession) {
         _transferState.value = TransferState.Connected(device)
         
-        val gatt = device.connectGatt(context, false, createGattCallback(session))
-        session.gatt = gatt
+        val connectionResult = CompletableDeferred<Boolean>()
+        val servicesDiscovered = CompletableDeferred<Boolean>()
         
-        // Wait for connection and discovery
-        delay(2000)
+        val gattCallback = object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                Log.d(TAG, "Connection state changed: status=$status, newState=$newState")
+                when (newState) {
+                    BluetoothProfile.STATE_CONNECTED -> {
+                        Log.d(TAG, "Connected to ${device.address}, discovering services...")
+                        connectionResult.complete(true)
+                        gatt.discoverServices()
+                    }
+                    BluetoothProfile.STATE_DISCONNECTED -> {
+                        Log.e(TAG, "Disconnected from ${device.address}")
+                        if (!connectionResult.isCompleted) {
+                            connectionResult.complete(false)
+                        }
+                        if (!servicesDiscovered.isCompleted) {
+                            servicesDiscovered.complete(false)
+                        }
+                    }
+                }
+            }
+            
+            override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                Log.d(TAG, "Services discovered: status=$status")
+                servicesDiscovered.complete(status == BluetoothGatt.GATT_SUCCESS)
+            }
+            
+            override fun onCharacteristicWrite(
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+                status: Int
+            ) {
+                Log.d(TAG, "Characteristic write completed: status=$status")
+            }
+            
+            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    Log.d(TAG, "MTU changed to $mtu")
+                }
+            }
+        }
         
-        // Send data in chunks
-        session.tokenData?.let { data ->
-            sendDataInChunks(gatt, data, session)
+        try {
+            val gatt = device.connectGatt(context, false, gattCallback)
+            session.gatt = gatt
+            
+            // Wait for connection with timeout
+            val connected = withTimeout(5000L) {
+                connectionResult.await()
+            }
+            
+            if (!connected) {
+                throw Exception("Failed to connect to device")
+            }
+            
+            // Wait for service discovery with timeout
+            val discovered = withTimeout(5000L) {
+                servicesDiscovered.await()
+            }
+            
+            if (!discovered) {
+                throw Exception("Failed to discover services")
+            }
+            
+            // Request larger MTU for faster transfers
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                gatt.requestMtu(512)
+                delay(500) // Give time for MTU negotiation
+            }
+            
+            // Send data in chunks
+            session.tokenData?.let { data ->
+                sendDataInChunks(gatt, data, session)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Connection failed", e)
+            session.gatt?.close()
+            _transferState.value = TransferState.Error(e.message ?: "Connection failed")
+            throw e
         }
     }
     
@@ -233,21 +308,47 @@ class BluetoothMeshTransferService(private val context: Context) {
         val chunks = data.toList().chunked(CHUNK_SIZE)
         val totalChunks = chunks.size
         
+        Log.d(TAG, "Sending ${data.size} bytes in $totalChunks chunks")
+        
         scope.launch {
             chunks.forEachIndexed { index: Int, chunk: List<Byte> ->
-                val success = writeCharacteristic(gatt, chunk.toByteArray(), index, totalChunks)
-                if (!success) {
-                    _transferState.value = TransferState.Error("Failed to send chunk $index")
-                    return@launch
+                var retries = 0
+                var success = false
+                
+                // Retry logic for each chunk
+                while (retries < MAX_RETRIES && !success) {
+                    success = writeCharacteristic(gatt, chunk.toByteArray(), index, totalChunks)
+                    
+                    if (!success) {
+                        retries++
+                        Log.w(TAG, "Failed to send chunk $index, retry $retries/$MAX_RETRIES")
+                        
+                        if (retries < MAX_RETRIES) {
+                            delay(100L * retries) // Exponential backoff
+                        } else {
+                            _transferState.value = TransferState.Error("Failed to send chunk $index after $MAX_RETRIES retries")
+                            stopTransfer(session.transferId)
+                            return@launch
+                        }
+                    }
                 }
                 
                 val progress = (index + 1).toFloat() / totalChunks
                 _transferState.value = TransferState.Transferring(progress)
                 
-                delay(50) // Small delay between chunks
+                // Update activity time
+                session.lastActivityTime = System.currentTimeMillis()
+                
+                // Small delay between chunks to avoid overwhelming the receiver
+                delay(20)
             }
             
+            Log.d(TAG, "All chunks sent successfully")
             _transferState.value = TransferState.Completed(session.transferId)
+            
+            // Keep connection open briefly to ensure last chunk is received
+            delay(500)
+            stopTransfer(session.transferId)
         }
     }
     
@@ -257,8 +358,17 @@ class BluetoothMeshTransferService(private val context: Context) {
         chunkIndex: Int,
         totalChunks: Int
     ): Boolean {
-        val service = gatt.getService(SERVICE_UUID) ?: return false
-        val characteristic = service.getCharacteristic(TRANSFER_DATA_UUID) ?: return false
+        val service = gatt.getService(SERVICE_UUID)
+        if (service == null) {
+            Log.e(TAG, "Service not found: $SERVICE_UUID")
+            return false
+        }
+        
+        val characteristic = service.getCharacteristic(TRANSFER_DATA_UUID)
+        if (characteristic == null) {
+            Log.e(TAG, "Characteristic not found: $TRANSFER_DATA_UUID")
+            return false
+        }
         
         // Add chunk metadata
         val packet = ByteArray(data.size + 8)
@@ -268,10 +378,32 @@ class BluetoothMeshTransferService(private val context: Context) {
         packet[3] = totalChunks.toByte()
         packet[4] = (data.size shr 8).toByte()
         packet[5] = data.size.toByte()
+        packet[6] = 0 // Reserved
+        packet[7] = 0 // Reserved
         System.arraycopy(data, 0, packet, 8, data.size)
         
-        characteristic.value = packet
-        return gatt.writeCharacteristic(characteristic)
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ API
+                val result = gatt.writeCharacteristic(
+                    characteristic,
+                    packet,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                )
+                result == BluetoothStatusCodes.SUCCESS
+            } else {
+                // Legacy API
+                characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                characteristic.value = packet
+                gatt.writeCharacteristic(characteristic)
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception writing characteristic", e)
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error writing characteristic", e)
+            false
+        }
     }
     
     private fun startGattServer(transferId: String, onDataReceived: (ByteArray) -> Unit) {
@@ -320,22 +452,53 @@ class BluetoothMeshTransferService(private val context: Context) {
     private fun handleDataChunk(transferId: String, packet: ByteArray, onComplete: (ByteArray) -> Unit) {
         val session = activeTransfers[transferId] ?: return
         
+        if (packet.size < 8) {
+            Log.e(TAG, "Invalid packet size: ${packet.size}")
+            return
+        }
+        
         // Parse chunk metadata
-        val chunkIndex = (packet[0].toInt() shl 8) or (packet[1].toInt() and 0xFF)
-        val totalChunks = (packet[2].toInt() shl 8) or (packet[3].toInt() and 0xFF)
-        val dataSize = (packet[4].toInt() shl 8) or (packet[5].toInt() and 0xFF)
+        val chunkIndex = (packet[0].toInt() and 0xFF shl 8) or (packet[1].toInt() and 0xFF)
+        val totalChunks = (packet[2].toInt() and 0xFF shl 8) or (packet[3].toInt() and 0xFF)
+        val dataSize = (packet[4].toInt() and 0xFF shl 8) or (packet[5].toInt() and 0xFF)
+        
+        if (packet.size < 8 + dataSize) {
+            Log.e(TAG, "Packet size mismatch: expected ${8 + dataSize}, got ${packet.size}")
+            return
+        }
         
         val data = packet.sliceArray(8 until (8 + dataSize))
         
+        // Update session
         session.totalChunks = totalChunks
-        session.chunksReceived.add(data)
+        session.chunksReceived[chunkIndex] = data
+        session.lastActivityTime = System.currentTimeMillis()
+        
+        Log.d(TAG, "Received chunk $chunkIndex/$totalChunks (${data.size} bytes)")
         
         val progress = session.chunksReceived.size.toFloat() / totalChunks
         _transferState.value = TransferState.Transferring(progress)
         
         // Check if transfer complete
         if (session.chunksReceived.size == totalChunks) {
-            val completeData = session.chunksReceived.reduce { acc, bytes -> acc + bytes }
+            // Verify we have all chunks
+            val missingChunks = (0 until totalChunks).filter { !session.chunksReceived.containsKey(it) }
+            if (missingChunks.isNotEmpty()) {
+                Log.e(TAG, "Missing chunks: $missingChunks")
+                _transferState.value = TransferState.Error("Missing chunks: ${missingChunks.size}")
+                return
+            }
+            
+            // Reassemble data in correct order
+            val completeData = ByteArray(session.chunksReceived.values.sumOf { it.size })
+            var offset = 0
+            for (i in 0 until totalChunks) {
+                val chunk = session.chunksReceived[i]!!
+                System.arraycopy(chunk, 0, completeData, offset, chunk.size)
+                offset += chunk.size
+            }
+            
+            Log.d(TAG, "Transfer complete: ${completeData.size} bytes")
             _transferState.value = TransferState.Completed(transferId)
             onComplete(completeData)
             stopTransfer(transferId)
@@ -390,9 +553,89 @@ class BluetoothMeshTransferService(private val context: Context) {
     }
     
     /**
+     * Get currently discovered Bluetooth devices
+     */
+    fun getDiscoveredDevices(): List<BluetoothDevice> {
+        // Get bonded devices as a starting point
+        val devices = mutableListOf<BluetoothDevice>()
+        
+        try {
+            // Add bonded devices
+            bluetoothAdapter.bondedDevices?.let { bonded ->
+                devices.addAll(bonded)
+            }
+            
+            // In a real implementation, we would track devices discovered via scanning
+            // For now, return bonded devices which are likely to be nearby
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Cannot access Bluetooth devices", e)
+        }
+        
+        return devices
+    }
+    
+    /**
      * Get device's Bluetooth MAC address (note: may be randomized on newer Android)
      */
     fun getBluetoothMAC(): String {
-        return bluetoothAdapter.address ?: "00:00:00:00:00:00"
+        return try {
+            bluetoothAdapter.address ?: generateRandomMAC()
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Cannot access Bluetooth address, using random MAC")
+            generateRandomMAC()
+        }
+    }
+    
+    private fun generateRandomMAC(): String {
+        // Generate a locally administered MAC address
+        val random = Random()
+        val bytes = ByteArray(6)
+        random.nextBytes(bytes)
+        
+        // Set locally administered bit and unicast bit
+        bytes[0] = (bytes[0].toInt() and 0xFC or 0x02).toByte()
+        
+        return bytes.joinToString(":") { "%02X".format(it) }
+    }
+    
+    /**
+     * Get current transfer progress for a specific transfer ID
+     */
+    fun getTransferProgress(transferId: String): Float? {
+        val session = activeTransfers[transferId] ?: return null
+        return when (session.role) {
+            TransferRole.SENDER -> {
+                // For sender, progress is tracked by the state flow
+                when (val state = _transferState.value) {
+                    is TransferState.Transferring -> state.progress
+                    is TransferState.Completed -> 1.0f
+                    else -> 0.0f
+                }
+            }
+            TransferRole.RECEIVER -> {
+                // For receiver, calculate based on chunks received
+                if (session.totalChunks > 0) {
+                    session.chunksReceived.size.toFloat() / session.totalChunks
+                } else {
+                    0.0f
+                }
+            }
+        }
+    }
+    
+    /**
+     * Check if a transfer is still active
+     */
+    fun isTransferActive(transferId: String): Boolean {
+        return activeTransfers.containsKey(transferId)
+    }
+    
+    /**
+     * Cancel a specific transfer
+     */
+    fun cancelTransfer(transferId: String) {
+        Log.d(TAG, "Cancelling transfer: $transferId")
+        stopTransfer(transferId)
+        _transferState.value = TransferState.Error("Transfer cancelled")
     }
 }

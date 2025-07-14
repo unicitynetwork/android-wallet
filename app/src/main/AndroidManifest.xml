@@ -64,6 +64,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:label="Bluetooth Mesh Discovery" />
+            
+        <activity 
+            android:name=".ui.bluetooth.BluetoothTransferTestActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:label="Bluetooth Transfer Test" />
         
         <!-- NFC Host Card Emulation Service -->
         <service

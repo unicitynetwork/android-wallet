@@ -76,11 +76,26 @@ class WalletRepository(context: Context) {
     }
     
     fun addToken(token: Token) {
-        val currentWallet = _wallet.value ?: return
+        Log.d(TAG, "=== addToken called ===")
+        Log.d(TAG, "Token to add: ${token.name}, type: ${token.type}")
+        
+        val currentWallet = _wallet.value
+        if (currentWallet == null) {
+            Log.e(TAG, "Current wallet is null! Cannot add token")
+            return
+        }
+        
+        Log.d(TAG, "Current tokens count: ${currentWallet.tokens.size}")
+        
         val updatedWallet = currentWallet.copy(
             tokens = currentWallet.tokens + token
         )
+        
+        Log.d(TAG, "Updated tokens count: ${updatedWallet.tokens.size}")
+        
         saveWallet(updatedWallet)
+        
+        Log.d(TAG, "Token added and wallet saved")
     }
     
     fun removeToken(tokenId: String) {
@@ -127,16 +142,23 @@ class WalletRepository(context: Context) {
     }
     
     suspend fun mintNewToken(name: String, data: String, amount: Long = 100): Result<Token> {
+        Log.d(TAG, "=== mintNewToken started ===")
+        Log.d(TAG, "Minting token: name=$name, data=$data, amount=$amount")
+        
         _isLoading.value = true
         return try {
             // Generate identity for the token
+            Log.d(TAG, "Generating identity...")
             val identity = generateIdentity()
+            Log.d(TAG, "Identity generated: ${identity.secret.take(8)}...")
             
             // Create token data
             val tokenData = UnicityTokenData(data, amount)
             
             // Mint the token using Unicity SDK
+            Log.d(TAG, "Calling SDK mintToken...")
             val mintResult = mintToken(identity, tokenData)
+            Log.d(TAG, "Mint result received")
             
             // Extract the complete token JSON from the mint result
             // The JS SDK returns a finalized, self-contained token that includes:
@@ -157,8 +179,10 @@ class WalletRepository(context: Context) {
             )
             
             // Only add to wallet if minting was successful
+            Log.d(TAG, "Adding token to wallet...")
             addToken(token)
             
+            Log.d(TAG, "Token minting completed successfully")
             Result.success(token)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to mint token", e)

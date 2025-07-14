@@ -11,7 +11,8 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import java.nio.charset.StandardCharsets
 import java.util.*
 
@@ -34,9 +35,9 @@ object BluetoothMeshManager {
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
-    // Flow for mesh events
-    private val _meshEvents = MutableStateFlow<MeshEvent>(MeshEvent.Idle)
-    val meshEvents: StateFlow<MeshEvent> = _meshEvents
+    // SharedFlow for mesh events - allows multiple collectors
+    private val _meshEvents = MutableSharedFlow<MeshEvent>(replay = 0, extraBufferCapacity = 10)
+    val meshEvents: SharedFlow<MeshEvent> = _meshEvents
     
     // Connected devices
     private val connectedDevices = mutableSetOf<BluetoothDevice>()
@@ -64,13 +65,13 @@ object BluetoothMeshManager {
         
         if (bluetoothAdapter == null) {
             Log.e(TAG, "Bluetooth not supported")
-            _meshEvents.value = MeshEvent.Error("Bluetooth not supported")
+            _meshEvents.tryEmit(MeshEvent.Error("Bluetooth not supported"))
             return
         }
         
         if (!checkPermissions()) {
             Log.e(TAG, "Missing Bluetooth permissions")
-            _meshEvents.value = MeshEvent.Error("Missing Bluetooth permissions")
+            _meshEvents.tryEmit(MeshEvent.Error("Missing Bluetooth permissions"))
             return
         }
         
@@ -79,7 +80,7 @@ object BluetoothMeshManager {
         startContinuousScanning()
         
         isInitialized = true
-        _meshEvents.value = MeshEvent.Initialized
+        _meshEvents.tryEmit(MeshEvent.Initialized)
         Log.d(TAG, "Bluetooth mesh manager initialized")
     }
     
@@ -122,10 +123,10 @@ object BluetoothMeshManager {
                         Log.d(TAG, "Received message from ${device.address}: $message")
                         
                         // Emit the message event
-                        _meshEvents.value = MeshEvent.MessageReceived(
+                        _meshEvents.tryEmit(MeshEvent.MessageReceived(
                             message = message,
                             fromDevice = device.address
-                        )
+                        ))
                         
                         Log.d(TAG, "Message event emitted for: $message")
                     }
@@ -234,10 +235,27 @@ object BluetoothMeshManager {
                 override fun onScanResult(callbackType: Int, result: ScanResult?) {
                     result?.let { scanResult ->
                         val device = scanResult.device
-                        _meshEvents.value = MeshEvent.DeviceDiscovered(
-                            address = device.address,
-                            name = device.name
-                        )
+                        val scanRecord = scanResult.scanRecord
+                        
+                        // Log what we found
+                        Log.d(TAG, "BLE scan found device: ${device.address}")
+                        Log.d(TAG, "  Name: ${device.name}")
+                        Log.d(TAG, "  Service UUIDs: ${scanRecord?.serviceUuids}")
+                        
+                        // Only emit if it has our service UUID (double-check the filter)
+                        val hasOurService = scanRecord?.serviceUuids?.any { 
+                            it.uuid == MESH_SERVICE_UUID 
+                        } ?: false
+                        
+                        if (hasOurService) {
+                            Log.d(TAG, "  ✓ Device has our MESH_SERVICE_UUID")
+                            _meshEvents.tryEmit(MeshEvent.DeviceDiscovered(
+                                address = device.address,
+                                name = device.name
+                            ))
+                        } else {
+                            Log.d(TAG, "  ✗ Device does NOT have our service UUID (filter failed?)")
+                        }
                     }
                 }
                 
