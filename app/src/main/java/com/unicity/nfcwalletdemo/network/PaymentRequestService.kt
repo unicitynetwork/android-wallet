@@ -7,7 +7,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 
 object PaymentRequestService {
-    private const val BASE_URL = "https://7jmtgxyogc.execute-api.me-central-1.amazonaws.com/Prod"
+    private const val BASE_URL = "https://7jmtgxyogc.execute-api.me-central-1.amazonaws.com/Prod/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
