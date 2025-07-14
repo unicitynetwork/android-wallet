@@ -3,6 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
     
     <item
+        android:id="@+id/action_scan_qr"
+        android:title="Scan QR Code"
+        android:icon="@drawable/ic_qr_code_scanner"
+        app:showAsAction="ifRoom" />
+        
+    <item
         android:id="@+id/action_mint_token"
         android:title="Mint a Token"
         app:showAsAction="never" />
