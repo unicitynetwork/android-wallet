@@ -36,18 +36,18 @@ npm start
 
 ### Create Payment Request
 ```
-POST /api/payment-requests
+POST /payment-requests
 Body: { "recipientAddress": "0x..." }
 ```
 
 ### Get Payment Request
 ```
-GET /api/payment-requests/:id
+GET /payment-requests/:id
 ```
 
 ### Complete Payment Request
 ```
-POST /api/payment-requests/:id/complete
+PUT /payment-requests/:id/complete
 Body: {
   "senderAddress": "0x...",
   "currencySymbol": "USDC",
@@ -56,10 +56,12 @@ Body: {
 }
 ```
 
-### Poll Payment Status
+### List All Payment Requests (Testing)
 ```
-GET /api/payment-requests/:id/poll
+GET /payment-requests
 ```
+
+**Note**: The polling endpoint has been removed. Use GET /payment-requests/:id instead.
 
 ## Configuration
 
@@ -73,5 +75,25 @@ Environment variables:
 
 QR codes contain deep links in this format:
 ```
-nfcwallet://payment-request?id=<request-id>&recipient=<address>
+nfcwallet://payment-request?id=<request-id>
+```
+
+## Data Models
+
+### PaymentRequest
+```typescript
+{
+  requestId: string        // Changed from 'id'
+  recipientAddress: string
+  status: 'pending' | 'completed' | 'expired'
+  createdAt: string       // ISO 8601 date string
+  expiresAt: string       // ISO 8601 date string
+  completedAt?: string    // ISO 8601 date string
+  paymentDetails?: {      // Changed from 'payment'
+    senderAddress: string
+    currencySymbol: string
+    amount: string
+    transactionId?: string
+  }
+}
 ```

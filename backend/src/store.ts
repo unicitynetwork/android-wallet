@@ -4,7 +4,7 @@ export class PaymentRequestStore {
   private requests: Map<string, PaymentRequest> = new Map();
 
   create(request: PaymentRequest): void {
-    this.requests.set(request.id, request);
+    this.requests.set(request.requestId, request);
   }
 
   get(id: string): PaymentRequest | undefined {
@@ -26,8 +26,9 @@ export class PaymentRequestStore {
 
   getAllExpired(now: Date): PaymentRequest[] {
     const expired: PaymentRequest[] = [];
+    const nowStr = now.toISOString();
     for (const request of this.requests.values()) {
-      if (request.status === 'pending' && request.expiresAt < now) {
+      if (request.status === 'pending' && request.expiresAt < nowStr) {
         expired.push(request);
       }
     }
@@ -41,5 +42,9 @@ export class PaymentRequestStore {
         request.status = 'expired';
       }
     }
+  }
+
+  getAll(): PaymentRequest[] {
+    return Array.from(this.requests.values());
   }
 }

@@ -17,8 +17,13 @@ app.get('/health', (_, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Handle OPTIONS for CORS
+app.options('*', (_, res) => {
+  res.sendStatus(200);
+});
+
 // Create payment request
-app.post('/api/payment-requests', (req, res) => {
+app.post('/payment-requests', (req, res) => {
   try {
     const { recipientAddress } = req.body as CreatePaymentRequestDto;
     
@@ -30,19 +35,19 @@ app.post('/api/payment-requests', (req, res) => {
     const expiresAt = new Date(now.getTime() + config.requestExpirySeconds * 1000);
     
     const request: PaymentRequest = {
-      id: uuidv4(),
+      requestId: uuidv4(),
       recipientAddress,
       status: 'pending',
-      createdAt: now,
-      expiresAt,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
     };
 
     store.create(request);
 
     // Generate deep link for QR code
-    const qrData = `nfcwallet://payment-request?id=${request.id}&recipient=${encodeURIComponent(recipientAddress)}`;
+    const qrData = `nfcwallet://payment-request?id=${request.requestId}`;
 
-    return res.json({
+    return res.status(201).json({
       ...request,
       qrData,
     });
@@ -53,7 +58,7 @@ app.post('/api/payment-requests', (req, res) => {
 });
 
 // Get payment request
-app.get('/api/payment-requests/:id', (req, res) => {
+app.get('/payment-requests/:id', (req, res) => {
   try {
     const { id } = req.params;
     const request = store.get(id);
@@ -70,7 +75,7 @@ app.get('/api/payment-requests/:id', (req, res) => {
 });
 
 // Complete payment request
-app.post('/api/payment-requests/:id/complete', (req, res) => {
+app.put('/payment-requests/:id/complete', (req, res) => {
   try {
     const { id } = req.params;
     const { senderAddress, currencySymbol, amount, transactionId } = req.body as CompletePaymentRequestDto;
@@ -89,15 +94,15 @@ app.post('/api/payment-requests/:id/complete', (req, res) => {
     }
 
     // Check if expired
-    if (request.expiresAt < new Date()) {
+    if (request.expiresAt < new Date().toISOString()) {
       store.update(id, { status: 'expired' });
       return res.status(400).json({ error: 'Payment request has expired' });
     }
 
     const updated = store.update(id, {
       status: 'completed',
-      completedAt: new Date(),
-      payment: {
+      completedAt: new Date().toISOString(),
+      paymentDetails: {
         senderAddress,
         currencySymbol,
         amount,
@@ -112,23 +117,13 @@ app.post('/api/payment-requests/:id/complete', (req, res) => {
   }
 });
 
-// Poll payment request status
-app.get('/api/payment-requests/:id/poll', (req, res) => {
+// List all payment requests (for testing)
+app.get('/payment-requests', (_, res) => {
   try {
-    const { id } = req.params;
-    const request = store.get(id);
-
-    if (!request) {
-      return res.status(404).json({ error: 'Payment request not found' });
-    }
-
-    return res.json({
-      status: request.status,
-      payment: request.payment,
-      updatedAt: request.completedAt || request.createdAt,
-    });
+    const allRequests = store.getAll();
+    return res.json(allRequests);
   } catch (error) {
-    console.error('Error polling payment request:', error);
+    console.error('Error listing payment requests:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -140,7 +135,7 @@ setInterval(() => {
   
   if (expired.length > 0) {
     console.log(`Marking ${expired.length} requests as expired`);
-    store.markExpired(expired.map(r => r.id));
+    store.markExpired(expired.map(r => r.requestId));
   }
 }, config.cleanupIntervalSeconds * 1000);
 
