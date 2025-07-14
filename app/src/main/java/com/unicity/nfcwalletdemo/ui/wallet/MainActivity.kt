@@ -1418,32 +1418,30 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNeutralButton("Test Transfer") { _, _ ->
-                // Send trigger for token transfer test
+                // Initiate a real test token transfer
                 val peers = BTMeshTransferCoordinator.getDiscoveredPeers()
                 if (peers.isNotEmpty()) {
                     val peer = peers.first()
-                    val testMessage = "TRIGGER_TRANSFER" // Shortened to fit in 20 chars
+                    
+                    // Create a test token
+                    val testToken = Token(
+                        id = "test_${System.currentTimeMillis()}",
+                        name = "Test Token",
+                        type = "Unicity Token",
+                        jsonData = "{}", // Minimal JSON data
+                        status = TokenStatus.CONFIRMED
+                    )
                     
                     Toast.makeText(
                         this@MainActivity,
-                        "Sending to ${peer.deviceName}: $testMessage",
+                        "Starting test transfer to ${peer.deviceName}...",
                         Toast.LENGTH_LONG
                     ).show()
                     
-                    lifecycleScope.launch {
-                        Log.d("MainActivity", "Sending test transfer trigger to ${peer.peerId}")
-                        val result = BluetoothMeshManager.sendMessage(
-                            peer.peerId,
-                            testMessage
-                        )
-                        Log.d("MainActivity", "Send result: $result")
-                        
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Send result to ${peer.deviceName}: ${if (result) "SUCCESS" else "FAILED"}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+                    // Use the real transfer flow
+                    BTMeshTransferCoordinator.initiateTransfer(testToken, peer.peerId, peer.deviceName)
+                    
+                    Log.d("MainActivity", "Initiated test token transfer to ${peer.peerId}")
                 } else {
                     Toast.makeText(this, "No peers discovered", Toast.LENGTH_SHORT).show()
                 }
@@ -1971,25 +1969,18 @@ class MainActivity : AppCompatActivity() {
                                     
                                     // Handle TRIGGER_TRANSFER message for testing
                                     if (event.message == "TRIGGER_TRANSFER") {
-                                        Log.d("MainActivity", "!!! RECEIVED TRIGGER_TRANSFER - Creating test approval")
+                                        Log.d("MainActivity", "!!! RECEIVED TRIGGER_TRANSFER - Forwarding to coordinator")
                                         
-                                        // Create a test transfer ID
-                                        val testTransferId = "TEST${(1000..9999).random()}"
+                                        // Don't create a test approval here!
+                                        // Instead, let the coordinator handle the actual transfer request
+                                        // The sender should have already sent a proper transfer request
                                         
-                                        // Create test approval request
-                                        val testApproval = com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest(
-                                            transferId = testTransferId,
-                                            senderPeerId = event.fromDevice,
-                                            senderName = "Test Device ${event.fromDevice.takeLast(6)}",
-                                            tokenType = "Unicity Token",
-                                            tokenName = "Demo Token",
-                                            tokenPreview = "Demo Token for testing",
-                                            timestamp = System.currentTimeMillis()
-                                        )
-                                        
-                                        // Show the approval dialog immediately
                                         runOnUiThread {
-                                            showTransferApprovalDialog(testApproval)
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Test trigger received - waiting for actual transfer request...",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
                                         }
                                     }
                                     
@@ -2063,29 +2054,12 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 
                                 
-                                // Check if it's a JSON transfer message
-                                if (event.message.trim().startsWith("{")) {
-                                    Log.d("MainActivity", "Received JSON message")
-                                    
-                                    // Try to parse and check if it's a transfer message
-                                    try {
-                                        val jsonObj = com.google.gson.JsonParser.parseString(event.message).asJsonObject
-                                        val type = jsonObj.get("type")?.asString
-                                        
-                                        if (type == "TRANSFER_PERMISSION_REQUEST") {
-                                            Log.d("MainActivity", "!!! This is a TRANSFER REQUEST !!!")
-                                            
-                                            // Since BTMeshTransferCoordinator might not be catching it,
-                                            // let's manually feed it
-                                            lifecycleScope.launch {
-                                                Log.d("MainActivity", "Manually feeding to BTMeshTransferCoordinator")
-                                                val messageData = event.message.toByteArray(Charsets.UTF_8)
-                                                BTMeshTransferCoordinator.handleIncomingMessage(messageData, event.fromDevice)
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e("MainActivity", "Failed to parse JSON", e)
-                                    }
+                                // Forward ALL messages to BTMeshTransferCoordinator
+                                // It will handle parsing and filtering
+                                lifecycleScope.launch {
+                                    Log.d("MainActivity", "Forwarding ALL messages to BTMeshTransferCoordinator")
+                                    val messageData = event.message.toByteArray(Charsets.UTF_8)
+                                    BTMeshTransferCoordinator.handleIncomingMessage(messageData, event.fromDevice)
                                 }
                             }
                             else -> {}
@@ -2217,13 +2191,20 @@ class MainActivity : AppCompatActivity() {
                             // Remove token from wallet
                             viewModel.removeToken(tokenId)
                         }
-                        com.unicity.nfcwalletdemo.bluetooth.TransferState.FAILED, 
                         com.unicity.nfcwalletdemo.bluetooth.TransferState.REJECTED -> {
                             val token = getTokenById(tokenId)
                             token?.let { tokenAdapter.setTransferring(it, false) }
                             hideNfcWaitingDialog()
+                            // Different vibration for rejection
                             vibrateError()
-                            showErrorDialog("Transfer failed", "The token transfer could not be completed.")
+                            showErrorDialog("Transfer Cancelled", "The recipient declined the transfer request.")
+                        }
+                        com.unicity.nfcwalletdemo.bluetooth.TransferState.FAILED -> {
+                            val token = getTokenById(tokenId)
+                            token?.let { tokenAdapter.setTransferring(it, false) }
+                            hideNfcWaitingDialog()
+                            vibrateError()
+                            showErrorDialog("Transfer Failed", "The token transfer could not be completed.")
                         }
                         else -> {
                             // Update progress UI if needed
@@ -2237,20 +2218,25 @@ class MainActivity : AppCompatActivity() {
                             }
                             val token = getTokenById(tokenId)
                             token?.let { 
-                                tokenAdapter.setTransferring(it, true)
-                                // Update the progress based on state
-                                val progress = when (state) {
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.REQUESTING_PERMISSION -> Pair(2, 10)
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.APPROVED -> Pair(3, 10)
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.WAITING_FOR_ADDRESS -> Pair(4, 10)
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.GENERATING_ADDRESS -> Pair(5, 10)
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.CREATING_PACKAGE -> Pair(6, 10)
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.SENDING_PACKAGE -> Pair(8, 10)
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.WAITING_FOR_PACKAGE -> Pair(7, 10)
-                                    com.unicity.nfcwalletdemo.bluetooth.TransferState.COMPLETING_TRANSFER -> Pair(9, 10)
-                                    else -> Pair(1, 10)
+                                // Only show transferring state and progress after approval
+                                if (state == com.unicity.nfcwalletdemo.bluetooth.TransferState.REQUESTING_PERMISSION) {
+                                    // Don't show progress while waiting for permission
+                                    tokenAdapter.setTransferring(it, false)
+                                } else {
+                                    tokenAdapter.setTransferring(it, true)
+                                    // Update the progress based on state
+                                    val progress = when (state) {
+                                        com.unicity.nfcwalletdemo.bluetooth.TransferState.APPROVED -> Pair(1, 10)
+                                        com.unicity.nfcwalletdemo.bluetooth.TransferState.WAITING_FOR_ADDRESS -> Pair(2, 10)
+                                        com.unicity.nfcwalletdemo.bluetooth.TransferState.GENERATING_ADDRESS -> Pair(3, 10)
+                                        com.unicity.nfcwalletdemo.bluetooth.TransferState.CREATING_PACKAGE -> Pair(5, 10)
+                                        com.unicity.nfcwalletdemo.bluetooth.TransferState.SENDING_PACKAGE -> Pair(7, 10)
+                                        com.unicity.nfcwalletdemo.bluetooth.TransferState.WAITING_FOR_PACKAGE -> Pair(6, 10)
+                                        com.unicity.nfcwalletdemo.bluetooth.TransferState.COMPLETING_TRANSFER -> Pair(9, 10)
+                                        else -> Pair(1, 10)
+                                    }
+                                    tokenAdapter.updateTransferProgress(it, progress.first, progress.second)
                                 }
-                                tokenAdapter.updateTransferProgress(it, progress.first, progress.second)
                             }
                         }
                     }
