@@ -46,6 +46,9 @@ object BluetoothMeshManager {
     // Connected devices
     private val connectedDevices = mutableSetOf<BluetoothDevice>()
     
+    // Active GATT connections we've initiated (as client)
+    private val activeGattConnections = mutableMapOf<String, BluetoothGatt>()
+    
     // Buffer for prepared writes (for messages larger than MTU)
     private val preparedWriteBuffers = mutableMapOf<String, MutableList<PreparedWriteData>>()
     
@@ -104,6 +107,16 @@ object BluetoothMeshManager {
             delay(500)
             startAdvertising()
             Log.d(TAG, "Started advertising after delay")
+            
+            // Log advertising state periodically for debugging
+            while (isActive) {
+                delay(10000) // Every 10 seconds
+                Log.d(TAG, "=== MESH STATUS ===")
+                Log.d(TAG, "GATT Server: ${if (gattServer != null) "Running" else "Not running"}")
+                Log.d(TAG, "Advertising: Active")
+                Log.d(TAG, "Connected devices (as server): ${connectedDevices.size}")
+                Log.d(TAG, "Active connections (as client): ${activeGattConnections.size}")
+            }
         }
         
         startContinuousScanning()
@@ -289,7 +302,7 @@ object BluetoothMeshManager {
                 if (!isScanning && checkPermissions()) {
                     startScanning()
                 }
-                delay(30000) // Restart scanning every 30 seconds if stopped
+                delay(5000) // Restart scanning every 5 seconds if stopped
             }
         }
     }
@@ -309,7 +322,7 @@ object BluetoothMeshManager {
             )
             
             val scanSettings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY) // More aggressive scanning
                 .build()
             
             val scanCallback = object : ScanCallback() {
@@ -350,13 +363,13 @@ object BluetoothMeshManager {
             isScanning = true
             Log.d(TAG, "Started background scanning")
             
-            // Stop scanning after 10 seconds to save battery
+            // Stop scanning after 20 seconds to save battery
             scope.launch {
-                delay(10000)
+                delay(20000) // Increased from 10 to 20 seconds
                 try {
                     scanner.stopScan(scanCallback)
                     isScanning = false
-                    Log.d(TAG, "Stopped scanning to save battery")
+                    Log.d(TAG, "Stopped scanning after 20 seconds")
                 } catch (e: SecurityException) {
                     Log.e(TAG, "Error stopping scan", e)
                 }
@@ -426,8 +439,28 @@ object BluetoothMeshManager {
     private suspend fun sendMessageAttempt(deviceAddress: String, message: String): Boolean {
         Log.d(TAG, "=== sendMessageAttempt STARTED ===")
         Log.d(TAG, "Target device: $deviceAddress")
+        Log.d(TAG, "My device: ${bluetoothAdapter?.address ?: "Unknown"}")
+        
+        // Check if target device has a GATT server we can see
+        Log.d(TAG, "Checking if $deviceAddress is advertising mesh service...")
         
         val result = CompletableDeferred<Boolean>()
+        
+        // Check if we already have a connection to this device
+        val existingConnection = activeGattConnections[deviceAddress]
+        if (existingConnection != null) {
+            Log.d(TAG, "Found existing GATT connection to $deviceAddress, closing it")
+            // TODO: Send message directly using existing connection
+            // For now, close and reconnect
+            try {
+                existingConnection.disconnect()
+                existingConnection.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing existing connection", e)
+            }
+            activeGattConnections.remove(deviceAddress)
+        }
+        
         var gattConnection: BluetoothGatt? = null
         
         try {
@@ -551,6 +584,10 @@ object BluetoothMeshManager {
                 return false
             }
             
+            // Store the connection
+            activeGattConnections[deviceAddress] = gattConnection
+            Log.d(TAG, "Stored GATT connection for $deviceAddress")
+            
             // Wait for the result with a timeout
             return try {
                 withTimeout(10000) {
@@ -669,6 +706,13 @@ object BluetoothMeshManager {
         """.trimIndent()
     }
     
+    /**
+     * Get list of currently connected device addresses via GATT server
+     */
+    fun getConnectedDevices(): Set<String> {
+        return connectedDevices.map { it.address }.toSet()
+    }
+    
     private fun handlePreparedWrite(device: BluetoothDevice, requestId: Int, offset: Int, value: ByteArray) {
         val deviceId = device.address
         val writes = preparedWriteBuffers.getOrPut(deviceId) { mutableListOf() }
@@ -677,11 +721,56 @@ object BluetoothMeshManager {
     }
     
     private fun handleMessage(message: String, fromDevice: String) {
-        Log.d(TAG, "handleMessage called: length=${message.length}")
+        Log.d(TAG, "=== GATT SERVER RECEIVED MESSAGE ===")
+        Log.d(TAG, "From device: $fromDevice")
+        Log.d(TAG, "My device: ${bluetoothAdapter?.address ?: "Unknown"}")
+        Log.d(TAG, "Message length: ${message.length}")
+        Log.d(TAG, "Message preview: ${message.take(100)}...")
         
         // Check if it looks like JSON
         val isJson = message.trim().startsWith("{") && message.trim().endsWith("}")
         Log.d(TAG, "Is JSON message: $isJson")
+        
+        // Special logging for response messages
+        if (message.contains("PERMISSION_RESPONSE")) {
+            Log.d(TAG, "!!! RECEIVED PERMISSION RESPONSE ON GATT SERVER !!!")
+        }
+        
+        // Handle ping-pong test messages
+        if (message.startsWith("PING:")) {
+            Log.d(TAG, "=== RECEIVED PING, SENDING PONG ===")
+            val pingId = message.substringAfter("PING:")
+            scope.launch {
+                delay(100) // Small delay to ensure connection is ready
+                val pongMessage = "PONG:$pingId"
+                Log.d(TAG, "Sending PONG response to $fromDevice")
+                
+                // For ping-pong, we know the device is connected as a client to our GATT server
+                // So we should try to respond through the same connection
+                val device = connectedDevices.find { it.address == fromDevice }
+                if (device != null) {
+                    Log.d(TAG, "Device found in connected list, sending PONG via new client connection")
+                }
+                
+                val success = sendMessage(fromDevice, pongMessage)
+                Log.d(TAG, "PONG sent: $success")
+            }
+        } else if (message.startsWith("PONG:")) {
+            Log.d(TAG, "=== RECEIVED PONG RESPONSE ===")
+            Log.d(TAG, "Bi-directional communication confirmed with $fromDevice!")
+        }
+        
+        // Handle rejection messages
+        if (message.startsWith("REJECT:")) {
+            Log.d(TAG, "=== RECEIVED REJECTION MESSAGE ===")
+            val transferId = message.substringAfter("REJECT:")
+            Log.d(TAG, "Rejection for transfer: $transferId")
+            // Emit this as a special event for the coordinator
+            _meshEvents.tryEmit(MeshEvent.MessageReceived(
+                message = message,
+                fromDevice = fromDevice
+            ))
+        }
         
         // Emit the message event
         val emitResult = _meshEvents.tryEmit(MeshEvent.MessageReceived(
@@ -694,6 +783,9 @@ object BluetoothMeshManager {
         if (!emitResult) {
             Log.e(TAG, "!!! FAILED TO EMIT MESSAGE EVENT !!!")
         }
+        
+        // Log current connected devices
+        Log.d(TAG, "Currently connected devices: ${connectedDevices.map { it.address }.joinToString(", ")}")
     }
     
     /**
