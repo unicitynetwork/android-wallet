@@ -1446,7 +1446,28 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "No peers discovered", Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Close", null)
+            .setNegativeButton("Ping Test") { _, _ ->
+                // Send ping to test bi-directional communication
+                val peers = BTMeshTransferCoordinator.getDiscoveredPeers()
+                if (peers.isNotEmpty()) {
+                    val peer = peers.first()
+                    lifecycleScope.launch {
+                        val pingId = System.currentTimeMillis().toString()
+                        val pingMessage = "PING:$pingId"
+                        Log.d("MainActivity", "Sending PING to ${peer.peerId}: $pingMessage")
+                        
+                        val result = BluetoothMeshManager.sendMessage(peer.peerId, pingMessage)
+                        
+                        Toast.makeText(
+                            this@MainActivity,
+                            "PING sent to ${peer.deviceName}: ${if (result) "SUCCESS (check logs for PONG)" else "FAILED"}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } else {
+                    Toast.makeText(this, "No peers discovered", Toast.LENGTH_SHORT).show()
+                }
+            }
             .show()
     }
     
