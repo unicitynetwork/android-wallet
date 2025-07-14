@@ -373,8 +373,14 @@ object BluetoothMeshManager {
         return withContext(Dispatchers.IO) {
             Log.d(TAG, "=== sendMessage CALLED ===")
             Log.d(TAG, "To device: $deviceAddress")
+            Log.d(TAG, "From device: ${bluetoothAdapter?.address ?: "Unknown"}")
             Log.d(TAG, "Message length: ${message.length} chars")
             Log.d(TAG, "Message preview: ${message.take(200)}...")
+            
+            // Special logging for rejection messages
+            if (message.contains("PERMISSION_RESPONSE") || message.contains("REJECT_TEST")) {
+                Log.d(TAG, "!!! SENDING REJECTION-RELATED MESSAGE !!!")
+            }
             
             // Check message size
             val messageBytes = message.toByteArray(StandardCharsets.UTF_8)

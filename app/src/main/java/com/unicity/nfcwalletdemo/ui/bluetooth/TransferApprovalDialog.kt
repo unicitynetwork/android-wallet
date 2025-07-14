@@ -8,6 +8,7 @@ import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
+import android.util.Log
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest
@@ -28,6 +29,7 @@ class TransferApprovalDialog : DialogFragment() {
     
     fun setApprovalRequest(request: TransferApprovalRequest) {
         this.approvalRequest = request
+        Log.d("TransferApprovalDialog", "Set approval request - Transfer ID: ${request.transferId}, Sender: ${request.senderName}")
     }
     
     fun setListener(listener: ApprovalListener) {
@@ -75,6 +77,9 @@ class TransferApprovalDialog : DialogFragment() {
         
         rejectButton.setOnClickListener {
             countDownTimer?.cancel()
+            Log.d("TransferApprovalDialog", "=== REJECT BUTTON CLICKED ===")
+            Log.d("TransferApprovalDialog", "Transfer ID: ${approvalRequest.transferId}")
+            Log.d("TransferApprovalDialog", "Sender: ${approvalRequest.senderName}")
             listener?.onRejected(approvalRequest.transferId)
             dismiss()
         }
