@@ -45,7 +45,7 @@ app.post('/payment-requests', (req, res) => {
     store.create(request);
 
     // Generate deep link for QR code
-    const qrData = `nfcwallet://payment-request?id=${request.requestId}`;
+    const qrData = `nfcwallet://payment-request?id=${request.requestId}&recipient=${encodeURIComponent(recipientAddress)}`;
 
     return res.status(201).json({
       ...request,

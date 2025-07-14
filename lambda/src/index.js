@@ -54,7 +54,7 @@ exports.handler = async (event) => {
         Item: item
       }));
 
-      const qrData = `nfcwallet://payment-request?id=${requestId}`;
+      const qrData = `nfcwallet://payment-request?id=${requestId}&recipient=${encodeURIComponent(body.recipientAddress)}`;
       
       return corsResponse(201, {
         ...item,

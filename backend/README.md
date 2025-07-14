@@ -75,7 +75,7 @@ Environment variables:
 
 QR codes contain deep links in this format:
 ```
-nfcwallet://payment-request?id=<request-id>
+nfcwallet://payment-request?id=<request-id>&recipient=<address>
 ```
 
 ## Data Models
