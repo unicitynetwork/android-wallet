@@ -1,4 +1,4 @@
-export interface Payment {
+export interface PaymentDetails {
   senderAddress: string;
   currencySymbol: string;
   amount: string;
@@ -6,13 +6,13 @@ export interface Payment {
 }
 
 export interface PaymentRequest {
-  id: string;
+  requestId: string;
   recipientAddress: string;
   status: 'pending' | 'completed' | 'expired';
-  createdAt: Date;
-  expiresAt: Date;
-  completedAt?: Date;
-  payment?: Payment;
+  createdAt: string;
+  expiresAt: string;
+  completedAt?: string;
+  paymentDetails?: PaymentDetails;
 }
 
 export interface CreatePaymentRequestDto {
