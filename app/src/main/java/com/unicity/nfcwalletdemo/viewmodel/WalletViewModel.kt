@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class WalletViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = WalletRepository(application)
@@ -332,6 +334,118 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     fun getSdkService() = repository.getSdkService()
     
     fun getIdentityManager() = repository.getIdentityManager()
+    
+    suspend fun testOfflineTransfer(): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            // Find a Unicity token to test with
+            val testToken = tokens.value.firstOrNull { it.type == "Unicity Token" }
+                ?: return@withContext Result.failure(Exception("No Unicity tokens available for testing"))
+            
+            // Generate a test recipient identity
+            val sdkService = getSdkService()
+            var recipientIdentity: String? = null
+            
+            sdkService.generateIdentity { result ->
+                result.fold(
+                    onSuccess = { identity -> recipientIdentity = identity },
+                    onFailure = { error -> throw error }
+                )
+            }
+            
+            // Wait for identity generation
+            delay(1000)
+            
+            if (recipientIdentity == null) {
+                return@withContext Result.failure(Exception("Failed to generate recipient identity"))
+            }
+            
+            // Get recipient address from identity
+            val objectMapper = com.fasterxml.jackson.databind.ObjectMapper()
+            val identityData = objectMapper.readTree(recipientIdentity)
+            val recipientSecret = identityData.get("secret").asText().toByteArray()
+            val recipientNonce = identityData.get("nonce").asText().toByteArray()
+            
+            // Parse token data to get tokenId and tokenType
+            val tokenData = objectMapper.readTree(testToken.jsonData ?: "{}")
+            val genesis = tokenData.get("genesis")
+            val genesisData = genesis.get("data")
+            val tokenIdHex = genesisData.get("tokenId").asText()
+            val tokenTypeHex = genesisData.get("tokenType").asText()
+            
+            // Create recipient's predicate to get correct address
+            val recipientSigningService = com.unicity.sdk.shared.signing.SigningService.createFromSecret(recipientSecret, recipientNonce).get()
+            val tokenId = com.unicity.sdk.token.TokenId.create(hexStringToByteArray(tokenIdHex))
+            val tokenType = com.unicity.sdk.token.TokenType.create(hexStringToByteArray(tokenTypeHex))
+            
+            val recipientPredicate = com.unicity.sdk.predicate.MaskedPredicate.create(
+                tokenId,
+                tokenType,
+                recipientSigningService,
+                com.unicity.sdk.shared.hash.HashAlgorithm.SHA256,
+                recipientNonce
+            ).get()
+            
+            val recipientAddress = com.unicity.sdk.address.DirectAddress.create(recipientPredicate.reference).get().toString()
+            
+            // Get sender identity
+            val senderIdentity = getIdentityManager().getCurrentIdentity()
+                ?: return@withContext Result.failure(Exception("No wallet identity found"))
+            
+            // Create offline transfer package
+            val transferResult = sdkService.createOfflineTransferPackage(
+                senderIdentity.toJson(),
+                recipientAddress,
+                testToken.jsonData ?: "{}"
+            )
+            
+            var offlinePackage: String? = null
+            transferResult.fold(
+                onSuccess = { pkg -> offlinePackage = pkg },
+                onFailure = { error -> return@withContext Result.failure(error) }
+            )
+            
+            if (offlinePackage == null) {
+                return@withContext Result.failure(Exception("Failed to create offline package"))
+            }
+            
+            // Complete the transfer (simulating receiver side)
+            val completeResult = sdkService.completeOfflineTransfer(
+                recipientIdentity!!,
+                offlinePackage!!
+            )
+            
+            completeResult.fold(
+                onSuccess = { receivedToken ->
+                    // Remove the token from sender's wallet
+                    removeToken(testToken.id)
+                    
+                    return@withContext Result.success(
+                        "Offline transfer test successful!\n\n" +
+                        "Token '${testToken.name}' was transferred offline and received successfully.\n" +
+                        "Token has been removed from your wallet to simulate the transfer."
+                    )
+                },
+                onFailure = { error ->
+                    return@withContext Result.failure(
+                        Exception("Failed to complete offline transfer: ${error.message}")
+                    )
+                }
+            )
+        } catch (e: Exception) {
+            return@withContext Result.failure(e)
+        }
+    }
+    
+    private fun hexStringToByteArray(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
+    }
     
     override fun onCleared() {
         super.onCleared()

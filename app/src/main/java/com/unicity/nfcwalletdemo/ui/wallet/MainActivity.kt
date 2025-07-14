@@ -781,8 +781,58 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun runOfflineTransferTest() {
-        Toast.makeText(this, "Offline transfer test not available in Java SDK", Toast.LENGTH_SHORT).show()
-        // TODO: Implement offline transfer test using Java SDK
+        // Check if we have any Unicity tokens to test with
+        val tokens = viewModel.tokens.value
+        val unicityTokens = tokens.filter { it.type == "Unicity Token" }
+        
+        if (unicityTokens.isEmpty()) {
+            Toast.makeText(this, "Please mint a Unicity token first to test offline transfer", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        // Show progress dialog
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle("Testing Offline Transfer")
+            .setMessage("Running offline transfer test...\nThis will create and complete an offline transfer locally.")
+            .setCancelable(false)
+            .create()
+            
+        progressDialog.show()
+        
+        // Run the test in a coroutine
+        lifecycleScope.launch {
+            try {
+                // Run the test
+                val result = viewModel.testOfflineTransfer()
+                
+                progressDialog.dismiss()
+                
+                if (result.isSuccess) {
+                    showOfflineTransferSuccessDialog(result.getOrNull() ?: "")
+                } else {
+                    showOfflineTransferErrorDialog(result.exceptionOrNull()?.message ?: "Unknown error")
+                }
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                showOfflineTransferErrorDialog(e.message ?: "Unexpected error occurred")
+            }
+        }
+    }
+    
+    private fun showOfflineTransferSuccessDialog(details: String) {
+        AlertDialog.Builder(this)
+            .setTitle("✅ Offline Transfer Test Successful")
+            .setMessage("The offline transfer test completed successfully!\n\nDetails:\n$details")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+    
+    private fun showOfflineTransferErrorDialog(error: String) {
+        AlertDialog.Builder(this)
+            .setTitle("❌ Offline Transfer Test Failed")
+            .setMessage("The offline transfer test failed.\n\nError: $error")
+            .setPositiveButton("OK", null)
+            .show()
     }
     
     
