@@ -2432,43 +2432,111 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showPaymentDialog(requestId: String, recipientAddress: String) {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_send_payment, null)
+        showPaymentCryptoSelector(requestId, recipientAddress)
+    }
+    
+    private fun showPaymentCryptoSelector(requestId: String, recipientAddress: String) {
+        val cryptoList = viewModel.cryptocurrencies.value
+        if (cryptoList.isEmpty()) {
+            Toast.makeText(this, "No cryptocurrencies available", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        if (cryptoList.size == 1) {
+            // If only one crypto, skip selection
+            showPaymentAmountDialog(cryptoList[0], requestId, recipientAddress)
+        } else {
+            // Show crypto selection dialog
+            val cryptoNames = cryptoList.map { "${it.name} (${it.symbol})" }.toTypedArray()
+            AlertDialog.Builder(this)
+                .setTitle("Select Currency")
+                .setItems(cryptoNames) { _, which ->
+                    showPaymentAmountDialog(cryptoList[which], requestId, recipientAddress)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+    
+    private fun showPaymentAmountDialog(crypto: CryptoCurrency, requestId: String, recipientAddress: String) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_send_crypto, null)
+        
+        // Set up dialog elements
+        val cryptoIcon = dialogView.findViewById<android.widget.ImageView>(R.id.cryptoIcon)
+        val cryptoName = dialogView.findViewById<TextView>(R.id.cryptoName)
+        val availableBalance = dialogView.findViewById<TextView>(R.id.availableBalance)
+        val amountInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.amountInput)
+        val estimatedValue = dialogView.findViewById<TextView>(R.id.estimatedValue)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+        val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
+        val chip25 = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chip25)
+        val chip50 = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chip50)
+        val chip75 = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chip75)
+        val chipMax = dialogView.findViewById<com.google.android.material.chip.Chip>(R.id.chipMax)
+        
+        // Set crypto info
+        cryptoIcon.setImageResource(crypto.iconResId)
+        cryptoName.text = "${crypto.name} Payment"
+        availableBalance.text = "Available: ${crypto.getFormattedBalance()} ${crypto.symbol}"
+        
+        // Update estimated value on amount change
+        fun updateEstimatedValue(amount: Double) {
+            val value = when (selectedCurrency) {
+                "USD" -> amount * crypto.priceUsd
+                "EUR" -> amount * crypto.priceEur
+                else -> amount * crypto.priceUsd
+            }
+            val currencySymbol = if (selectedCurrency == "EUR") "€" else "$"
+            estimatedValue.text = "≈ ${currencySymbol}${String.format("%.2f", value)}"
+        }
+        
+        // Set up amount input listener
+        amountInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val amount = s.toString().toDoubleOrNull() ?: 0.0
+                updateEstimatedValue(amount)
+            }
+        })
+        
+        // Set up percentage chips
+        chip25.setOnClickListener {
+            val amount = crypto.balance * 0.25
+            amountInput.setText(formatCryptoAmount(amount))
+        }
+        
+        chip50.setOnClickListener {
+            val amount = crypto.balance * 0.5
+            amountInput.setText(formatCryptoAmount(amount))
+        }
+        
+        chip75.setOnClickListener {
+            val amount = crypto.balance * 0.75
+            amountInput.setText(formatCryptoAmount(amount))
+        }
+        
+        chipMax.setOnClickListener {
+            amountInput.setText(crypto.getFormattedBalance())
+        }
         
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
-            .setTitle("Send Payment")
             .create()
         
-        // Get crypto list for spinner
-        val cryptoList = viewModel.cryptocurrencies.value
-        val cryptoNames = cryptoList.map { "${it.name} (${it.symbol})" }
-        
-        val currencySpinner = dialogView.findViewById<android.widget.Spinner>(R.id.currencySpinner)
-        val amountInput = dialogView.findViewById<EditText>(R.id.amountInput)
-        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
-        val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
-        
-        // Set up spinner
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, cryptoNames)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        currencySpinner.adapter = adapter
-        
+        // Set up button listeners
         btnCancel.setOnClickListener {
             dialog.dismiss()
         }
         
         btnSend.setOnClickListener {
-            val selectedIndex = currencySpinner.selectedItemPosition
-            if (selectedIndex >= 0 && selectedIndex < cryptoList.size) {
-                val selectedCrypto = cryptoList[selectedIndex]
-                val amount = amountInput.text.toString().toDoubleOrNull()
-                
-                if (amount != null && amount > 0 && amount <= selectedCrypto.balance) {
-                    dialog.dismiss()
-                    sendPaymentRequest(requestId, recipientAddress, selectedCrypto, amount)
-                } else {
-                    Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
-                }
+            val amount = amountInput.text.toString().toDoubleOrNull()
+            
+            if (amount != null && amount > 0 && amount <= crypto.balance) {
+                dialog.dismiss()
+                sendPaymentRequest(requestId, recipientAddress, crypto, amount)
+            } else {
+                Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
             }
         }
         
@@ -2620,6 +2688,14 @@ class MainActivity : AppCompatActivity() {
             if (attempts >= maxAttempts) {
                 Toast.makeText(this@MainActivity, "Payment request timed out", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+    
+    private fun formatCryptoAmount(amount: Double): String {
+        return if (amount % 1 == 0.0) {
+            amount.toInt().toString()
+        } else {
+            String.format("%.8f", amount).trimEnd('0').trimEnd('.')
         }
     }
 }
