@@ -36,7 +36,11 @@ object BluetoothMeshManager {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     // SharedFlow for mesh events - allows multiple collectors
-    private val _meshEvents = MutableSharedFlow<MeshEvent>(replay = 0, extraBufferCapacity = 10)
+    // Increased buffer capacity and added replay to ensure no messages are lost
+    private val _meshEvents = MutableSharedFlow<MeshEvent>(
+        replay = 10,  // Keep last 10 events for late subscribers
+        extraBufferCapacity = 100  // Large buffer to prevent dropping
+    )
     val meshEvents: SharedFlow<MeshEvent> = _meshEvents
     
     // Connected devices
@@ -76,7 +80,14 @@ object BluetoothMeshManager {
         }
         
         startGattServer()
-        startAdvertising()
+        
+        // Add a small delay to ensure GATT server is ready
+        scope.launch {
+            delay(500)
+            startAdvertising()
+            Log.d(TAG, "Started advertising after delay")
+        }
+        
         startContinuousScanning()
         
         isInitialized = true
@@ -97,13 +108,21 @@ object BluetoothMeshManager {
     
     private fun startGattServer() {
         try {
+            Log.d(TAG, "=== STARTING GATT SERVER ===")
+            
             val gattServerCallback = object : BluetoothGattServerCallback() {
                 override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-                    Log.d(TAG, "Device ${device.address} connection state: $newState")
+                    Log.d(TAG, "=== GATT CONNECTION STATE CHANGE ===")
+                    Log.d(TAG, "Device: ${device.address}")
+                    Log.d(TAG, "Status: $status")
+                    Log.d(TAG, "New state: $newState (${if (newState == BluetoothProfile.STATE_CONNECTED) "CONNECTED" else "DISCONNECTED"})")
+                    
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         connectedDevices.add(device)
+                        Log.d(TAG, "Device connected. Total connected: ${connectedDevices.size}")
                     } else {
                         connectedDevices.remove(device)
+                        Log.d(TAG, "Device disconnected. Total connected: ${connectedDevices.size}")
                     }
                 }
                 
@@ -120,15 +139,29 @@ object BluetoothMeshManager {
                     
                     if (characteristic.uuid == MESH_MESSAGE_UUID) {
                         val message = String(value, StandardCharsets.UTF_8)
-                        Log.d(TAG, "Received message from ${device.address}: $message")
+                        Log.d(TAG, "=== BLUETOOTH MESSAGE RECEIVED ===")
+                        Log.d(TAG, "From device: ${device.address}")
+                        Log.d(TAG, "Message length: ${message.length}")
+                        Log.d(TAG, "Message content: $message")
+                        
+                        // Log that we received a message
+                        Log.d(TAG, "Message received and will be emitted to collectors")
+                        
+                        // Check if it looks like JSON
+                        val isJson = message.trim().startsWith("{") && message.trim().endsWith("}")
+                        Log.d(TAG, "Is JSON message: $isJson")
                         
                         // Emit the message event
-                        _meshEvents.tryEmit(MeshEvent.MessageReceived(
+                        val emitResult = _meshEvents.tryEmit(MeshEvent.MessageReceived(
                             message = message,
                             fromDevice = device.address
                         ))
                         
-                        Log.d(TAG, "Message event emitted for: $message")
+                        Log.d(TAG, "Message event emit result: $emitResult")
+                        
+                        if (!emitResult) {
+                            Log.e(TAG, "!!! FAILED TO EMIT MESSAGE EVENT !!!")
+                        }
                     }
                     
                     if (responseNeeded) {
@@ -152,11 +185,14 @@ object BluetoothMeshManager {
             // Create the mesh service
             val service = BluetoothGattService(MESH_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
             
-            // Add message characteristic
+            // Add message characteristic with more permissive settings
             val messageCharacteristic = BluetoothGattCharacteristic(
                 MESH_MESSAGE_UUID,
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE
+                BluetoothGattCharacteristic.PROPERTY_WRITE or 
+                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or
+                BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_WRITE or 
+                BluetoothGattCharacteristic.PERMISSION_READ
             )
             
             service.addCharacteristic(messageCharacteristic)
@@ -290,6 +326,19 @@ object BluetoothMeshManager {
      */
     suspend fun sendMessage(deviceAddress: String, message: String, retryCount: Int = 3): Boolean {
         return withContext(Dispatchers.IO) {
+            Log.d(TAG, "=== sendMessage CALLED ===")
+            Log.d(TAG, "To device: $deviceAddress")
+            Log.d(TAG, "Message length: ${message.length} chars")
+            Log.d(TAG, "Message preview: ${message.take(200)}...")
+            
+            // Check message size
+            val messageBytes = message.toByteArray(StandardCharsets.UTF_8)
+            Log.d(TAG, "Message size: ${messageBytes.size} bytes")
+            
+            if (messageBytes.size > 512) {
+                Log.w(TAG, "WARNING: Message is large (${messageBytes.size} bytes), may fail!")
+            }
+            
             var attempt = 0
             var lastError: String? = null
             
@@ -324,6 +373,9 @@ object BluetoothMeshManager {
     }
     
     private suspend fun sendMessageAttempt(deviceAddress: String, message: String): Boolean {
+        Log.d(TAG, "=== sendMessageAttempt STARTED ===")
+        Log.d(TAG, "Target device: $deviceAddress")
+        
         val result = CompletableDeferred<Boolean>()
         var gattConnection: BluetoothGatt? = null
         
@@ -333,6 +385,8 @@ object BluetoothMeshManager {
                 Log.e(TAG, "Device not found: $deviceAddress")
                 return false
             }
+            
+            Log.d(TAG, "Got remote device: ${device.name ?: "Unknown"} (${device.address})")
             
             val gattCallback = object : BluetoothGattCallback() {
                 override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -394,21 +448,56 @@ object BluetoothMeshManager {
                                 }
                             }
                             
+                            // Try WRITE_TYPE_NO_RESPONSE first for better compatibility
+                            val preferredWriteType = if ((properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+                                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                            } else {
+                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            }
+                            
+                            Log.d(TAG, "Message bytes size: ${messageBytes.size}")
+                            Log.d(TAG, "Using write type: $preferredWriteType")
+                            
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                val writeResult = gatt.writeCharacteristic(characteristic, messageBytes, writeType)
-                                Log.d(TAG, "Write initiated (API 33+): $writeResult with writeType: $writeType")
+                                val writeResult = gatt.writeCharacteristic(characteristic, messageBytes, preferredWriteType)
+                                Log.d(TAG, "Write initiated (API 33+): $writeResult with writeType: $preferredWriteType")
                                 if (writeResult != BluetoothGatt.GATT_SUCCESS) {
                                     Log.e(TAG, "Write failed with result: $writeResult")
+                                    
+                                    // If NO_RESPONSE failed, try DEFAULT
+                                    if (preferredWriteType == BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE && 
+                                        (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) {
+                                        Log.d(TAG, "Retrying with WRITE_TYPE_DEFAULT...")
+                                        val retryResult = gatt.writeCharacteristic(characteristic, messageBytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                                        if (retryResult == BluetoothGatt.GATT_SUCCESS) {
+                                            Log.d(TAG, "Retry successful")
+                                            return
+                                        }
+                                    }
+                                    
                                     result.complete(false)
                                     gatt.disconnect()
                                 }
                             } else {
-                                characteristic.writeType = writeType
+                                characteristic.writeType = preferredWriteType
                                 characteristic.value = messageBytes
                                 val writeResult = gatt.writeCharacteristic(characteristic)
-                                Log.d(TAG, "Write initiated (legacy): $writeResult with writeType: $writeType")
+                                Log.d(TAG, "Write initiated (legacy): $writeResult with writeType: $preferredWriteType")
                                 if (!writeResult) {
                                     Log.e(TAG, "Write failed")
+                                    
+                                    // If NO_RESPONSE failed, try DEFAULT
+                                    if (preferredWriteType == BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE && 
+                                        (properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) {
+                                        Log.d(TAG, "Retrying with WRITE_TYPE_DEFAULT...")
+                                        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                                        val retryResult = gatt.writeCharacteristic(characteristic)
+                                        if (retryResult) {
+                                            Log.d(TAG, "Retry successful")
+                                            return
+                                        }
+                                    }
+                                    
                                     result.complete(false)
                                     gatt.disconnect()
                                 }
@@ -468,6 +557,41 @@ object BluetoothMeshManager {
                 Log.e(TAG, "Error during cleanup", e)
             }
         }
+    }
+    
+    /**
+     * Test if GATT server is working by sending a local message
+     */
+    fun testLocalMessage() {
+        Log.d(TAG, "=== TESTING LOCAL MESSAGE ===")
+        
+        // Emit a test message event
+        val testMessage = "LOCAL_TEST_${System.currentTimeMillis()}"
+        val emitted = _meshEvents.tryEmit(MeshEvent.MessageReceived(
+            message = testMessage,
+            fromDevice = "LOCAL_TEST"
+        ))
+        
+        Log.d(TAG, "Test message emitted: $emitted")
+        Log.d(TAG, "Connected devices: ${connectedDevices.size}")
+        
+        // Log GATT server state
+        Log.d(TAG, "GATT server: ${if (gattServer != null) "EXISTS" else "NULL"}")
+        Log.d(TAG, "Is initialized: $isInitialized")
+    }
+    
+    /**
+     * Get diagnostic info
+     */
+    fun getDiagnostics(): String {
+        return """
+            BluetoothMeshManager Diagnostics:
+            - Initialized: $isInitialized
+            - GATT Server: ${if (gattServer != null) "Running" else "Not running"}
+            - Connected devices: ${connectedDevices.size}
+            - Bluetooth enabled: ${bluetoothAdapter?.isEnabled ?: false}
+            - Scanning: $isScanning
+        """.trimIndent()
     }
     
     /**

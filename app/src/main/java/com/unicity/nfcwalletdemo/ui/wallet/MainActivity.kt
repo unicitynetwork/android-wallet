@@ -1375,6 +1375,104 @@ class MainActivity : AppCompatActivity() {
             showSuccessDialog("Excellent, you've sent 1.5 BTC!")
             true
         }
+        
+        // Long press on currency selector to test BT mesh
+        binding.currencySelector.setOnLongClickListener {
+            testBluetoothMesh()
+            true
+        }
+    }
+    
+    private fun testBluetoothMesh() {
+        Log.d("MainActivity", "=== TESTING BLUETOOTH MESH ===")
+        
+        // Get diagnostics
+        val diagnostics = BluetoothMeshManager.getDiagnostics()
+        Log.d("MainActivity", diagnostics)
+        
+        // Test local message
+        BluetoothMeshManager.testLocalMessage()
+        
+        // Show diagnostics to user
+        AlertDialog.Builder(this)
+            .setTitle("BT Mesh Diagnostics")
+            .setMessage(diagnostics)
+            .setPositiveButton("Test Send") { _, _ ->
+                // Try to send a test message to first discovered peer
+                val peers = BTMeshTransferCoordinator.getDiscoveredPeers()
+                if (peers.isNotEmpty()) {
+                    val peer = peers.first()
+                    lifecycleScope.launch {
+                        val result = BluetoothMeshManager.sendMessage(
+                            peer.peerId,
+                            "DIAGNOSTIC_TEST_${System.currentTimeMillis()}"
+                        )
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Test send to ${peer.deviceName}: ${if (result) "SUCCESS" else "FAILED"}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } else {
+                    Toast.makeText(this, "No peers discovered", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+    
+    private fun showTestMessageDialog(message: String, fromDevice: String) {
+        AlertDialog.Builder(this)
+            .setTitle("🎉 BT Mesh Test Message Received!")
+            .setMessage("""
+                ✅ Message successfully received via Bluetooth Mesh!
+                
+                From: $fromDevice
+                Message: $message
+                
+                This confirms that:
+                • BT mesh communication is working
+                • GATT server is receiving messages
+                • Event flow is functioning properly
+                
+                Now let's test token transfers!
+            """.trimIndent())
+            .setPositiveButton("Great!") { dialog, _ ->
+                dialog.dismiss()
+                
+                // Automatically show transfer approval dialog for testing
+                showTestTransferApprovalDialog(fromDevice)
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+    
+    private fun showTestTransferApprovalDialog(senderDevice: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Test Token Transfer")
+            .setMessage("""
+                Would you like to test the token transfer approval dialog?
+                
+                This will simulate receiving a token transfer request from:
+                $senderDevice
+            """.trimIndent())
+            .setPositiveButton("Yes, Test It") { _, _ ->
+                // Create a test approval request
+                val testApproval = com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest(
+                    transferId = "TEST_${System.currentTimeMillis()}",
+                    senderPeerId = senderDevice,
+                    senderName = "Test Device",
+                    tokenType = "Test Token",
+                    tokenName = "Demo Token",
+                    tokenPreview = "Test Token: Demo Token",
+                    timestamp = System.currentTimeMillis()
+                )
+                
+                // Show the actual transfer approval dialog
+                showTransferApprovalDialog(testApproval)
+            }
+            .setNegativeButton("Not Now", null)
+            .show()
     }
     
     private fun initializeBluetoothMesh() {
@@ -1820,6 +1918,37 @@ class MainActivity : AppCompatActivity() {
         if (checkBluetoothPermissions()) {
             Log.d("MainActivity", "Bluetooth permissions granted, initializing BluetoothMeshManager")
             BluetoothMeshManager.initialize(this)
+            
+            // Add a test collector to verify events are flowing
+            lifecycleScope.launch {
+                Log.d("MainActivity", "Starting test event collector...")
+                try {
+                    BluetoothMeshManager.meshEvents.collect { event ->
+                        Log.d("MainActivity", "!!! MAIN ACTIVITY GOT EVENT: ${event::class.simpleName}")
+                        when (event) {
+                            is BluetoothMeshManager.MeshEvent.MessageReceived -> {
+                                Log.d("MainActivity", "!!! Message from ${event.fromDevice}: ${event.message}")
+                                
+                                // Check if it's a diagnostic test message
+                                if (event.message.startsWith("DIAGNOSTIC_TEST_")) {
+                                    runOnUiThread {
+                                        showTestMessageDialog(event.message, event.fromDevice)
+                                    }
+                                }
+                                
+                                // Check if it's a JSON transfer message
+                                if (event.message.trim().startsWith("{") && event.message.contains("TRANSFER_PERMISSION_REQUEST")) {
+                                    Log.d("MainActivity", "!!! This is a TRANSFER REQUEST - should show approval dialog!")
+                                }
+                            }
+                            else -> {}
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Test collector failed", e)
+                }
+                Log.d("MainActivity", "!!! Test collector ended !!!")
+            }
         } else {
             Log.e("MainActivity", "Bluetooth permissions NOT granted!")
         }

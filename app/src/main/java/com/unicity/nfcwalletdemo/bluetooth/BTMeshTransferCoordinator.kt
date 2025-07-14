@@ -49,61 +49,157 @@ object BTMeshTransferCoordinator {
             return
         }
         
+        Log.d(TAG, "BTMeshTransferCoordinator.initialize() called")
         context = appContext
         bluetoothMeshTransferService = transferService
         sdkService = sdk
         isInitialized = true
         
+        // Set up event handlers IMMEDIATELY to catch all messages
         setupEventHandlers()
-        Log.d(TAG, "BTMeshTransferCoordinator initialized")
+        
+        // Verify we're actually connected to the event stream
+        scope.launch {
+            delay(500) // Small delay to let everything initialize
+            Log.d(TAG, "Verifying event stream connection...")
+            // Test that we can send a message
+            BluetoothMeshManager.sendMessage("TEST_DEVICE", "COORDINATOR_INIT_TEST")
+        }
+        
+        Log.d(TAG, "BTMeshTransferCoordinator initialized - event handlers active")
     }
 
     private fun setupEventHandlers() {
-        // Listen for all events from BluetoothMeshManager
+        Log.d(TAG, "=== setupEventHandlers() CALLED ===")
+        
+        // First, let's verify we can collect events at all
         scope.launch {
-            BluetoothMeshManager.meshEvents.collect { event ->
-                when (event) {
-                    is BluetoothMeshManager.MeshEvent.MessageReceived -> {
-                        Log.d(TAG, "=== BTMeshTransferCoordinator INTERCEPTED MESSAGE ===")
-                        Log.d(TAG, "From: ${event.fromDevice}")
-                        Log.d(TAG, "Message: ${event.message}")
+            Log.d(TAG, "Testing event collection...")
+            val testResult = BluetoothMeshManager.testLocalMessage()
+            Log.d(TAG, "Local message test completed")
+        }
+        
+        // Listen for all events from BluetoothMeshManager
+        // Using a while loop to restart collection if it fails
+        scope.launch {
+            Log.d(TAG, "Starting mesh event collection loop in BTMeshTransferCoordinator")
+            
+            while (isActive) {
+                try {
+                    Log.d(TAG, "BTMeshTransferCoordinator: Entering collect block...")
+                    BluetoothMeshManager.meshEvents.collect { event ->
+                        Log.d(TAG, "=== BTMeshTransferCoordinator GOT EVENT: ${event::class.simpleName} ===")
                         
-                        // Convert message string to byte array
-                        val messageData = event.message.toByteArray(Charsets.UTF_8)
-                        handleIncomingMessage(messageData, event.fromDevice)
+                        // Log event reception
+                        Log.d(TAG, "Coordinator processing event: ${event::class.simpleName}")
+                        
+                        try {
+                            when (event) {
+                                is BluetoothMeshManager.MeshEvent.MessageReceived -> {
+                                    Log.d(TAG, "=== MESSAGE RECEIVED IN COORDINATOR ===")
+                                    Log.d(TAG, "From: ${event.fromDevice}")
+                                    Log.d(TAG, "Message preview: ${event.message.take(100)}...")
+                                    
+                                    // Handle the message in a separate coroutine to not block collection
+                                    launch {
+                                        val messageData = event.message.toByteArray(Charsets.UTF_8)
+                                        handleIncomingMessage(messageData, event.fromDevice)
+                                    }
+                                }
+                                is BluetoothMeshManager.MeshEvent.DeviceDiscovered -> {
+                                    val peer = DiscoveredPeer(
+                                        peerId = event.address,
+                                        deviceName = event.name ?: "Unknown Device",
+                                        lastSeen = System.currentTimeMillis()
+                                    )
+                                    discoveredPeers[event.address] = peer
+                                    Log.d(TAG, "Wallet peer discovered: ${peer.deviceName} (${peer.peerId})")
+                                }
+                                else -> {
+                                    Log.d(TAG, "Other event: ${event::class.simpleName}")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing event", e)
+                        }
                     }
-                    is BluetoothMeshManager.MeshEvent.DeviceDiscovered -> {
-                        val peer = DiscoveredPeer(
-                            peerId = event.address,
-                            deviceName = event.name ?: "Unknown Device",
-                            lastSeen = System.currentTimeMillis()
-                        )
-                        discoveredPeers[event.address] = peer
-                        Log.d(TAG, "=== WALLET PEER DISCOVERED ===")
-                        Log.d(TAG, "Name: ${peer.deviceName}")
-                        Log.d(TAG, "Address: ${peer.peerId}")
-                        Log.d(TAG, "Total discovered peers: ${discoveredPeers.size}")
-                    }
-                    else -> {}
+                } catch (e: Exception) {
+                    Log.e(TAG, "Event collection failed, restarting in 1 second...", e)
+                    delay(1000)
                 }
             }
+            Log.d(TAG, "Event collection loop ended - THIS SHOULD NOT HAPPEN!")
         }
     }
 
     private fun handleIncomingMessage(data: ByteArray, fromDevice: String) {
         try {
             val messageString = String(data)
-            Log.d(TAG, "Raw message received: $messageString")
+            Log.d(TAG, "=== handleIncomingMessage CALLED ===")
+            Log.d(TAG, "From: $fromDevice")
+            Log.d(TAG, "Message length: ${messageString.length}")
+            Log.d(TAG, "Raw message: $messageString")
+            
+            // Check if it's a test message
+            if (messageString.startsWith("TEST_")) {
+                Log.d(TAG, "Received test message: $messageString")
+                return
+            }
+            
+            // Check if it's a simple transfer notification
+            if (messageString.startsWith("TOKEN_TRANSFER_REQUEST:")) {
+                val transferId = messageString.substringAfter("TOKEN_TRANSFER_REQUEST:")
+                Log.d(TAG, "!!! RECEIVED SIMPLE TRANSFER NOTIFICATION !!!")
+                Log.d(TAG, "Transfer ID: $transferId")
+                Log.d(TAG, "Waiting for full JSON message...")
+                return
+            }
+            
+            // Check if it's a fallback transfer message
+            if (messageString.startsWith("TRANSFER|")) {
+                val parts = messageString.split("|")
+                if (parts.size >= 4) {
+                    Log.d(TAG, "!!! RECEIVED FALLBACK TRANSFER MESSAGE !!!")
+                    Log.d(TAG, "Creating approval from fallback: ${parts[1]}, ${parts[2]}, ${parts[3]}")
+                    
+                    // Create a minimal approval request
+                    val approvalRequest = TransferApprovalRequest(
+                        transferId = parts[1],
+                        senderPeerId = fromDevice,
+                        senderName = parts[2],
+                        tokenType = "Token",
+                        tokenName = parts[3],
+                        tokenPreview = "Token: ${parts[3]}",
+                        timestamp = System.currentTimeMillis()
+                    )
+                    
+                    _pendingApprovals.value = _pendingApprovals.value + approvalRequest
+                    Log.d(TAG, "Added fallback approval, count: ${_pendingApprovals.value.size}")
+                    return
+                }
+            }
+            
+            // Try to parse as JSON
+            val isJson = messageString.trim().startsWith("{") && messageString.trim().endsWith("}")
+            if (!isJson) {
+                Log.d(TAG, "Not a JSON message, ignoring")
+                return
+            }
             
             val message = gson.fromJson(messageString, BTMeshMessage::class.java)
-            Log.d(TAG, "Parsed message type: ${message.type} from $fromDevice")
+            Log.d(TAG, "Successfully parsed JSON message")
+            Log.d(TAG, "Message type: ${message.type}")
+            Log.d(TAG, "Transfer ID: ${message.transferId}")
             
             when (message.type) {
                 BTMeshMessageType.TRANSFER_PERMISSION_REQUEST -> {
-                    Log.d(TAG, "Handling TRANSFER_PERMISSION_REQUEST")
+                    Log.d(TAG, "=== RECEIVED TRANSFER_PERMISSION_REQUEST ===")
                     handlePermissionRequest(message, fromDevice)
                 }
-                BTMeshMessageType.TRANSFER_PERMISSION_RESPONSE -> handlePermissionResponse(message, fromDevice)
+                BTMeshMessageType.TRANSFER_PERMISSION_RESPONSE -> {
+                    Log.d(TAG, "=== RECEIVED TRANSFER_PERMISSION_RESPONSE ===")
+                    handlePermissionResponse(message, fromDevice)
+                }
                 BTMeshMessageType.TRANSFER_REQUEST -> handleTransferRequest(message, fromDevice)
                 BTMeshMessageType.ADDRESS_RESPONSE -> handleAddressResponse(message, fromDevice)
                 BTMeshMessageType.TRANSFER_PACKAGE -> handleTransferPackage(message, fromDevice)
@@ -118,40 +214,66 @@ object BTMeshTransferCoordinator {
 
     // Flow 2: Direct BT Mesh Transfer - Sender initiates
     fun initiateTransfer(token: Token, recipientPeerId: String, recipientName: String) {
-        val transferId = UUID.randomUUID().toString()
-        val transfer = ActiveTransfer(
-            transferId = transferId,
-            peerId = recipientPeerId,
-            tokenId = token.id,
-            tokenData = token,
-            role = TransferRole.SENDER,
-            state = TransferState.REQUESTING_PERMISSION,
-            timestamp = System.currentTimeMillis()
-        )
+        Log.d(TAG, "=== INITIATING BT MESH TRANSFER ===")
+        Log.d(TAG, "Token: ${token.name}")
+        Log.d(TAG, "Token ID: ${token.id}")
+        Log.d(TAG, "Recipient peer ID: $recipientPeerId")
+        Log.d(TAG, "Recipient name: $recipientName")
         
-        activeTransfers[transferId] = transfer
-        updateTransferState(transferId, TransferState.REQUESTING_PERMISSION)
-        
-        // Send permission request
-        val request = BTMeshMessage(
-            type = BTMeshMessageType.TRANSFER_PERMISSION_REQUEST,
-            transferId = transferId,
-            payload = PermissionRequestPayload(
-                senderName = getDeviceName(),
-                tokenType = token.type,
-                tokenName = token.name,
-                tokenPreview = createTokenPreview(token)
-            )
-        )
-        
-        sendMessage(recipientPeerId, request)
-        
-        // Set timeout for approval
+        // FIRST: Send a simple test message to verify basic connectivity
         scope.launch {
-            delay(APPROVAL_TIMEOUT_MS)
-            val currentTransfer = activeTransfers[transferId]
-            if (currentTransfer?.state == TransferState.REQUESTING_PERMISSION) {
-                handleTransferTimeout(transferId, "Approval timeout")
+            Log.d(TAG, "Sending simple test message to verify connectivity...")
+            val testMsg = "TEST_TRANSFER_START_${System.currentTimeMillis()}"
+            val testResult = BluetoothMeshManager.sendMessage(recipientPeerId, testMsg)
+            Log.d(TAG, "Test message send result: $testResult")
+            
+            if (!testResult) {
+                Log.e(TAG, "Failed to send test message - basic connectivity issue!")
+                return@launch
+            }
+            
+            // Wait a bit then send the actual transfer request
+            delay(500)
+            
+            val transferId = UUID.randomUUID().toString()
+            Log.d(TAG, "Generated transfer ID: $transferId")
+            
+            val transfer = ActiveTransfer(
+                transferId = transferId,
+                peerId = recipientPeerId,
+                tokenId = token.id,
+                tokenData = token,
+                role = TransferRole.SENDER,
+                state = TransferState.REQUESTING_PERMISSION,
+                timestamp = System.currentTimeMillis()
+            )
+            
+            activeTransfers[transferId] = transfer
+            updateTransferState(transferId, TransferState.REQUESTING_PERMISSION)
+            
+            // Send permission request
+            val request = BTMeshMessage(
+                type = BTMeshMessageType.TRANSFER_PERMISSION_REQUEST,
+                transferId = transferId,
+                payload = PermissionRequestPayload(
+                    senderName = getDeviceName(),
+                    tokenType = token.type,
+                    tokenName = token.name,
+                    tokenPreview = createTokenPreview(token)
+                )
+            )
+            
+            Log.d(TAG, "Sending transfer permission request...")
+            sendMessage(recipientPeerId, request)
+            
+            // Set timeout for approval
+            launch {
+                delay(APPROVAL_TIMEOUT_MS)
+                val currentTransfer = activeTransfers[transferId]
+                if (currentTransfer?.state == TransferState.REQUESTING_PERMISSION) {
+                    Log.e(TAG, "Transfer approval timed out after ${APPROVAL_TIMEOUT_MS}ms")
+                    handleTransferTimeout(transferId, "Approval timeout")
+                }
             }
         }
     }
@@ -187,24 +309,39 @@ object BTMeshTransferCoordinator {
     }
 
     private fun handlePermissionRequest(message: BTMeshMessage, fromDevice: String) {
-        Log.d(TAG, "Handling permission request from $fromDevice")
-        val payload = gson.fromJson(gson.toJson(message.payload), PermissionRequestPayload::class.java)
+        Log.d(TAG, "=== handlePermissionRequest CALLED ===")
+        Log.d(TAG, "From device: $fromDevice")
+        Log.d(TAG, "Transfer ID: ${message.transferId}")
         
-        val approvalRequest = TransferApprovalRequest(
-            transferId = message.transferId,
-            senderPeerId = fromDevice,
-            senderName = payload.senderName,
-            tokenType = payload.tokenType,
-            tokenName = payload.tokenName,
-            tokenPreview = payload.tokenPreview,
-            timestamp = System.currentTimeMillis()
-        )
-        
-        Log.d(TAG, "Created approval request: $approvalRequest")
-        
-        // Add to pending approvals for UI
-        _pendingApprovals.value = _pendingApprovals.value + approvalRequest
-        Log.d(TAG, "Pending approvals count: ${_pendingApprovals.value.size}")
+        try {
+            val payload = gson.fromJson(gson.toJson(message.payload), PermissionRequestPayload::class.java)
+            Log.d(TAG, "Parsed payload - sender: ${payload.senderName}, token: ${payload.tokenName}")
+            
+            val approvalRequest = TransferApprovalRequest(
+                transferId = message.transferId,
+                senderPeerId = fromDevice,
+                senderName = payload.senderName,
+                tokenType = payload.tokenType,
+                tokenName = payload.tokenName,
+                tokenPreview = payload.tokenPreview,
+                timestamp = System.currentTimeMillis()
+            )
+            
+            Log.d(TAG, "Created approval request: $approvalRequest")
+            
+            // Add to pending approvals for UI
+            val oldCount = _pendingApprovals.value.size
+            _pendingApprovals.value = _pendingApprovals.value + approvalRequest
+            val newCount = _pendingApprovals.value.size
+            
+            Log.d(TAG, "Pending approvals updated: $oldCount -> $newCount")
+            Log.d(TAG, "Current pending approvals: ${_pendingApprovals.value.map { it.transferId }}")
+            
+            // Force emit to ensure UI gets updated
+            Log.d(TAG, "Emitting approval request to UI...")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling permission request", e)
+        }
     }
 
     fun approveTransfer(transferId: String) {
@@ -446,12 +583,40 @@ object BTMeshTransferCoordinator {
     }
 
     private fun sendMessage(peerId: String, message: BTMeshMessage) {
-        Log.d(TAG, "Sending message to $peerId: ${gson.toJson(message)}")
+        val messageString = gson.toJson(message)
+        Log.d(TAG, "=== SENDING BT MESH MESSAGE ===")
+        Log.d(TAG, "To peer: $peerId")
+        Log.d(TAG, "Message type: ${message.type}")
+        Log.d(TAG, "Transfer ID: ${message.transferId}")
+        Log.d(TAG, "JSON length: ${messageString.length}")
+        Log.d(TAG, "JSON content: $messageString")
         
         // Send the message through BluetoothMeshManager
-        val messageString = gson.toJson(message)
         scope.launch {
-            BluetoothMeshManager.sendMessage(peerId, messageString)
+            // TEMPORARY: First send a simple notification to ensure basic connectivity
+            if (message.type == BTMeshMessageType.TRANSFER_PERMISSION_REQUEST) {
+                Log.d(TAG, "Sending simple notification first...")
+                val simpleMsg = "TOKEN_TRANSFER_REQUEST:${message.transferId}"
+                val notifyResult = BluetoothMeshManager.sendMessage(peerId, simpleMsg)
+                Log.d(TAG, "Simple notification result: $notifyResult")
+                delay(200) // Small delay between messages
+            }
+            
+            Log.d(TAG, "Calling BluetoothMeshManager.sendMessage with JSON...")
+            val sendResult = BluetoothMeshManager.sendMessage(peerId, messageString)
+            Log.d(TAG, "JSON send result: $sendResult")
+            if (!sendResult) {
+                Log.e(TAG, "FAILED to send JSON message to $peerId")
+                
+                // Try sending a simpler version
+                if (message.type == BTMeshMessageType.TRANSFER_PERMISSION_REQUEST) {
+                    val payload = gson.fromJson(gson.toJson(message.payload), PermissionRequestPayload::class.java)
+                    val fallbackMsg = "TRANSFER|${message.transferId}|${payload.senderName}|${payload.tokenName}"
+                    Log.d(TAG, "Trying fallback message: $fallbackMsg")
+                    val fallbackResult = BluetoothMeshManager.sendMessage(peerId, fallbackMsg)
+                    Log.d(TAG, "Fallback result: $fallbackResult")
+                }
+            }
         }
     }
 
