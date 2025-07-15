@@ -20,6 +20,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -172,10 +173,17 @@ class MainActivity : AppCompatActivity() {
         if (data != null && data.scheme == "nfcwallet" && data.host == "payment-request") {
             val requestId = data.getQueryParameter("id")
             val recipientAddress = data.getQueryParameter("recipient")
+            val currency = data.getQueryParameter("currency")
+            val amount = data.getQueryParameter("amount")
             
             if (requestId != null && recipientAddress != null) {
-                // Show payment dialog
-                showPaymentDialog(requestId, recipientAddress)
+                if (currency != null && amount != null) {
+                    // Recipient specified currency and amount
+                    showSpecificPaymentDialog(requestId, recipientAddress, currency, amount)
+                } else {
+                    // Let sender choose currency and amount
+                    showPaymentDialog(requestId, recipientAddress)
+                }
             }
         }
     }
@@ -1172,6 +1180,72 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showReceiveQRDialog() {
+        // First ask if they want to specify amount/currency
+        AlertDialog.Builder(this)
+            .setTitle("Create Payment Request")
+            .setMessage("Do you want to specify the amount and currency?")
+            .setPositiveButton("Yes, specify amount") { _, _ ->
+                showAmountSpecificationDialog()
+            }
+            .setNegativeButton("No, let sender choose") { _, _ ->
+                showQRCodeGenerationDialog(null, null)
+            }
+            .show()
+    }
+    
+    private fun showAmountSpecificationDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_specify_amount, null)
+        
+        val assetsRecyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.assetsRecyclerView)
+        val selectedAssetLayout = dialogView.findViewById<LinearLayout>(R.id.selectedAssetLayout)
+        val selectedAssetIcon = dialogView.findViewById<ImageView>(R.id.selectedAssetIcon)
+        val selectedAssetName = dialogView.findViewById<TextView>(R.id.selectedAssetName)
+        val amountInputLayout = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.amountInputLayout)
+        val amountInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.amountInput)
+        
+        // Get available currencies from cryptocurrencies
+        val cryptos = viewModel.cryptocurrencies.value
+        var selectedCrypto: CryptoCurrency? = null
+        
+        // Setup RecyclerView
+        assetsRecyclerView.layoutManager = LinearLayoutManager(this)
+        val assetAdapter = AssetSelectionAdapter(cryptos) { crypto ->
+            selectedCrypto = crypto
+            
+            // Show selected asset
+            selectedAssetLayout.visibility = View.VISIBLE
+            selectedAssetIcon.setImageResource(crypto.iconResId)
+            selectedAssetName.text = "${crypto.name} (${crypto.symbol})"
+            
+            // Hide the recycler view and show amount input
+            assetsRecyclerView.visibility = View.GONE
+            amountInputLayout.visibility = View.VISIBLE
+            
+            // Focus on amount input
+            amountInput.requestFocus()
+        }
+        assetsRecyclerView.adapter = assetAdapter
+        
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Specify Payment Details")
+            .setView(dialogView)
+            .setPositiveButton("Generate QR") { _, _ ->
+                val currency = selectedCrypto?.symbol
+                val amount = amountInput.text?.toString()
+                
+                if (currency.isNullOrEmpty() || amount.isNullOrEmpty()) {
+                    Toast.makeText(this, "Please specify currency and amount", Toast.LENGTH_SHORT).show()
+                } else {
+                    showQRCodeGenerationDialog(currency, amount)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+            
+        dialog.show()
+    }
+    
+    private fun showQRCodeGenerationDialog(currencySymbol: String?, amount: String?) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_qr_code, null)
         
         val qrCodeImage = dialogView.findViewById<ImageView>(R.id.qrCodeImage)
@@ -1210,14 +1284,22 @@ class MainActivity : AppCompatActivity() {
             currentRequestJob = lifecycleScope.launch {
                 try {
                     val request = PaymentRequestService.api.createPaymentRequest(
-                        CreatePaymentRequestDto(walletAddress)
+                        CreatePaymentRequestDto(
+                            recipientAddress = walletAddress,
+                            currencySymbol = currencySymbol,
+                            amount = amount
+                        )
                     )
                     
                     // Generate QR code
                     val qrCodeBitmap = generateQRCode(request.qrData)
                     qrCodeImage.setImageBitmap(qrCodeBitmap)
                     qrCodeImage.visibility = View.VISIBLE
-                    statusText?.text = "Scan this QR code to send payment"
+                    statusText?.text = if (currencySymbol != null && amount != null) {
+                        "Scan to send $amount $currencySymbol"
+                    } else {
+                        "Scan this QR code to send payment"
+                    }
                     timerText?.visibility = View.VISIBLE
                     
                     // Update share button
@@ -1455,6 +1537,33 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Error setting up success dialog", e)
         }
+    }
+    
+    private fun showInsufficientFundsDialog(crypto: CryptoCurrency, requiredAmount: Double) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_insufficient_funds, null)
+        
+        // Set up dialog elements
+        val assetIcon = dialogView.findViewById<ImageView>(R.id.assetIcon)
+        val assetName = dialogView.findViewById<TextView>(R.id.assetName)
+        val assetSymbol = dialogView.findViewById<TextView>(R.id.assetSymbol)
+        val requiredAmountText = dialogView.findViewById<TextView>(R.id.requiredAmount)
+        val availableBalanceText = dialogView.findViewById<TextView>(R.id.availableBalance)
+        val shortageText = dialogView.findViewById<TextView>(R.id.shortage)
+        
+        // Set values
+        assetIcon.setImageResource(crypto.iconResId)
+        assetName.text = crypto.name
+        assetSymbol.text = crypto.symbol
+        requiredAmountText.text = "$requiredAmount ${crypto.symbol}"
+        availableBalanceText.text = "${crypto.getFormattedBalance()} ${crypto.symbol}"
+        
+        val shortage = requiredAmount - crypto.balance
+        shortageText.text = "${String.format("%.6f", shortage)} ${crypto.symbol}"
+        
+        AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setPositiveButton("OK", null)
+            .show()
     }
     
     private fun showSuccessDialog(message: String) {
@@ -2416,9 +2525,17 @@ class MainActivity : AppCompatActivity() {
                 val uri = Uri.parse(content)
                 val requestId = uri.getQueryParameter("id")
                 val recipientAddress = uri.getQueryParameter("recipient")
+                val currency = uri.getQueryParameter("currency")
+                val amount = uri.getQueryParameter("amount")
                 
                 if (requestId != null && recipientAddress != null) {
-                    showPaymentDialog(requestId, recipientAddress)
+                    if (currency != null && amount != null) {
+                        // Recipient specified currency and amount
+                        showSpecificPaymentDialog(requestId, recipientAddress, currency, amount)
+                    } else {
+                        // Let sender choose currency and amount
+                        showPaymentDialog(requestId, recipientAddress)
+                    }
                 } else {
                     Toast.makeText(this, "Invalid payment request", Toast.LENGTH_SHORT).show()
                 }
@@ -2433,6 +2550,73 @@ class MainActivity : AppCompatActivity() {
     
     private fun showPaymentDialog(requestId: String, recipientAddress: String) {
         showPaymentCryptoSelector(requestId, recipientAddress)
+    }
+    
+    private fun showSpecificPaymentDialog(requestId: String, recipientAddress: String, currency: String, amount: String) {
+        // Find the crypto matching the specified currency
+        val crypto = viewModel.cryptocurrencies.value.find { it.symbol == currency }
+        
+        if (crypto == null) {
+            Toast.makeText(this, "Currency $currency not available in your wallet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Check if user has sufficient balance
+        val requestedAmount = amount.toDoubleOrNull() ?: 0.0
+        if (requestedAmount > crypto.balance) {
+            showInsufficientFundsDialog(crypto, requestedAmount)
+            return
+        }
+        
+        // Show confirmation dialog
+        AlertDialog.Builder(this)
+            .setTitle("Confirm Payment")
+            .setMessage("Send $amount $currency to the requested address?")
+            .setPositiveButton("Send") { _, _ ->
+                // Execute payment with specified amount
+                executePayment(requestId, crypto, amount)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun executePayment(requestId: String, crypto: CryptoCurrency, amount: String) {
+        lifecycleScope.launch {
+            try {
+                // Show loading
+                Toast.makeText(this@MainActivity, "Sending payment...", Toast.LENGTH_SHORT).show()
+                
+                // Get sender address
+                val sharedPrefs = getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
+                val senderAddress = sharedPrefs.getString("wallet_address", null) ?: run {
+                    val newAddress = "wallet_${java.util.UUID.randomUUID().toString().take(8)}"
+                    sharedPrefs.edit().putString("wallet_address", newAddress).apply()
+                    newAddress
+                }
+                
+                // Complete the payment request
+                val response = PaymentRequestService.api.completePaymentRequest(
+                    requestId,
+                    CompletePaymentRequestDto(
+                        senderAddress = senderAddress,
+                        currencySymbol = crypto.symbol,
+                        amount = amount
+                    )
+                )
+                
+                // Update local balance
+                val newBalance = crypto.balance - (amount.toDoubleOrNull() ?: 0.0)
+                viewModel.updateCryptoBalance(crypto.id, newBalance)
+                
+                // Show success
+                Toast.makeText(this@MainActivity, "Payment sent successfully!", Toast.LENGTH_SHORT).show()
+                vibrateSuccess()
+                
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error sending payment", e)
+                Toast.makeText(this@MainActivity, "Error sending payment: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
     
     private fun showPaymentCryptoSelector(requestId: String, recipientAddress: String) {
@@ -2532,11 +2716,15 @@ class MainActivity : AppCompatActivity() {
         btnSend.setOnClickListener {
             val amount = amountInput.text.toString().toDoubleOrNull()
             
-            if (amount != null && amount > 0 && amount <= crypto.balance) {
-                dialog.dismiss()
-                sendPaymentRequest(requestId, recipientAddress, crypto, amount)
+            if (amount != null && amount > 0) {
+                if (amount <= crypto.balance) {
+                    dialog.dismiss()
+                    executePayment(requestId, crypto, amount.toString())
+                } else {
+                    showInsufficientFundsDialog(crypto, amount)
+                }
             } else {
-                Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
             }
         }
         

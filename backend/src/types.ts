@@ -8,6 +8,8 @@ export interface PaymentDetails {
 export interface PaymentRequest {
   requestId: string;
   recipientAddress: string;
+  currencySymbol?: string;
+  amount?: string;
   status: 'pending' | 'completed' | 'expired';
   createdAt: string;
   expiresAt: string;
@@ -17,6 +19,8 @@ export interface PaymentRequest {
 
 export interface CreatePaymentRequestDto {
   recipientAddress: string;
+  currencySymbol?: string;
+  amount?: string;
 }
 
 export interface CompletePaymentRequestDto {
