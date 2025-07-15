@@ -43,6 +43,8 @@ exports.handler = async (event) => {
       const item = {
         requestId,
         recipientAddress: body.recipientAddress,
+        currencySymbol: body.currencySymbol || null,
+        amount: body.amount || null,
         createdAt: new Date(timestamp).toISOString(),
         expiresAt: new Date(timestamp + TTL_SECONDS * 1000).toISOString(),
         status: 'pending',
@@ -54,7 +56,13 @@ exports.handler = async (event) => {
         Item: item
       }));
 
-      const qrData = `nfcwallet://payment-request?id=${requestId}&recipient=${encodeURIComponent(body.recipientAddress)}`;
+      let qrData = `nfcwallet://payment-request?id=${requestId}&recipient=${encodeURIComponent(body.recipientAddress)}`;
+      if (body.currencySymbol) {
+        qrData += `&currency=${encodeURIComponent(body.currencySymbol)}`;
+      }
+      if (body.amount) {
+        qrData += `&amount=${encodeURIComponent(body.amount)}`;
+      }
       
       return corsResponse(201, {
         ...item,

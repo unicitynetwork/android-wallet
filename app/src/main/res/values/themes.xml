@@ -13,5 +13,18 @@
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
         <!-- Customize your theme here. -->
         <item name="android:windowBackground">@color/background</item>
+        <!-- Dialog theme -->
+        <item name="alertDialogTheme">@style/Theme.NFCWalletDemo.AlertDialog</item>
+    </style>
+    
+    <!-- White background dialog theme -->
+    <style name="Theme.NFCWalletDemo.AlertDialog" parent="Theme.MaterialComponents.Light.Dialog.Alert">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:colorBackground">@android:color/white</item>
+        <item name="colorSurface">@android:color/white</item>
+        <item name="android:textColorPrimary">#333333</item>
+        <item name="android:textColorSecondary">#666666</item>
+        <item name="colorPrimary">@color/primary_blue</item>
+        <item name="colorAccent">@color/primary_blue</item>
     </style>
 </resources>

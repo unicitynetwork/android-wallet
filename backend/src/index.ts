@@ -25,7 +25,7 @@ app.options('*', (_, res) => {
 // Create payment request
 app.post('/payment-requests', (req, res) => {
   try {
-    const { recipientAddress } = req.body as CreatePaymentRequestDto;
+    const { recipientAddress, currencySymbol, amount } = req.body as CreatePaymentRequestDto;
     
     if (!recipientAddress) {
       return res.status(400).json({ error: 'recipientAddress is required' });
@@ -37,6 +37,8 @@ app.post('/payment-requests', (req, res) => {
     const request: PaymentRequest = {
       requestId: uuidv4(),
       recipientAddress,
+      currencySymbol,
+      amount,
       status: 'pending',
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
@@ -45,7 +47,13 @@ app.post('/payment-requests', (req, res) => {
     store.create(request);
 
     // Generate deep link for QR code
-    const qrData = `nfcwallet://payment-request?id=${request.requestId}&recipient=${encodeURIComponent(recipientAddress)}`;
+    let qrData = `nfcwallet://payment-request?id=${request.requestId}&recipient=${encodeURIComponent(recipientAddress)}`;
+    if (currencySymbol) {
+      qrData += `&currency=${encodeURIComponent(currencySymbol)}`;
+    }
+    if (amount) {
+      qrData += `&amount=${encodeURIComponent(amount)}`;
+    }
 
     return res.status(201).json({
       ...request,

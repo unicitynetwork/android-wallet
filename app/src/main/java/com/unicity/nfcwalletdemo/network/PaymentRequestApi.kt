@@ -20,7 +20,9 @@ interface PaymentRequestApi {
 }
 
 data class CreatePaymentRequestDto(
-    val recipientAddress: String
+    val recipientAddress: String,
+    val currencySymbol: String? = null,
+    val amount: String? = null
 )
 
 data class CompletePaymentRequestDto(
@@ -33,6 +35,8 @@ data class CompletePaymentRequestDto(
 data class PaymentRequest(
     val requestId: String,
     val recipientAddress: String,
+    val currencySymbol: String? = null,
+    val amount: String? = null,
     val status: String,
     val createdAt: String,
     val expiresAt: String,
@@ -50,6 +54,8 @@ data class PaymentDetails(
 data class PaymentRequestResponse(
     val requestId: String,
     val recipientAddress: String,
+    val currencySymbol: String? = null,
+    val amount: String? = null,
     val status: String,
     val createdAt: String,
     val expiresAt: String,

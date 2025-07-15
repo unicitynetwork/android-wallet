@@ -5,7 +5,8 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="24dp"
-    android:gravity="center">
+    android:gravity="center"
+    android:background="@android:color/white">
 
     <!-- QR Code Container -->
     <FrameLayout
@@ -18,7 +19,9 @@
             android:id="@+id/qrCodeImage"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="fitCenter" />
+            android:scaleType="fitCenter"
+            android:background="@android:color/white"
+            android:padding="16dp" />
 
         <!-- Unicity Logo Overlay -->
         <com.google.android.material.card.MaterialCardView
@@ -27,7 +30,7 @@
             android:layout_gravity="center"
             app:cardCornerRadius="30dp"
             app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white">
+            app:cardBackgroundColor="@android:color/white">
 
             <ImageView
                 android:layout_width="40dp"
@@ -47,7 +50,7 @@
         android:layout_height="wrap_content"
         android:text="Scan this QR code to receive assets"
         android:textSize="14sp"
-        android:textColor="?android:attr/textColorSecondary"
+        android:textColor="#666666"
         android:gravity="center" />
         
     <!-- Timer Text -->
@@ -79,7 +82,8 @@
             app:cornerRadius="12dp"
             app:strokeColor="@color/primary_blue"
             app:icon="@drawable/ic_share"
-            app:iconTint="@color/primary_blue" />
+            app:iconTint="@color/primary_blue"
+            android:textColor="@color/primary_blue" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnClose"
