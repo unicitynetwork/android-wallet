@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.net.Uri
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.os.Handler
@@ -54,7 +55,6 @@ import kotlinx.coroutines.delay
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.unicity.nfcwalletdemo.ui.scanner.PortraitCaptureActivity
-import android.net.Uri
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -170,21 +170,80 @@ class MainActivity : AppCompatActivity() {
     
     private fun handleDeepLink(intent: Intent) {
         val data = intent.data
-        if (data != null && data.scheme == "nfcwallet" && data.host == "payment-request") {
-            val requestId = data.getQueryParameter("id")
-            val recipientAddress = data.getQueryParameter("recipient")
-            val currency = data.getQueryParameter("currency")
-            val amount = data.getQueryParameter("amount")
-            
-            if (requestId != null && recipientAddress != null) {
-                if (currency != null && amount != null) {
-                    // Recipient specified currency and amount
-                    showSpecificPaymentDialog(requestId, recipientAddress, currency, amount)
-                } else {
-                    // Let sender choose currency and amount
-                    showPaymentDialog(requestId, recipientAddress)
+        if (data != null) {
+            when {
+                data.scheme == "nfcwallet" -> {
+                    when (data.host) {
+                        "payment-request" -> handlePaymentRequest(data)
+                        "mint-request" -> handleMintRequest(data)
+                    }
+                }
+                data.scheme == "https" && data.host == "nfcwallet.unicity.io" -> {
+                    // Handle HTTPS links that redirect to app
+                    when {
+                        data.path?.startsWith("/mint") == true -> {
+                            // Convert HTTPS URL to mint-request parameters
+                            val token = data.getQueryParameter("token")
+                            val amount = data.getQueryParameter("amount")
+                            val tokenData = data.getQueryParameter("tokenData")
+                            
+                            // Create a new URI with the parameters
+                            val mintUri = Uri.parse("nfcwallet://mint-request?token=$token&amount=$amount&tokenData=$tokenData")
+                            handleMintRequest(mintUri)
+                        }
+                    }
                 }
             }
+        }
+    }
+    
+    private fun handlePaymentRequest(data: Uri) {
+        val requestId = data.getQueryParameter("id")
+        val recipientAddress = data.getQueryParameter("recipient")
+        val currency = data.getQueryParameter("currency")
+        val amount = data.getQueryParameter("amount")
+        
+        if (requestId != null && recipientAddress != null) {
+            if (currency != null && amount != null) {
+                // Recipient specified currency and amount
+                showSpecificPaymentDialog(requestId, recipientAddress, currency, amount)
+            } else {
+                // Let sender choose currency and amount
+                showPaymentDialog(requestId, recipientAddress)
+            }
+        }
+    }
+    
+    private fun handleMintRequest(data: Uri) {
+        val tokenName = data.getQueryParameter("token")
+        val amount = data.getQueryParameter("amount")?.toLongOrNull()
+        val tokenData = data.getQueryParameter("tokenData") // Uri.getQueryParameter automatically decodes URL encoding
+        
+        if (tokenName != null && amount != null) {
+            // Build the token data string
+            val finalTokenData = if (!tokenData.isNullOrEmpty()) {
+                // Use the provided token data (already decoded by getQueryParameter)
+                tokenData
+            } else {
+                // Default format if no tokenData provided
+                "BoxyRun Score: $amount coins | Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date())}"
+            }
+            
+            // Show confirmation dialog
+            AlertDialog.Builder(this)
+                .setTitle("🎮 ${tokenName} Achievement!")
+                .setMessage("Congratulations! You collected $amount coins!\n\nGame Data: $finalTokenData\n\nWould you like to mint a Unicity NFT token to save this achievement on the blockchain?")
+                .setPositiveButton("Mint Token") { _, _ ->
+                    // Mint the token with the provided or default game data
+                    viewModel.mintNewToken(tokenName, finalTokenData, amount)
+                    
+                    // Show minting progress
+                    Toast.makeText(this, "🎮 Minting your ${tokenName} achievement token...", Toast.LENGTH_LONG).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            Toast.makeText(this, "Invalid mint request", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -406,7 +465,18 @@ class MainActivity : AppCompatActivity() {
             viewModel.mintResult.collect { result ->
                 result?.let {
                     if (it.isSuccess) {
-                        Toast.makeText(this@MainActivity, "Token minted successfully!", Toast.LENGTH_SHORT).show()
+                        val token = it.getOrNull()
+                        if (token?.name == "BoxyRun") {
+                            // Special message for BoxyRun tokens
+                            Toast.makeText(this@MainActivity, "🎮 BoxyRun achievement saved! Your high score is now on the blockchain!", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(this@MainActivity, "Token minted successfully!", Toast.LENGTH_SHORT).show()
+                        }
+                        
+                        // Switch to NFTs tab to show the new token
+                        if (currentTab != 1) {
+                            binding.tabLayout.getTabAt(1)?.select()
+                        }
                     } else {
                         Toast.makeText(this@MainActivity, "Failed to mint token: ${it.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                     }
@@ -2519,32 +2589,43 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun handleScannedQRCode(content: String) {
-        // Check if it's a payment request deep link
-        if (content.startsWith("nfcwallet://payment-request")) {
+        // Check if it's a deep link
+        if (content.startsWith("nfcwallet://")) {
             try {
                 val uri = Uri.parse(content)
-                val requestId = uri.getQueryParameter("id")
-                val recipientAddress = uri.getQueryParameter("recipient")
-                val currency = uri.getQueryParameter("currency")
-                val amount = uri.getQueryParameter("amount")
                 
-                if (requestId != null && recipientAddress != null) {
-                    if (currency != null && amount != null) {
-                        // Recipient specified currency and amount
-                        showSpecificPaymentDialog(requestId, recipientAddress, currency, amount)
-                    } else {
-                        // Let sender choose currency and amount
-                        showPaymentDialog(requestId, recipientAddress)
+                when (uri.host) {
+                    "payment-request" -> {
+                        val requestId = uri.getQueryParameter("id")
+                        val recipientAddress = uri.getQueryParameter("recipient")
+                        val currency = uri.getQueryParameter("currency")
+                        val amount = uri.getQueryParameter("amount")
+                        
+                        if (requestId != null && recipientAddress != null) {
+                            if (currency != null && amount != null) {
+                                // Recipient specified currency and amount
+                                showSpecificPaymentDialog(requestId, recipientAddress, currency, amount)
+                            } else {
+                                // Let sender choose currency and amount
+                                showPaymentDialog(requestId, recipientAddress)
+                            }
+                        } else {
+                            Toast.makeText(this, "Invalid payment request", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                } else {
-                    Toast.makeText(this, "Invalid payment request", Toast.LENGTH_SHORT).show()
+                    "mint-request" -> {
+                        handleMintRequest(uri)
+                    }
+                    else -> {
+                        Toast.makeText(this, "Unknown QR code type", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("MainActivity", "Error parsing QR code", e)
                 Toast.makeText(this, "Error parsing QR code", Toast.LENGTH_SHORT).show()
             }
         } else {
-            Toast.makeText(this, "Not a valid payment request QR code", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Not a valid wallet QR code", Toast.LENGTH_SHORT).show()
         }
     }
     

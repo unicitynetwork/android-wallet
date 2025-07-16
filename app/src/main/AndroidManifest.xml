@@ -53,6 +53,29 @@
                     android:scheme="nfcwallet"
                     android:host="payment-request" />
             </intent-filter>
+            
+            <!-- Deep link for mint requests -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                
+                <data
+                    android:scheme="nfcwallet"
+                    android:host="mint-request" />
+            </intent-filter>
+            
+            <!-- HTTPS deep links for sharing via messaging apps -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                
+                <data
+                    android:scheme="https"
+                    android:host="nfcwallet.unicity.io"
+                    android:pathPrefix="/mint" />
+            </intent-filter>
         </activity>
         
         <activity 
