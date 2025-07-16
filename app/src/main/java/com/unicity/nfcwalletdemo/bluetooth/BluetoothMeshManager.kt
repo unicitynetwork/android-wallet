@@ -444,6 +444,12 @@ object BluetoothMeshManager {
         // Check if target device has a GATT server we can see
         Log.d(TAG, "Checking if $deviceAddress is advertising mesh service...")
         
+        // First, try to scan for the device to ensure it's advertising
+        val deviceFound = scanForDevice(deviceAddress)
+        if (!deviceFound) {
+            Log.w(TAG, "Device $deviceAddress not found in scan, attempting direct connection anyway...")
+        }
+        
         val result = CompletableDeferred<Boolean>()
         
         // Check if we already have a connection to this device
@@ -621,6 +627,53 @@ object BluetoothMeshManager {
         }
     }
     
+    private suspend fun scanForDevice(deviceAddress: String, timeout: Long = 3000): Boolean {
+        return withContext(Dispatchers.IO) {
+            Log.d(TAG, "Scanning for device $deviceAddress...")
+            
+            val deviceFound = CompletableDeferred<Boolean>()
+            val scanner = bluetoothAdapter?.bluetoothLeScanner
+            
+            if (scanner == null) {
+                Log.e(TAG, "BLE scanner not available")
+                return@withContext false
+            }
+            
+            val scanCallback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    if (result.device.address == deviceAddress) {
+                        Log.d(TAG, "Found target device $deviceAddress during scan")
+                        deviceFound.complete(true)
+                    }
+                }
+                
+                override fun onScanFailed(errorCode: Int) {
+                    Log.e(TAG, "Scan failed: $errorCode")
+                    if (!deviceFound.isCompleted) {
+                        deviceFound.complete(false)
+                    }
+                }
+            }
+            
+            try {
+                scanner.startScan(scanCallback)
+                
+                // Wait for device or timeout
+                val found = withTimeoutOrNull(timeout) {
+                    deviceFound.await()
+                } ?: false
+                
+                scanner.stopScan(scanCallback)
+                Log.d(TAG, "Scan complete. Device found: $found")
+                
+                return@withContext found
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Security exception during scan", e)
+                return@withContext false
+            }
+        }
+    }
+    
     /**
      * Test if GATT server is working by sending a local message
      */
@@ -741,7 +794,8 @@ object BluetoothMeshManager {
             Log.d(TAG, "=== RECEIVED PING, SENDING PONG ===")
             val pingId = message.substringAfter("PING:")
             scope.launch {
-                delay(100) // Small delay to ensure connection is ready
+                // Add delay to ensure the sender's GATT server is ready
+                delay(500) // Increased delay
                 val pongMessage = "PONG:$pingId"
                 Log.d(TAG, "Sending PONG response to $fromDevice")
                 
@@ -752,8 +806,21 @@ object BluetoothMeshManager {
                     Log.d(TAG, "Device found in connected list, sending PONG via new client connection")
                 }
                 
-                val success = sendMessage(fromDevice, pongMessage)
-                Log.d(TAG, "PONG sent: $success")
+                // Try multiple times with delays
+                var success = false
+                for (attempt in 1..3) {
+                    Log.d(TAG, "PONG send attempt $attempt")
+                    success = sendMessage(fromDevice, pongMessage)
+                    if (success) {
+                        Log.d(TAG, "PONG sent successfully on attempt $attempt")
+                        break
+                    }
+                    delay(1000) // Wait 1 second between attempts
+                }
+                
+                if (!success) {
+                    Log.e(TAG, "Failed to send PONG after 3 attempts")
+                }
             }
         } else if (message.startsWith("PONG:")) {
             Log.d(TAG, "=== RECEIVED PONG RESPONSE ===")
@@ -786,6 +853,17 @@ object BluetoothMeshManager {
         
         // Log current connected devices
         Log.d(TAG, "Currently connected devices: ${connectedDevices.map { it.address }.joinToString(", ")}")
+    }
+    
+    /**
+     * Get the local Bluetooth adapter address
+     */
+    fun getBluetoothAddress(): String? {
+        return try {
+            bluetoothAdapter?.address
+        } catch (e: Exception) {
+            null
+        }
     }
     
     /**

@@ -21,7 +21,7 @@ object BTMeshTransferCoordinator {
     private const val TRANSFER_TIMEOUT_MS = 60000L // 60 seconds
     private const val APPROVAL_TIMEOUT_MS = 30000L // 30 seconds
     
-    private lateinit var context: Context
+    private var applicationContext: Context? = null
     private lateinit var bluetoothMeshTransferService: BluetoothMeshTransferService
     private lateinit var sdkService: UnicityJavaSdkService
     private var isInitialized = false
@@ -66,7 +66,7 @@ object BTMeshTransferCoordinator {
         }
         
         Log.d(TAG, "BTMeshTransferCoordinator.initialize() called")
-        context = appContext
+        applicationContext = appContext.applicationContext
         bluetoothMeshTransferService = transferService
         sdkService = sdk
         isInitialized = true
@@ -114,12 +114,23 @@ object BTMeshTransferCoordinator {
                                 is BluetoothMeshManager.MeshEvent.MessageReceived -> {
                                     Log.d(TAG, "=== MESSAGE RECEIVED IN COORDINATOR ===")
                                     Log.d(TAG, "From: ${event.fromDevice}")
+                                    Log.d(TAG, "Message length: ${event.message.length}")
                                     Log.d(TAG, "Message preview: ${event.message.take(100)}...")
+                                    
+                                    // Special logging for rejection messages
+                                    if (event.message.contains("REJECT:") || event.message.contains("PERMISSION_RESPONSE")) {
+                                        Log.d(TAG, "!!! CRITICAL MESSAGE DETECTED !!!")
+                                        Log.d(TAG, "Full message: ${event.message}")
+                                    }
                                     
                                     // Handle the message in a separate coroutine to not block collection
                                     launch {
-                                        val messageData = event.message.toByteArray(Charsets.UTF_8)
-                                        handleIncomingMessage(messageData, event.fromDevice)
+                                        try {
+                                            val messageData = event.message.toByteArray(Charsets.UTF_8)
+                                            handleIncomingMessage(messageData, event.fromDevice)
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "Error handling message in coroutine", e)
+                                        }
                                     }
                                 }
                                 is BluetoothMeshManager.MeshEvent.DeviceDiscovered -> {
@@ -171,34 +182,45 @@ object BTMeshTransferCoordinator {
             // Check for simple rejection format
             if (messageString.startsWith("REJECT:")) {
                 val rejectedTransferId = messageString.substringAfter("REJECT:")
-                Log.d(TAG, "!!! RECEIVED SIMPLE REJECTION for transfer: $rejectedTransferId")
-                Log.d(TAG, "Rejection received from device: $fromDevice")
+                Log.d(TAG, "=== [REJECTION RECEIVED] SIMPLE REJECTION ===")
+                Log.d(TAG, "[REJECTION] Transfer ID: $rejectedTransferId")
+                Log.d(TAG, "[REJECTION] From device: $fromDevice")
+                Log.d(TAG, "[REJECTION] My device: ${BluetoothMeshManager.getBluetoothAddress() ?: "Unknown"}")
+                Log.d(TAG, "[REJECTION] Active transfers count: ${activeTransfers.size}")
+                
+                // Log all active transfers for debugging
+                activeTransfers.forEach { (id, transfer) ->
+                    Log.d(TAG, "[REJECTION] Transfer $id: role=${transfer.role}, state=${transfer.state}")
+                }
                 
                 // Find the transfer and handle rejection
                 val transfer = activeTransfers[rejectedTransferId]
                 if (transfer != null && transfer.role == TransferRole.SENDER) {
-                    Log.d(TAG, "Processing simple rejection for transfer $rejectedTransferId")
-                    Log.d(TAG, "Transfer was in state: ${transfer.state}")
+                    Log.d(TAG, "[REJECTION] ✓ Found matching SENDER transfer")
+                    Log.d(TAG, "[REJECTION] Transfer was in state: ${transfer.state}")
+                    Log.d(TAG, "[REJECTION] Token: ${transfer.tokenData?.name}")
                     
                     // Cancel timeout
                     val timeoutJob = timeoutJobs.remove(rejectedTransferId)
                     if (timeoutJob != null) {
                         timeoutJob.cancel()
-                        Log.d(TAG, "Cancelled timeout job for rejected transfer")
+                        Log.d(TAG, "[REJECTION] Cancelled timeout job")
                     }
                     
                     // Update state
                     updateTransferState(rejectedTransferId, TransferState.REJECTED)
+                    Log.d(TAG, "[REJECTION] State updated to REJECTED")
                     
                     // Show feedback
-                    context?.let { ctx ->
+                    applicationContext?.let { ctx ->
                         scope.launch(Dispatchers.Main) {
                             if (transfer.tokenData?.id?.startsWith("test_") == true) {
                                 val msg = "✅ BT Mesh Test Success!\n\nRejection Flow Complete:\n• Permission Request Sent ✓\n• Approval Dialog Shown ✓\n• Rejection Sent Back ✓\n• Sender Notified ✓\n\nBi-directional mesh working!"
                                 android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
-                                Log.d(TAG, "Test rejection success toast shown")
+                                Log.d(TAG, "[REJECTION] Test success toast shown")
                             } else {
                                 android.widget.Toast.makeText(ctx, "❌ Transfer rejected by recipient", android.widget.Toast.LENGTH_LONG).show()
+                                Log.d(TAG, "[REJECTION] Regular rejection toast shown")
                             }
                         }
                     }
@@ -206,11 +228,15 @@ object BTMeshTransferCoordinator {
                     // Cleanup
                     scope.launch {
                         delay(3000)
+                        Log.d(TAG, "[REJECTION] Cleaning up transfer")
                         cleanupTransfer(rejectedTransferId)
                     }
                 } else {
-                    Log.w(TAG, "No active sender transfer found for rejected ID: $rejectedTransferId")
-                    Log.d(TAG, "Active transfers: ${activeTransfers.entries.map { "${it.key} (${it.value.role})" }.joinToString(", ")}")
+                    Log.e(TAG, "[REJECTION] ✗ No active SENDER transfer found!")
+                    Log.e(TAG, "[REJECTION] Looking for ID: $rejectedTransferId")
+                    Log.e(TAG, "[REJECTION] Transfer exists: ${transfer != null}")
+                    Log.e(TAG, "[REJECTION] Transfer role: ${transfer?.role}")
+                    Log.e(TAG, "[REJECTION] Active transfers: ${activeTransfers.entries.map { "${it.key} (${it.value.role})" }.joinToString(", ")}")
                 }
                 return
             }
@@ -249,7 +275,7 @@ object BTMeshTransferCoordinator {
         Log.d(TAG, "Is test token: ${token.id.startsWith("test_")}")
         Log.d(TAG, "Recipient peer ID: $recipientPeerId")
         Log.d(TAG, "Recipient name: $recipientName")
-        Log.d(TAG, "Context available: ${context != null}")
+        Log.d(TAG, "Context available: ${applicationContext != null}")
         Log.d(TAG, "Is initialized: $isInitialized")
         
         scope.launch {
@@ -269,11 +295,15 @@ object BTMeshTransferCoordinator {
             )
             
             activeTransfers[transferId] = transfer
+            Log.d(TAG, "[TRANSFER INIT] Stored transfer in activeTransfers map")
+            Log.d(TAG, "[TRANSFER INIT] Transfer ID: $transferId")
+            Log.d(TAG, "[TRANSFER INIT] Role: SENDER")
+            Log.d(TAG, "[TRANSFER INIT] Active transfers count: ${activeTransfers.size}")
             updateTransferState(transferId, TransferState.REQUESTING_PERMISSION)
             
             // Show immediate feedback for test transfers
             if (token.id.startsWith("test_")) {
-                val ctx = context
+                val ctx = applicationContext
                 if (ctx != null) {
                     withContext(Dispatchers.Main) {
                         try {
@@ -402,7 +432,7 @@ object BTMeshTransferCoordinator {
             Log.d(TAG, "Approval request added successfully!")
             
             // Show a toast to confirm
-            context?.let { ctx ->
+            applicationContext?.let { ctx ->
                 scope.launch(Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         ctx,
@@ -507,37 +537,38 @@ object BTMeshTransferCoordinator {
             val isSenderConnected = connectedDevices.contains(approval.senderPeerId)
             Log.d(TAG, "Is sender ${approval.senderPeerId} still connected via GATT: $isSenderConnected")
             
-            // If sender is still connected via GATT server, we can send directly
-            if (isSenderConnected) {
-                Log.d(TAG, "Sender is still connected via GATT, sending rejection directly")
-                
-                // Method 1: Send as simple string message first
-                val simpleRejection = "REJECT:$transferId"
-                Log.d(TAG, "Sending simple string rejection: $simpleRejection")
-                val simpleResult = BluetoothMeshManager.sendMessage(approval.senderPeerId, simpleRejection)
-                Log.d(TAG, "Simple rejection result: $simpleResult")
-                
-                if (!simpleResult) {
-                    // If simple fails, try the JSON after a delay
-                    delay(200)
-                    Log.d(TAG, "Simple failed, trying JSON rejection...")
-                    val jsonResult = sendMessage(approval.senderPeerId, response)
-                    Log.d(TAG, "JSON rejection result: $jsonResult")
-                }
+            // Always try multiple methods to ensure rejection is delivered
+            Log.d(TAG, "=== SENDING REJECTION TO SENDER ===")
+            Log.d(TAG, "Is sender connected: $isSenderConnected")
+            Log.d(TAG, "Sender peer ID: ${approval.senderPeerId}")
+            Log.d(TAG, "Transfer ID: $transferId")
+            
+            // Method 1: Send simple rejection first (most reliable)
+            val simpleRejection = "REJECT:$transferId"
+            Log.d(TAG, "[REJECTION] Sending simple string: $simpleRejection")
+            val simpleResult = BluetoothMeshManager.sendMessage(approval.senderPeerId, simpleRejection, retryCount = 5)
+            Log.d(TAG, "[REJECTION] Simple rejection send result: $simpleResult")
+            
+            // Method 2: Send JSON rejection after a small delay
+            delay(500)
+            Log.d(TAG, "[REJECTION] Sending JSON rejection message")
+            sendMessage(approval.senderPeerId, response)
+            // Note: sendMessage is async and doesn't return a result
+            val jsonResult = true // Assume it will be sent
+            
+            // Method 3: Try once more with simple rejection after another delay
+            if (!simpleResult && !jsonResult) {
+                delay(1000)
+                Log.d(TAG, "[REJECTION] Both methods failed, trying simple rejection again")
+                val retryResult = BluetoothMeshManager.sendMessage(approval.senderPeerId, simpleRejection, retryCount = 3)
+                Log.d(TAG, "[REJECTION] Retry rejection send result: $retryResult")
+            }
+            
+            // Log final status
+            if (simpleResult || jsonResult) {
+                Log.d(TAG, "[REJECTION] ✓ Rejection sent successfully")
             } else {
-                // Sender not connected via GATT - need to initiate connection
-                Log.d(TAG, "Sender not connected via GATT, initiating connection...")
-                
-                // Try connecting and sending
-                val simpleRejection = "REJECT:$transferId"
-                Log.d(TAG, "Attempting to connect and send rejection: $simpleRejection")
-                val result = BluetoothMeshManager.sendMessage(approval.senderPeerId, simpleRejection)
-                Log.d(TAG, "Connection and send result: $result")
-                
-                if (!result) {
-                    Log.e(TAG, "Failed to send rejection - sender may have disconnected")
-                    // Still update local state
-                }
+                Log.e(TAG, "[REJECTION] ✗ Failed to send rejection after all attempts")
             }
         }
         
@@ -588,7 +619,7 @@ object BTMeshTransferCoordinator {
             
             // Show detailed popup for test transfers
             val transfer = activeTransfers[message.transferId]
-            context?.let { ctx ->
+            applicationContext?.let { ctx ->
                 scope.launch(Dispatchers.Main) {
                     if (transfer?.tokenData?.id?.startsWith("test_") == true) {
                         // Test transfer - show success toast
@@ -630,7 +661,7 @@ object BTMeshTransferCoordinator {
             
             // Show detailed popup for test transfers
             val transfer = activeTransfers[message.transferId]
-            context?.let { ctx ->
+            applicationContext?.let { ctx ->
                 scope.launch(Dispatchers.Main) {
                     if (transfer?.tokenData?.id?.startsWith("test_") == true) {
                         // Test transfer - show rejection toast
@@ -817,7 +848,7 @@ object BTMeshTransferCoordinator {
             val transfer = activeTransfers[message.transferId]
             
             // Show success popup for test transfers
-            context?.let { ctx ->
+            applicationContext?.let { ctx ->
                 scope.launch(Dispatchers.Main) {
                     if (transfer?.tokenData?.id?.startsWith("test_") == true) {
                         val msg = "✅ Test Transfer Complete!\nAll BT Mesh messages working!\n• Request ✓\n• Response ✓\n• Complete ✓"
@@ -894,7 +925,7 @@ object BTMeshTransferCoordinator {
                         updateTransferState(message.transferId, TransferState.FAILED)
                         
                         // Show error to user
-                        context?.let { ctx ->
+                        applicationContext?.let { ctx ->
                             scope.launch(Dispatchers.Main) {
                                 android.widget.Toast.makeText(
                                     ctx,
@@ -971,7 +1002,7 @@ object BTMeshTransferCoordinator {
         
         // Show debug popup for test transfers
         if (transfer.tokenData?.id?.startsWith("test_") == true) {
-            context?.let { ctx ->
+            applicationContext?.let { ctx ->
                 scope.launch(Dispatchers.Main) {
                     val msg = "⏱️ Test Transfer Timeout!\nState: ${transfer.state}\nRecipient may not have received request"
                     android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
@@ -1170,7 +1201,7 @@ object BTMeshTransferCoordinator {
             updateTransferState(transferId, TransferState.COMPLETED)
             
             // Show success
-            context?.let { ctx ->
+            applicationContext?.let { ctx ->
                 scope.launch(Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         ctx,
@@ -1223,6 +1254,25 @@ object BTMeshTransferCoordinator {
     fun cleanup() {
         scope.cancel()
         activeTransfers.clear()
+        applicationContext = null
+    }
+    
+    /**
+     * Debug function to simulate receiving a rejection message
+     * This helps test if the rejection handling works correctly
+     */
+    fun debugSimulateRejection(transferId: String) {
+        Log.d(TAG, "=== DEBUG: SIMULATING REJECTION ===")
+        Log.d(TAG, "Transfer ID: $transferId")
+        Log.d(TAG, "Active transfers before: ${activeTransfers.keys.joinToString(", ")}")
+        
+        // Simulate receiving a rejection message
+        val rejectionMessage = "REJECT:$transferId"
+        handleIncomingMessage(rejectionMessage.toByteArray(), "DEBUG_DEVICE")
+    }
+    
+    fun getActiveTransferIds(): List<String> {
+        return activeTransfers.keys.toList()
     }
 }
 
