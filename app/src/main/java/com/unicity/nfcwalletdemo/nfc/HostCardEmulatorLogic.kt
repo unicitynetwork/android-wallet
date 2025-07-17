@@ -80,6 +80,11 @@ class HostCardEmulatorLogic(
         
         // Command for hybrid NFC+Bluetooth handshake
         private const val CMD_HYBRID_HANDSHAKE: Byte = 0x10
+        
+        // Commands for direct transfer (crypto assets)
+        private const val CMD_START_DIRECT_TRANSFER: Byte = 0x20
+        private const val CMD_DATA_CHUNK: Byte = 0x21
+        private const val CMD_COMPLETE_DIRECT_TRANSFER: Byte = 0x22
 
         // Transfer modes
         const val TRANSFER_MODE_DIRECT = "DIRECT_READY"
@@ -133,6 +138,20 @@ class HostCardEmulatorLogic(
                 Log.d(TAG, "HYBRID_HANDSHAKE command received")
                 startReceiveActivity()
                 return handleHybridHandshake(commandApdu)
+            }
+            CMD_START_DIRECT_TRANSFER -> {
+                Log.d(TAG, "START_DIRECT_TRANSFER command received")
+                startReceiveActivity()
+                directTransferBuffer = ByteArrayOutputStream()
+                return SW_OK
+            }
+            CMD_DATA_CHUNK -> {
+                Log.d(TAG, "DATA_CHUNK command received")
+                return handleDataChunk(commandApdu)
+            }
+            CMD_COMPLETE_DIRECT_TRANSFER -> {
+                Log.d(TAG, "COMPLETE_DIRECT_TRANSFER command received")
+                return completeDirectTransfer()
             }
             else -> {
                 Log.w(TAG, "Unknown command received: ${String.format("%02X", commandApdu[1])}")
@@ -351,6 +370,56 @@ class HostCardEmulatorLogic(
         }
     }
 
+    private fun handleDataChunk(commandApdu: ByteArray): ByteArray {
+        try {
+            if (commandApdu.size < 5) {
+                Log.e(TAG, "Invalid DATA_CHUNK command size")
+                return SW_ERROR
+            }
+            
+            val dataLength = commandApdu[4].toInt() and 0xFF
+            if (commandApdu.size < 5 + dataLength) {
+                Log.e(TAG, "DATA_CHUNK command size mismatch")
+                return SW_ERROR
+            }
+            
+            // Extract chunk data
+            val chunkData = commandApdu.sliceArray(5 until 5 + dataLength)
+            directTransferBuffer.write(chunkData)
+            
+            Log.d(TAG, "Received data chunk: ${chunkData.size} bytes, total so far: ${directTransferBuffer.size()}")
+            
+            return SW_OK
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling data chunk", e)
+            return SW_ERROR
+        }
+    }
+    
+    private fun completeDirectTransfer(): ByteArray {
+        try {
+            val receivedData = String(directTransferBuffer.toByteArray(), StandardCharsets.UTF_8)
+            Log.d(TAG, "Processing complete direct transfer data, size: ${receivedData.length}")
+            
+            // Check if this is crypto transfer data
+            if (receivedData.contains("\"type\":\"crypto_transfer\"")) {
+                Log.d(TAG, "Processing crypto transfer")
+                processCryptoTransfer(receivedData)
+            } else {
+                Log.d(TAG, "Processing token transfer")
+                processTokenTransfer(receivedData)
+            }
+            
+            // Reset buffer for next transfer
+            directTransferBuffer = ByteArrayOutputStream()
+            
+            return SW_OK
+        } catch (e: Exception) {
+            Log.e(TAG, "Error completing direct transfer", e)
+            return SW_ERROR
+        }
+    }
+    
     private fun completeTransfer(): ByteArray {
         try {
             Log.d(TAG, "Transfer completion request received")

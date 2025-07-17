@@ -1929,6 +1929,10 @@ class MainActivity : AppCompatActivity() {
         try {
             realNfcTransceiver.enableReaderMode(this) // Use transceiver's enable
             Log.d("MainActivity", "NFC reader mode enabled for crypto transfer")
+            
+            // Start the NFC transfer process
+            directNfcClient.startNfcTransfer()
+            Log.d("MainActivity", "NFC crypto transfer started")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to enable NFC reader mode for crypto", e)
             currentTransferringCrypto = null

@@ -47,6 +47,11 @@ class DirectNfcClient(
         private const val CMD_TEST_PING: Byte = 0x08
         private const val CMD_TEST_PONG: Byte = 0x09
         
+        // Commands for direct transfer (crypto assets)
+        private const val CMD_START_DIRECT_TRANSFER: Byte = 0x20
+        private const val CMD_DATA_CHUNK: Byte = 0x21
+        private const val CMD_COMPLETE_DIRECT_TRANSFER: Byte = 0x22
+        
         // Maximum APDU command size (minus header and Lc)
         // Using smaller chunks for better stability across different devices
         // Some devices have issues with larger APDUs
@@ -176,8 +181,15 @@ class DirectNfcClient(
     
     private suspend fun sendTokenDirectly(token: Token) {
         try {
-            // All tokens use the proper offline handshake protocol
-            sendUnicityTokenWithHandshake(token)
+            // Check if this is a crypto transfer
+            val tokenData = token.jsonData
+            if (tokenData != null && tokenData.contains("\"type\":\"crypto_transfer\"")) {
+                Log.d(TAG, "Detected crypto transfer, using direct send method")
+                sendCryptoTransferDirectly(token)
+            } else {
+                // Regular Unicity tokens use the proper offline handshake protocol
+                sendUnicityTokenWithHandshake(token)
+            }
             
         } catch (e: Exception) {
             Log.e(TAG, "Exception in sendTokenDirectly", e)
@@ -636,6 +648,103 @@ class DirectNfcClient(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create offline transfer package", e)
             continuation.resume(gson.toJson(mapOf("error" to e.message)))
+        }
+    }
+    
+    private suspend fun sendDataInChunks(data: ByteArray) {
+        val totalChunks = (data.size + MAX_COMMAND_DATA_SIZE - 1) / MAX_COMMAND_DATA_SIZE
+        var chunksSent = 0
+        
+        Log.d(TAG, "Sending data in $totalChunks chunks (${data.size} bytes total)")
+        
+        for (offset in data.indices step MAX_COMMAND_DATA_SIZE) {
+            val chunkSize = minOf(MAX_COMMAND_DATA_SIZE, data.size - offset)
+            val chunk = data.sliceArray(offset until offset + chunkSize)
+            
+            // Create chunk command
+            val chunkCommand = byteArrayOf(
+                0x00.toByte(),
+                CMD_DATA_CHUNK,
+                0x00.toByte(),
+                0x00.toByte(),
+                chunk.size.toByte()
+            ) + chunk
+            
+            val response = apduTransceiver.transceive(chunkCommand)
+            if (!isResponseOK(response)) {
+                throw Exception("Failed to send chunk ${chunksSent + 1}/$totalChunks")
+            }
+            
+            chunksSent++
+            
+            // Update progress
+            withContext(Dispatchers.Main) {
+                onProgress(chunksSent, totalChunks)
+            }
+            
+            // Small delay between chunks to avoid overwhelming the receiver
+            if (chunksSent < totalChunks) {
+                delay(50)
+            }
+        }
+        
+        Log.d(TAG, "Successfully sent all $totalChunks chunks")
+    }
+    
+    private suspend fun sendCryptoTransferDirectly(token: Token) {
+        try {
+            Log.d(TAG, "Starting direct crypto transfer for: ${token.name}")
+            
+            // Wait for connection to stabilize
+            delay(500)
+            
+            // Send the crypto transfer data directly without handshake
+            val cryptoData = token.jsonData ?: throw Exception("No crypto data to send")
+            Log.d(TAG, "Sending crypto transfer data: ${cryptoData.take(100)}...")
+            
+            // Send START_DIRECT_TRANSFER command
+            val startCommand = byteArrayOf(
+                0x00.toByte(), 
+                CMD_START_DIRECT_TRANSFER, 
+                0x00.toByte(), 
+                0x00.toByte(), 
+                0x00.toByte()
+            )
+            
+            val startResponse = apduTransceiver.transceive(startCommand)
+            if (!isResponseOK(startResponse)) {
+                throw Exception("Failed to start crypto transfer")
+            }
+            
+            // Send crypto data in chunks
+            val dataBytes = cryptoData.toByteArray(StandardCharsets.UTF_8)
+            sendDataInChunks(dataBytes)
+            
+            // Send COMPLETE_DIRECT_TRANSFER command
+            val completeCommand = byteArrayOf(
+                0x00.toByte(),
+                CMD_COMPLETE_DIRECT_TRANSFER,
+                0x00.toByte(),
+                0x00.toByte(),
+                0x00.toByte()
+            )
+            
+            val completeResponse = apduTransceiver.transceive(completeCommand)
+            if (!isResponseOK(completeResponse)) {
+                throw Exception("Failed to complete crypto transfer")
+            }
+            
+            Log.d(TAG, "✅ Crypto transfer completed successfully")
+            
+            withContext(Dispatchers.Main) {
+                onTransferComplete()
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception in sendCryptoTransferDirectly", e)
+            withContext(Dispatchers.Main) {
+                onError("Crypto transfer error: ${e.message}")
+            }
         }
     }
 }
