@@ -40,6 +40,7 @@ import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
 import android.widget.AutoCompleteTextView
 import android.widget.ArrayAdapter
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
+import com.unicity.nfcwalletdemo.data.model.Contact
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.model.CryptoCurrency
@@ -1024,11 +1025,33 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSendDialog() {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_send, null)
+        // First show contact list
+        showContactListDialog()
+    }
+    
+    private fun showContactListDialog() {
+        val contactDialog = ContactListDialog(this) { selectedContact ->
+            // After contact is selected, show asset selection dialog
+            showAssetSelectionDialog(selectedContact)
+        }
+        contactDialog.show()
+    }
+    
+    private fun showAssetSelectionDialog(recipient: Contact) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_send_asset, null)
         
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .create()
+        
+        // Setup recipient info
+        val recipientName = dialogView.findViewById<TextView>(R.id.recipientName)
+        val recipientAddress = dialogView.findViewById<TextView>(R.id.recipientAddress)
+        val recipientBadge = dialogView.findViewById<ImageView>(R.id.recipientUnicityBadge)
+        
+        recipientName.text = recipient.name
+        recipientAddress.text = recipient.address
+        recipientBadge.visibility = if (recipient.hasUnicityTag()) View.VISIBLE else View.GONE
         
         // Setup close button
         val btnClose = dialogView.findViewById<ImageButton>(R.id.btnClose)
@@ -1036,16 +1059,16 @@ class MainActivity : AppCompatActivity() {
             dialog.dismiss()
         }
         
-        // Setup token selector
-        val tokenSelector = dialogView.findViewById<AutoCompleteTextView>(R.id.tokenSelector)
-        val tokenNames = listOf("Bitcoin", "Ethereum", "eNaira", "eFranc")
-        val tokenAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tokenNames)
-        tokenSelector.setAdapter(tokenAdapter)
+        // Setup asset selector
+        val assetSelector = dialogView.findViewById<AutoCompleteTextView>(R.id.assetSelector)
+        val assetNames = listOf("Bitcoin", "Ethereum", "eNaira", "eFranc")
+        val assetAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, assetNames)
+        assetSelector.setAdapter(assetAdapter)
         
         val availableBalanceText = dialogView.findViewById<TextView>(R.id.availableBalanceText)
-        tokenSelector.setOnItemClickListener { _, _, position, _ ->
-            val selectedToken = tokenNames[position]
-            when (selectedToken) {
+        assetSelector.setOnItemClickListener { _, _, position, _ ->
+            val selectedAsset = assetNames[position]
+            when (selectedAsset) {
                 "Bitcoin" -> availableBalanceText.text = "Available: 0.025 BTC"
                 "Ethereum" -> availableBalanceText.text = "Available: 1.5 ETH" 
                 "eNaira" -> availableBalanceText.text = "Available: 50,000 NGN"
