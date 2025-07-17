@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.unicity.nfcwalletdemo.data.model.Contact
+import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ItemContactBinding
 import kotlin.random.Random
 
@@ -45,10 +46,24 @@ class ContactAdapter(
             binding.avatarContainer.setBackgroundColor(avatarColor)
             
             // Show Unicity badge if applicable
-            binding.unicityBadge.visibility = if (contact.hasUnicityTag()) {
+            val hasUnicityTag = contact.hasUnicityTag()
+            binding.unicityBadge.visibility = if (hasUnicityTag) {
                 View.VISIBLE
             } else {
                 View.GONE
+            }
+            
+            // Set visual state based on whether contact has @unicity tag
+            if (!hasUnicityTag) {
+                // Make non-@unicity contacts appear slightly disabled
+                binding.root.alpha = 0.6f
+                binding.contactName.setTextColor(Color.GRAY)
+                binding.contactAddress.setTextColor(Color.GRAY)
+            } else {
+                // Reset to normal appearance for @unicity contacts
+                binding.root.alpha = 1.0f
+                binding.contactName.setTextColor(binding.root.context.getColor(R.color.text_primary))
+                binding.contactAddress.setTextColor(binding.root.context.getColor(R.color.text_secondary))
             }
             
             // Set click listener

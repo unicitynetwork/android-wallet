@@ -1035,8 +1035,18 @@ class MainActivity : AppCompatActivity() {
         currentContactDialog = ContactListDialog(
             context = this,
             onContactSelected = { selectedContact ->
-                // After contact is selected, show asset selection dialog
-                showAssetSelectionDialog(selectedContact)
+                // Check if contact has @unicity tag
+                if (selectedContact.hasUnicityTag()) {
+                    // After contact is selected, show asset selection dialog
+                    showAssetSelectionDialog(selectedContact)
+                } else {
+                    // Show warning for non-@unicity contacts
+                    AlertDialog.Builder(this)
+                        .setTitle("Cannot Send")
+                        .setMessage("Unknown @unicity tag. You can only send to contacts with @unicity tag.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
             },
             onRequestPermission = { permission, requestCode ->
                 // Request the permission
