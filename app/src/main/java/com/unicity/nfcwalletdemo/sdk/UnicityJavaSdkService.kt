@@ -24,6 +24,7 @@ import com.unicity.sdk.transaction.Commitment
 import com.unicity.sdk.transaction.MintTransactionData
 import com.unicity.sdk.transaction.Transaction
 import com.unicity.sdk.transaction.TransactionData
+import com.unicity.sdk.transaction.InclusionProof
 import com.unicity.sdk.serializer.json.transaction.CommitmentJsonSerializer
 import com.unicity.sdk.utils.InclusionProofUtils
 import com.unicity.sdk.ISerializable
@@ -39,7 +40,7 @@ class UnicityJavaSdkService {
     
     companion object {
         private const val TAG = "UnicityJavaSdkService"
-        private const val AGGREGATOR_URL = "https://aggregator-test-1.mainnet.unicity.network"  // TODO: Make configurable
+        private const val AGGREGATOR_URL = "https://goggregator-test.unicity.network/"  // TODO: Make configurable
         private val random = SecureRandom()
         private val objectMapper = ObjectMapper()
     }
@@ -124,11 +125,14 @@ class UnicityJavaSdkService {
                 nonce
             ).await()
             
-            // Create token data implementation similar to TestTokenData
-            val dataBytes = data.toByteArray(StandardCharsets.UTF_8)
+            // Create token data implementation that preserves structure
+            val tokenDataMap = mapOf(
+                "data" to data,
+                "amount" to amount
+            )
             val tokenData = object : ISerializable {
-                override fun toJSON(): Any = dataBytes.toHexString()
-                override fun toCBOR(): ByteArray = dataBytes // In real implementation, should use CborEncoder
+                override fun toJSON(): Any = tokenDataMap
+                override fun toCBOR(): ByteArray = objectMapper.writeValueAsBytes(tokenDataMap) // In real implementation, should use CborEncoder
             }
             
             // Create mint transaction data
@@ -147,19 +151,66 @@ class UnicityJavaSdkService {
             
             // Submit mint transaction
             val commitment = client.submitMintTransaction(mintData).await()
-            val inclusionProof = InclusionProofUtils.waitInclusionProof(client, commitment).await()
-            val mintTransaction = client.createTransaction(commitment, inclusionProof).await()
             
-            // Create token with empty state data (matching CommonTestFlow)
-            val tokenState = TokenState.create(predicate, ByteArray(0))
-            Log.d(TAG, "Minted token state hash: ${tokenState.hash.toJSON()}")
-            Log.d(TAG, "Minted predicate hash: ${predicate.hash.toJSON()}")
+            // Try to get inclusion proof, but create pending token if it fails
+            val mintTransaction = try {
+                val inclusionProof = InclusionProofUtils.waitInclusionProof(client, commitment).await()
+                val transaction = client.createTransaction(commitment, inclusionProof).await()
+                
+                // Create token with empty state data (matching CommonTestFlow)
+                val tokenState = TokenState.create(predicate, ByteArray(0))
+                Log.d(TAG, "Minted token state hash: ${tokenState.hash.toJSON()}")
+                Log.d(TAG, "Minted predicate hash: ${predicate.hash.toJSON()}")
+                
+                @Suppress("UNCHECKED_CAST")
+                Token<Transaction<MintTransactionData<*>>>(
+                    tokenState,
+                    transaction as Transaction<MintTransactionData<*>>
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get inclusion proof: ${e.message}, creating pending token for display")
+                
+                // Create a pending token without inclusion proof for testing display
+                // This allows us to test the UI even when the aggregator is having issues
+                val tokenState = TokenState.create(predicate, ByteArray(0))
+                
+                // Create a minimal transaction structure without inclusion proof
+                val transactionData = mapOf(
+                    "version" to 1,
+                    "network" to "test",
+                    "partitionId" to "00",
+                    "txType" to "mint",
+                    "transactionData" to mapOf(
+                        "tokenId" to tokenId.toJSON(),
+                        "tokenType" to tokenType.toJSON(),
+                        "data" to tokenDataMap,
+                        "predicate" to predicate.toJSON()
+                    ),
+                    "commitment" to commitment.toJSON(),
+                    "status" to "pending",
+                    "error" to "Waiting for inclusion proof"
+                )
+                
+                // Create a simple token structure for display
+                val pendingToken = mapOf(
+                    "state" to tokenState.toJSON(),
+                    "genesis" to transactionData
+                )
+                
+                // Return the pending token in a special format
+                val result = mapOf(
+                    "identity" to mapOf(
+                        "secret" to String(secret, StandardCharsets.UTF_8),
+                        "nonce" to String(nonce, StandardCharsets.UTF_8)
+                    ),
+                    "token" to pendingToken,
+                    "status" to "pending"
+                )
+                
+                return Result.success(objectMapper.writeValueAsString(result))
+            }
             
-            @Suppress("UNCHECKED_CAST")
-            val token = Token<Transaction<MintTransactionData<*>>>(
-                tokenState,
-                mintTransaction as Transaction<MintTransactionData<*>>
-            )
+            val token = mintTransaction
             
             // Log the token structure
             val tokenJson = token.toJSON()
@@ -359,9 +410,16 @@ class UnicityJavaSdkService {
                 throw Exception("Failed to submit commitment: ${response.status}")
             }
             
-            // Wait for inclusion proof
-            val inclusionProof = InclusionProofUtils.waitInclusionProof(client, commitment).await()
-            val confirmedTx = client.createTransaction(commitment, inclusionProof).await()
+            // Try to get inclusion proof, but don't fail if it's invalid
+            val confirmedTx = try {
+                val inclusionProof = InclusionProofUtils.waitInclusionProof(client, commitment).await()
+                client.createTransaction(commitment, inclusionProof).await()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get inclusion proof for transfer completion: ${e.message}")
+                // If we can't get inclusion proof, we can't create a valid transaction
+                // Return error instead of creating an invalid transaction
+                return Result.failure(Exception("Failed to confirm transfer on blockchain: ${e.message}"))
+            }
             
             // Create receiver's signing service
             val signingService = SigningService.createFromSecret(secret, nonce).await()
@@ -418,7 +476,7 @@ class UnicityJavaSdkService {
                 "state" to tokenState.toJSON(),
                 "genesis" to mapOf(
                     "data" to transactionData.toJSON(),
-                    "inclusionProof" to inclusionProof.toJSON()
+                    "inclusionProof" to confirmedTx.inclusionProof.toJSON()
                 ),
                 "transactions" to listOf(
                     mapOf(

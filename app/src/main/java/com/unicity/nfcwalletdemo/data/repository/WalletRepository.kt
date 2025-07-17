@@ -6,6 +6,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.unicity.nfcwalletdemo.data.model.Token
+import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.data.model.Wallet
 import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
@@ -169,13 +170,21 @@ class WalletRepository(context: Context) {
             val mintResultObj = gson.fromJson(mintResult.toJson(), Map::class.java)
             val tokenJson = gson.toJson(mintResultObj["token"])
             
+            // Check if this is a pending token
+            val status = if (mintResultObj["status"] == "pending") {
+                TokenStatus.PENDING
+            } else {
+                TokenStatus.CONFIRMED
+            }
+            
             // Create Token object with the complete, self-contained token data
             val token = Token(
                 name = name,
                 type = "Unicity Token",
                 unicityAddress = identity.secret.take(16), // Use part of secret as address
                 jsonData = tokenJson, // Store the complete token in .txf format
-                sizeBytes = tokenJson.length
+                sizeBytes = tokenJson.length,
+                status = status
             )
             
             // Only add to wallet if minting was successful

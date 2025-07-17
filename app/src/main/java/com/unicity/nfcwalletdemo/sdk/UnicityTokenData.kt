@@ -28,7 +28,8 @@ data class UnicityTokenData(
 
 data class UnicityMintResult(
     val token: Any,
-    val identity: UnicityIdentity
+    val identity: UnicityIdentity,
+    val status: String? = null  // Add status field for pending tokens
 ) {
     fun toJson(): String = Gson().toJson(this)
     

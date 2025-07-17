@@ -468,15 +468,18 @@ class MainActivity : AppCompatActivity() {
                         val token = it.getOrNull()
                         if (token?.name == "BoxyRun") {
                             // Special message for BoxyRun tokens
-                            Toast.makeText(this@MainActivity, "🎮 BoxyRun achievement saved! Your high score is now on the blockchain!", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@MainActivity, "🎮 BoxyRun achievement saved! Your NFT is ready to use!", Toast.LENGTH_LONG).show()
                         } else {
-                            Toast.makeText(this@MainActivity, "Token minted successfully!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, "Token minted! Ready to use locally.", Toast.LENGTH_SHORT).show()
                         }
                         
                         // Switch to NFTs tab to show the new token
                         if (currentTab != 1) {
                             binding.tabLayout.getTabAt(1)?.select()
                         }
+                        
+                        // Note: If you see this token, it may not be fully confirmed on blockchain yet
+                        // but it's saved locally and can be used
                     } else {
                         Toast.makeText(this@MainActivity, "Failed to mint token: ${it.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                     }

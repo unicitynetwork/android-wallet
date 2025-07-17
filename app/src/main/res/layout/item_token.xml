@@ -147,7 +147,28 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Size: 50KB"
-                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall" />
+                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
+                    android:layout_marginBottom="@dimen/margin_xs" />
+                
+                <TextView
+                    android:id="@+id/tvTokenAmount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Amount: 100"
+                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
+                    android:textStyle="bold"
+                    android:textColor="@color/primary_blue"
+                    android:layout_marginBottom="@dimen/margin_xs"
+                    android:visibility="gone" />
+                
+                <TextView
+                    android:id="@+id/tvTokenData"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Data: "
+                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
+                    android:layout_marginBottom="@dimen/margin_xs"
+                    android:visibility="gone" />
 
             </LinearLayout>
 
