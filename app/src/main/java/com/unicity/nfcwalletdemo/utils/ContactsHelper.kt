@@ -123,8 +123,17 @@ class ContactsHelper(private val context: Context) {
             
             // Convert to Contact objects
             contactsMap.values.forEach { contactInfo ->
-                // Check if notes contain @unicity
+                // Check if notes contain @unicity and extract the tag
                 val hasUnicityInNotes = contactInfo.notes?.contains("@unicity", ignoreCase = true) ?: false
+                var unicityTagFromNotes: String? = null
+                
+                if (hasUnicityInNotes && contactInfo.notes != null) {
+                    val notes = contactInfo.notes ?: ""
+                    val noteMatch = Regex("(\\w+)@unicity", RegexOption.IGNORE_CASE).find(notes)
+                    if (noteMatch != null) {
+                        unicityTagFromNotes = noteMatch.groupValues[0] // Get the full match including @unicity
+                    }
+                }
                 
                 // Create a contact for each email
                 contactInfo.emails.forEach { email ->
@@ -132,7 +141,11 @@ class ContactsHelper(private val context: Context) {
                         Contact(
                             id = "${contactInfo.id}_email_$email",
                             name = contactInfo.name,
-                            address = email,
+                            address = if (hasUnicityInNotes && !email.contains("@unicity", ignoreCase = true) && unicityTagFromNotes != null) {
+                                "$email ($unicityTagFromNotes)"
+                            } else {
+                                email
+                            },
                             avatarUrl = contactInfo.photoUri,
                             isUnicityUser = email.contains("@unicity", ignoreCase = true) || hasUnicityInNotes
                         )
@@ -145,7 +158,11 @@ class ContactsHelper(private val context: Context) {
                         Contact(
                             id = "${contactInfo.id}_phone",
                             name = contactInfo.name,
-                            address = contactInfo.phoneNumbers.first(),
+                            address = if (hasUnicityInNotes && unicityTagFromNotes != null) {
+                                "${contactInfo.phoneNumbers.first()} ($unicityTagFromNotes)"
+                            } else {
+                                contactInfo.phoneNumbers.first()
+                            },
                             avatarUrl = contactInfo.photoUri,
                             isUnicityUser = hasUnicityInNotes
                         )
@@ -158,7 +175,11 @@ class ContactsHelper(private val context: Context) {
                         Contact(
                             id = contactInfo.id,
                             name = contactInfo.name,
-                            address = "No contact info",
+                            address = if (hasUnicityInNotes && unicityTagFromNotes != null) {
+                                unicityTagFromNotes
+                            } else {
+                                "No contact info"
+                            },
                             avatarUrl = contactInfo.photoUri,
                             isUnicityUser = hasUnicityInNotes
                         )

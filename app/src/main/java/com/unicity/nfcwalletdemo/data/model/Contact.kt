@@ -23,4 +23,27 @@ data class Contact(
                address.contains("@unicity", ignoreCase = true) ||
                name.contains("@unicity", ignoreCase = true)
     }
+    
+    // Extract the unicity tag from the contact
+    fun getUnicityTag(): String {
+        // Check if address contains the tag in parentheses (from notes)
+        val parenMatch = Regex("\\((\\w+)@unicity\\)", RegexOption.IGNORE_CASE).find(address)
+        if (parenMatch != null) {
+            return parenMatch.groupValues[1]
+        }
+        
+        // Try to extract from address directly
+        val addressMatch = Regex("(\\w+)@unicity", RegexOption.IGNORE_CASE).find(address)
+        if (addressMatch != null) {
+            return addressMatch.groupValues[1]
+        }
+        
+        // Try to extract from name
+        val nameMatch = Regex("(\\w+)@unicity", RegexOption.IGNORE_CASE).find(name)
+        if (nameMatch != null) {
+            return nameMatch.groupValues[1]
+        }
+        
+        return ""
+    }
 }

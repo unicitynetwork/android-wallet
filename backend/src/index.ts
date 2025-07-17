@@ -1,12 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
-import { PaymentRequestStore } from './store';
-import { CreatePaymentRequestDto, CompletePaymentRequestDto, PaymentRequest } from './types';
+import { PaymentRequestStore, TransferRequestStore } from './store';
+import { CreatePaymentRequestDto, CompletePaymentRequestDto, PaymentRequest, CreateTransferRequestDto, TransferRequest } from './types';
 import { config } from './config';
 
 const app = express();
 const store = new PaymentRequestStore();
+const transferStore = new TransferRequestStore();
 
 // Middleware
 app.use(cors({ origin: config.corsOrigin }));
@@ -136,14 +137,128 @@ app.get('/payment-requests', (_, res) => {
   }
 });
 
+// Create transfer request
+app.post('/transfer-requests', (req, res) => {
+  try {
+    const { senderTag, recipientTag, assetType, assetName, amount, message } = req.body as CreateTransferRequestDto;
+    
+    if (!recipientTag || !assetType || !assetName || !amount) {
+      return res.status(400).json({ error: 'recipientTag, assetType, assetName, and amount are required' });
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 300 * 1000); // 5 minutes
+    
+    const request: TransferRequest = {
+      requestId: uuidv4(),
+      senderTag: senderTag || 'anonymous',
+      recipientTag,
+      assetType,
+      assetName,
+      amount,
+      message,
+      status: 'pending',
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    };
+
+    transferStore.create(request);
+    return res.status(201).json(request);
+  } catch (error) {
+    console.error('Error creating transfer request:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get pending transfer requests for a recipient
+app.get('/transfer-requests/pending/:recipientTag', (req, res) => {
+  try {
+    const { recipientTag } = req.params;
+    const pending = transferStore.getPendingByRecipient(recipientTag);
+    return res.json(pending);
+  } catch (error) {
+    console.error('Error getting pending transfers:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Accept transfer request
+app.put('/transfer-requests/:id/accept', (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = transferStore.get(id);
+
+    if (!request) {
+      return res.status(404).json({ error: 'Transfer request not found' });
+    }
+
+    if (request.status !== 'pending') {
+      return res.status(400).json({ error: `Transfer request is ${request.status}` });
+    }
+
+    const updated = transferStore.update(id, {
+      status: 'accepted',
+      acceptedAt: new Date().toISOString(),
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Error accepting transfer request:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Reject transfer request
+app.put('/transfer-requests/:id/reject', (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = transferStore.get(id);
+
+    if (!request) {
+      return res.status(404).json({ error: 'Transfer request not found' });
+    }
+
+    if (request.status !== 'pending') {
+      return res.status(400).json({ error: `Transfer request is ${request.status}` });
+    }
+
+    const updated = transferStore.update(id, {
+      status: 'rejected',
+      rejectedAt: new Date().toISOString(),
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Error rejecting transfer request:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// List all transfer requests (for testing)
+app.get('/transfer-requests', (_, res) => {
+  try {
+    const allRequests = transferStore.getAll();
+    return res.json(allRequests);
+  } catch (error) {
+    console.error('Error listing transfer requests:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Cleanup expired requests
 setInterval(() => {
   const now = new Date();
   const expired = store.getAllExpired(now);
   
   if (expired.length > 0) {
-    console.log(`Marking ${expired.length} requests as expired`);
+    console.log(`Marking ${expired.length} payment requests as expired`);
     store.markExpired(expired.map(r => r.requestId));
+  }
+
+  const expiredTransfers = transferStore.getAllExpired(now);
+  if (expiredTransfers.length > 0) {
+    console.log(`Marking ${expiredTransfers.length} transfer requests as expired`);
+    transferStore.markExpired(expiredTransfers.map(r => r.requestId));
   }
 }, config.cleanupIntervalSeconds * 1000);
 

@@ -108,6 +108,11 @@ class MainActivity : AppCompatActivity() {
     // NFC waiting dialog
     private var nfcWaitingDialog: AlertDialog? = null
     
+    // Transfer polling
+    private var transferPollingJob: Job? = null
+    private val transferApiService = TransferApiService()
+    private val processedTransferIds = mutableSetOf<String>()
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -164,6 +169,9 @@ class MainActivity : AppCompatActivity() {
         
         // Handle deep links
         handleDeepLink(intent)
+        
+        // Start polling for transfer requests
+        startTransferPolling()
     }
     
     override fun onNewIntent(intent: Intent?) {
@@ -1101,14 +1109,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        // Setup send button
+        // Replace the send button logic with crypto selection
         val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
-        btnSend.setOnClickListener {
-            dialog.dismiss()
-            Toast.makeText(this, "Transfer preparation not implemented yet", Toast.LENGTH_SHORT).show()
-        }
+        btnSend.visibility = View.GONE // Hide the old send button
         
-        dialog.show()
+        // Show crypto selection dialog immediately
+        dialog.dismiss()
+        showCryptoSelectionForRecipient(recipient)
         } catch (e: Exception) {
             Log.e("MainActivity", "Error showing asset selection dialog", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -1144,7 +1151,37 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
     
-    private fun showCryptoSendAmountDialog(crypto: CryptoCurrency) {
+    private fun showCryptoSelectionForRecipient(recipient: Contact) {
+        val cryptos = viewModel.cryptocurrencies.value
+        
+        // Create custom dialog
+        val dialogView = layoutInflater.inflate(R.layout.dialog_select_asset, null)
+        val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvAssets)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+        
+        // Setup RecyclerView
+        recyclerView.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setTitle("Select Asset to Send")
+            .create()
+        
+        val adapter = AssetDialogAdapter(cryptos) { selectedAsset ->
+            dialog.dismiss()
+            showCryptoSendAmountDialog(selectedAsset, recipient)
+        }
+        
+        recyclerView.adapter = adapter
+        
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        dialog.show()
+    }
+    
+    private fun showCryptoSendAmountDialog(crypto: CryptoCurrency, selectedContact: Contact? = null) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_send_crypto, null)
         
         // Set up dialog elements
@@ -1152,6 +1189,7 @@ class MainActivity : AppCompatActivity() {
         val cryptoName = dialogView.findViewById<TextView>(R.id.cryptoName)
         val availableBalance = dialogView.findViewById<TextView>(R.id.availableBalance)
         val amountInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.amountInput)
+        val messageInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.messageInput)
         val estimatedValue = dialogView.findViewById<TextView>(R.id.estimatedValue)
         val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
         val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
@@ -1233,8 +1271,16 @@ class MainActivity : AppCompatActivity() {
             if (amount != null && amount > 0 && balanceCheck) {
                 Log.d("MainActivity", "Starting transfer of exactly $amount ${crypto.symbol} (balance: ${crypto.balance})")
                 dialog.dismiss()
-                checkNfc {
-                    startCryptoTransfer(crypto, amount)
+                
+                if (selectedContact != null) {
+                    // Use backend transfer for @unicity contacts
+                    val message = messageInput.text.toString().trim()
+                    sendTransferRequestToBackend(selectedContact, crypto, amount, message)
+                } else {
+                    // Use NFC transfer for direct transfers
+                    checkNfc {
+                        startCryptoTransfer(crypto, amount)
+                    }
                 }
             } else {
                 val reason = when {
@@ -2268,12 +2314,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    override fun onDestroy() {
-        super.onDestroy()
-        if (::sdkService.isInitialized) {
-            // No cleanup needed for Java SDK service
-        }
-    }
     
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -3026,5 +3066,240 @@ class MainActivity : AppCompatActivity() {
         } else {
             String.format("%.8f", amount).trimEnd('0').trimEnd('.')
         }
+    }
+    
+    // Transfer Request Polling
+    private fun startTransferPolling() {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+        
+        if (unicityTag.isEmpty()) {
+            Log.d("MainActivity", "No Unicity tag configured, skipping transfer polling")
+            return
+        }
+        
+        Log.d("MainActivity", "Starting transfer polling for tag: $unicityTag")
+        
+        transferPollingJob?.cancel()
+        transferPollingJob = lifecycleScope.launch {
+            while (isActive) {
+                try {
+                    val result = transferApiService.getPendingTransfers(unicityTag)
+                    result.onSuccess { transfers ->
+                        transfers.forEach { transfer ->
+                            if (!processedTransferIds.contains(transfer.requestId)) {
+                                processedTransferIds.add(transfer.requestId)
+                                showTransferNotification(transfer)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error polling for transfers", e)
+                }
+                delay(5000) // Poll every 5 seconds
+            }
+        }
+    }
+    
+    private fun stopTransferPolling() {
+        transferPollingJob?.cancel()
+        transferPollingJob = null
+    }
+    
+    private fun showTransferNotification(transfer: TransferRequest) {
+        runOnUiThread {
+            val dialogView = layoutInflater.inflate(R.layout.dialog_transfer_notification, null)
+            
+            // Set up the dialog view
+            val assetIcon = dialogView.findViewById<ImageView>(R.id.assetIcon)
+            val assetName = dialogView.findViewById<TextView>(R.id.assetName)
+            val assetAmount = dialogView.findViewById<TextView>(R.id.assetAmount)
+            val senderTag = dialogView.findViewById<TextView>(R.id.senderTag)
+            val message = dialogView.findViewById<TextView>(R.id.message)
+            
+            // Set the asset icon based on type
+            if (transfer.assetType == "crypto") {
+                // Set crypto icon based on asset name
+                val iconRes = when (transfer.assetName.uppercase()) {
+                    "BTC" -> R.drawable.ic_bitcoin
+                    "ETH" -> R.drawable.ic_ethereum
+                    "USDT" -> R.drawable.ic_tether
+                    "EXAF" -> R.drawable.ic_franc
+                    "ENGN" -> R.drawable.ic_naira
+                    "SUB" -> R.drawable.ic_subway
+                    else -> R.drawable.ic_coin_placeholder
+                }
+                assetIcon.setImageResource(iconRes)
+            } else {
+                // For tokens, use a generic token icon
+                assetIcon.setImageResource(R.drawable.ic_token)
+            }
+            
+            assetName.text = transfer.assetName
+            assetAmount.text = transfer.amount
+            senderTag.text = "From: ${transfer.senderTag}@unicity"
+            
+            if (!transfer.message.isNullOrEmpty()) {
+                message.text = transfer.message
+                message.visibility = View.VISIBLE
+            } else {
+                message.visibility = View.GONE
+            }
+            
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Incoming Transfer Request")
+                .setView(dialogView)
+                .setPositiveButton("Accept") { _, _ ->
+                    acceptTransferRequest(transfer)
+                }
+                .setNegativeButton("Decline") { _, _ ->
+                    rejectTransferRequest(transfer)
+                }
+                .setCancelable(false)
+                .create()
+            
+            dialog.show()
+            
+            // Vibrate to notify user
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(200)
+            }
+        }
+    }
+    
+    private fun acceptTransferRequest(transfer: TransferRequest) {
+        lifecycleScope.launch {
+            try {
+                val result = transferApiService.acceptTransfer(transfer.requestId)
+                result.onSuccess {
+                    Toast.makeText(this@MainActivity, "Transfer accepted", Toast.LENGTH_SHORT).show()
+                    
+                    // Update balance based on transfer details
+                    if (transfer.assetType == "crypto") {
+                        // Find the cryptocurrency
+                        val crypto = viewModel.cryptocurrencies.value.find { 
+                            it.symbol.equals(transfer.assetName, ignoreCase = true) 
+                        }
+                        
+                        if (crypto != null) {
+                            // Parse amount and add to balance
+                            val amount = transfer.amount.toDoubleOrNull() ?: 0.0
+                            if (amount > 0) {
+                                val currentBalance = crypto.balance
+                                val newBalance = currentBalance + amount
+                                viewModel.updateCryptoBalance(crypto.id, newBalance)
+                                
+                                Toast.makeText(this@MainActivity, 
+                                    "Received ${transfer.amount} ${transfer.assetName}", 
+                                    Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            // Add new cryptocurrency if it doesn't exist
+                            val amount = transfer.amount.toDoubleOrNull() ?: 0.0
+                            if (amount > 0) {
+                                viewModel.addReceivedCrypto(transfer.assetName, amount)
+                                Toast.makeText(this@MainActivity, 
+                                    "Received ${transfer.amount} ${transfer.assetName}", 
+                                    Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else if (transfer.assetType == "token") {
+                        // TODO: Handle token transfers
+                        // For now, just refresh to potentially load new tokens
+                        refreshWallet()
+                    }
+                }.onFailure { error ->
+                    Toast.makeText(this@MainActivity, "Failed to accept transfer: ${error.message}", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Error accepting transfer: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    private fun rejectTransferRequest(transfer: TransferRequest) {
+        lifecycleScope.launch {
+            try {
+                val result = transferApiService.rejectTransfer(transfer.requestId)
+                result.onSuccess {
+                    Toast.makeText(this@MainActivity, "Transfer declined", Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    Toast.makeText(this@MainActivity, "Failed to decline transfer: ${error.message}", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Error declining transfer: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    private fun sendTransferRequestToBackend(recipient: Contact, crypto: CryptoCurrency, amount: Double, message: String) {
+        lifecycleScope.launch {
+            try {
+                // Get sender's unicity tag from preferences
+                val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+                val senderTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+                
+                // Extract recipient's unicity tag
+                val recipientTag = recipient.getUnicityTag()
+                
+                if (recipientTag.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "Recipient does not have a valid @unicity tag", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                
+                // Send transfer request to backend
+                val result = transferApiService.createTransferRequest(
+                    senderTag = senderTag.ifEmpty { null },
+                    recipientTag = recipientTag,
+                    assetType = "crypto",
+                    assetName = crypto.symbol,
+                    amount = formatCryptoAmount(amount),
+                    message = message.ifEmpty { null }
+                )
+                
+                result.onSuccess { transferRequest ->
+                    Toast.makeText(this@MainActivity, "Transfer request sent to ${recipient.name}", Toast.LENGTH_SHORT).show()
+                    Log.d("MainActivity", "Transfer request created: ${transferRequest.requestId}")
+                    
+                    // Deduct balance immediately (optimistic update)
+                    val currentBalance = crypto.balance
+                    val newBalance = currentBalance - amount
+                    viewModel.updateCryptoBalance(crypto.id, newBalance)
+                    
+                    // Store the transfer request ID and amount in case we need to revert
+                    val prefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+                    prefs.edit()
+                        .putString("pending_transfer_${transferRequest.requestId}", "${crypto.id}:$amount")
+                        .apply()
+                }.onFailure { error ->
+                    Toast.makeText(this@MainActivity, "Failed to send transfer request: ${error.message}", Toast.LENGTH_LONG).show()
+                    Log.e("MainActivity", "Error creating transfer request", error)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Error sending transfer request: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e("MainActivity", "Error in sendTransferRequestToBackend", e)
+            }
+        }
+    }
+    
+    private fun startOutgoingTransferStatusPolling() {
+        // Poll for status updates on pending outgoing transfers
+        lifecycleScope.launch {
+            val prefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+            val pendingKeys = prefs.all.keys.filter { it.startsWith("pending_transfer_") }
+            
+            // For each pending transfer, we could implement status checking
+            // This would require adding a GET endpoint to check transfer status
+            // For now, we'll rely on the optimistic update approach
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        stopTransferPolling()
     }
 }

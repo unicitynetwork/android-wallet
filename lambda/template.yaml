@@ -9,7 +9,9 @@ Globals:
     Environment:
       Variables:
         TABLE_NAME: !Ref PaymentRequestsTable
+        TRANSFER_TABLE_NAME: !Ref TransferRequestsTable
         TTL_SECONDS: 60
+        TRANSFER_TTL_SECONDS: 300
 
 Resources:
   # Lambda Function
@@ -44,12 +46,49 @@ Resources:
           Properties:
             Path: /{proxy+}
             Method: OPTIONS
+        CreateTransferRequest:
+          Type: Api
+          Properties:
+            Path: /transfer-requests
+            Method: POST
+        GetPendingTransfers:
+          Type: Api
+          Properties:
+            Path: /transfer-requests/pending/{tag}
+            Method: GET
+        AcceptTransfer:
+          Type: Api
+          Properties:
+            Path: /transfer-requests/{id}/accept
+            Method: PUT
+        RejectTransfer:
+          Type: Api
+          Properties:
+            Path: /transfer-requests/{id}/reject
+            Method: PUT
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref PaymentRequestsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TransferRequestsTable
 
   # DynamoDB Table
   PaymentRequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: requestId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requestId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # Transfer Requests Table
+  TransferRequestsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       BillingMode: PAY_PER_REQUEST

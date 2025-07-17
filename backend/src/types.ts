@@ -29,3 +29,28 @@ export interface CompletePaymentRequestDto {
   amount: string;
   transactionId?: string;
 }
+
+// Transfer Request Types
+export interface TransferRequest {
+  requestId: string;
+  senderTag: string;
+  recipientTag: string;
+  assetType: 'crypto' | 'token';
+  assetName: string;
+  amount: string;
+  message?: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt?: string;
+  rejectedAt?: string;
+}
+
+export interface CreateTransferRequestDto {
+  senderTag?: string;
+  recipientTag: string;
+  assetType: 'crypto' | 'token';
+  assetName: string;
+  amount: string;
+  message?: string;
+}
