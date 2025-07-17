@@ -1,0 +1,157 @@
+package com.unicity.nfcwalletdemo.utils
+
+import android.content.ContentResolver
+import android.content.Context
+import android.database.Cursor
+import android.provider.ContactsContract
+import android.util.Log
+import com.unicity.nfcwalletdemo.data.model.Contact
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+class ContactsHelper(private val context: Context) {
+    
+    companion object {
+        private const val TAG = "ContactsHelper"
+    }
+    
+    suspend fun loadPhoneContacts(): List<Contact> = withContext(Dispatchers.IO) {
+        val contacts = mutableListOf<Contact>()
+        val contactsMap = mutableMapOf<String, ContactInfo>()
+        
+        try {
+            val contentResolver: ContentResolver = context.contentResolver
+            
+            // First, get all contacts with their display names
+            val contactsCursor: Cursor? = contentResolver.query(
+                ContactsContract.Contacts.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.Contacts._ID,
+                    ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
+                    ContactsContract.Contacts.HAS_PHONE_NUMBER,
+                    ContactsContract.Contacts.PHOTO_URI
+                ),
+                null,
+                null,
+                ContactsContract.Contacts.DISPLAY_NAME_PRIMARY + " ASC"
+            )
+            
+            contactsCursor?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
+                    val name = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)) ?: continue
+                    val photoUri = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_URI))
+                    
+                    contactsMap[id] = ContactInfo(id, name, photoUri)
+                }
+            }
+            
+            // Then get email addresses
+            val emailCursor: Cursor? = contentResolver.query(
+                ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Email.CONTACT_ID,
+                    ContactsContract.CommonDataKinds.Email.ADDRESS
+                ),
+                null,
+                null,
+                null
+            )
+            
+            emailCursor?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val contactId = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.CONTACT_ID))
+                    val email = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.ADDRESS))
+                    
+                    contactsMap[contactId]?.let { contactInfo ->
+                        if (!email.isNullOrBlank()) {
+                            contactInfo.emails.add(email)
+                        }
+                    }
+                }
+            }
+            
+            // Get phone numbers
+            val phoneCursor: Cursor? = contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                null,
+                null,
+                null
+            )
+            
+            phoneCursor?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val contactId = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.CONTACT_ID))
+                    val phoneNumber = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
+                    
+                    contactsMap[contactId]?.let { contactInfo ->
+                        if (!phoneNumber.isNullOrBlank()) {
+                            contactInfo.phoneNumbers.add(phoneNumber)
+                        }
+                    }
+                }
+            }
+            
+            // Convert to Contact objects
+            contactsMap.values.forEach { contactInfo ->
+                // Create a contact for each email
+                contactInfo.emails.forEach { email ->
+                    contacts.add(
+                        Contact(
+                            id = "${contactInfo.id}_email_$email",
+                            name = contactInfo.name,
+                            address = email,
+                            avatarUrl = contactInfo.photoUri,
+                            isUnicityUser = email.contains("@unicity", ignoreCase = true)
+                        )
+                    )
+                }
+                
+                // Create a contact for each phone number if no emails
+                if (contactInfo.emails.isEmpty() && contactInfo.phoneNumbers.isNotEmpty()) {
+                    contacts.add(
+                        Contact(
+                            id = "${contactInfo.id}_phone",
+                            name = contactInfo.name,
+                            address = contactInfo.phoneNumbers.first(),
+                            avatarUrl = contactInfo.photoUri,
+                            isUnicityUser = false
+                        )
+                    )
+                }
+                
+                // If no emails or phones, still add the contact with just the name
+                if (contactInfo.emails.isEmpty() && contactInfo.phoneNumbers.isEmpty()) {
+                    contacts.add(
+                        Contact(
+                            id = contactInfo.id,
+                            name = contactInfo.name,
+                            address = "No contact info",
+                            avatarUrl = contactInfo.photoUri,
+                            isUnicityUser = false
+                        )
+                    )
+                }
+            }
+            
+            Log.d(TAG, "Loaded ${contacts.size} contacts from phone")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading contacts", e)
+        }
+        
+        contacts.sortedBy { it.name }
+    }
+    
+    private data class ContactInfo(
+        val id: String,
+        val name: String,
+        val photoUri: String?,
+        val emails: MutableList<String> = mutableListOf(),
+        val phoneNumbers: MutableList<String> = mutableListOf()
+    )
+}

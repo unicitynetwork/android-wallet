@@ -89,10 +89,12 @@ class MainActivity : AppCompatActivity() {
     
     companion object {
         private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 1001
+        private const val DEBUG_BT = false // Set to true to enable verbose BT logging
     }
     
     private lateinit var sdkService: UnicityJavaSdkService
     private val gson = Gson()
+    private var currentContactDialog: ContactListDialog? = null
     
     // BT Mesh components
     private lateinit var bluetoothMeshTransferService: BluetoothMeshTransferService
@@ -1030,24 +1032,36 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showContactListDialog() {
-        val contactDialog = ContactListDialog(this) { selectedContact ->
-            // After contact is selected, show asset selection dialog
-            showAssetSelectionDialog(selectedContact)
-        }
-        contactDialog.show()
+        currentContactDialog = ContactListDialog(
+            context = this,
+            onContactSelected = { selectedContact ->
+                // After contact is selected, show asset selection dialog
+                showAssetSelectionDialog(selectedContact)
+            },
+            onRequestPermission = { permission, requestCode ->
+                // Request the permission
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    requestPermissions(arrayOf(permission), requestCode)
+                }
+            }
+        )
+        currentContactDialog?.show()
     }
     
     private fun showAssetSelectionDialog(recipient: Contact) {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_send_asset, null)
-        
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .create()
-        
-        // Setup recipient info
-        val recipientName = dialogView.findViewById<TextView>(R.id.recipientName)
-        val recipientAddress = dialogView.findViewById<TextView>(R.id.recipientAddress)
-        val recipientBadge = dialogView.findViewById<ImageView>(R.id.recipientUnicityBadge)
+        try {
+            Log.d("MainActivity", "showAssetSelectionDialog called with recipient: ${recipient.name}")
+            
+            val dialogView = layoutInflater.inflate(R.layout.dialog_send_asset, null)
+            
+            val dialog = AlertDialog.Builder(this)
+                .setView(dialogView)
+                .create()
+            
+            // Setup recipient info
+            val recipientName = dialogView.findViewById<TextView>(R.id.recipientName)
+            val recipientAddress = dialogView.findViewById<TextView>(R.id.recipientAddress)
+            val recipientBadge = dialogView.findViewById<ImageView>(R.id.recipientUnicityBadge)
         
         recipientName.text = recipient.name
         recipientAddress.text = recipient.address
@@ -1077,13 +1091,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        // Setup recipient selector
-        val recipientSelector = dialogView.findViewById<AutoCompleteTextView>(R.id.recipientSelector)
-        val recipients = listOf("Mike G.", "Vlad R.", "Jane D.", "John D.")
-        val recipientAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, recipients)
-        recipientSelector.setAdapter(recipientAdapter)
-        recipientSelector.dropDownHeight = (resources.displayMetrics.density * 56 * 3.5).toInt()
-        
         // Setup send button
         val btnSend = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSend)
         btnSend.setOnClickListener {
@@ -1092,6 +1099,10 @@ class MainActivity : AppCompatActivity() {
         }
         
         dialog.show()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error showing asset selection dialog", e)
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
     
     private fun showCryptoSendDialog() {
@@ -2261,23 +2272,32 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         
-        if (requestCode == BLUETOOTH_PERMISSION_REQUEST_CODE) {
-            if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-                Toast.makeText(this, "Bluetooth permissions granted! Tap token to transfer again.", Toast.LENGTH_SHORT).show()
-                // Initialize Bluetooth mesh after permissions are granted
-                initializeBluetoothMesh()
-            } else {
-                Toast.makeText(this, "Bluetooth permissions are required for token transfer", Toast.LENGTH_LONG).show()
+        when (requestCode) {
+            BLUETOOTH_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                    Toast.makeText(this, "Bluetooth permissions granted! Tap token to transfer again.", Toast.LENGTH_SHORT).show()
+                    // Initialize Bluetooth mesh after permissions are granted
+                    initializeBluetoothMesh()
+                } else {
+                    Toast.makeText(this, "Bluetooth permissions are required for token transfer", Toast.LENGTH_LONG).show()
+                }
+            }
+            ContactListDialog.REQUEST_CODE_CONTACTS -> {
+                val granted = grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+                currentContactDialog?.onPermissionResult(requestCode, granted)
+                if (!granted) {
+                    Toast.makeText(this, "Contact permission denied. Showing sample contacts instead.", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
     
     // BT Mesh Transfer Methods
     private fun initializeBTMesh() {
-        Log.d("MainActivity", "=== initializeBTMesh STARTED ===")
+        if (DEBUG_BT) Log.d("MainActivity", "=== initializeBTMesh STARTED ===")
         
         bluetoothMeshTransferService = BluetoothMeshTransferService(this)
-        Log.d("MainActivity", "BluetoothMeshTransferService created")
+        if (DEBUG_BT) Log.d("MainActivity", "BluetoothMeshTransferService created")
         
         // Initialize the singleton BTMeshTransferCoordinator FIRST
         // This ensures it's ready to receive messages before BluetoothMeshManager starts
@@ -2286,11 +2306,11 @@ class MainActivity : AppCompatActivity() {
             transferService = bluetoothMeshTransferService,
             sdk = sdkService
         )
-        Log.d("MainActivity", "BTMeshTransferCoordinator initialized")
+        if (DEBUG_BT) Log.d("MainActivity", "BTMeshTransferCoordinator initialized")
         
         // Initialize BluetoothMeshManager AFTER coordinator is ready
         if (checkBluetoothPermissions()) {
-            Log.d("MainActivity", "Bluetooth permissions granted, initializing BluetoothMeshManager")
+            if (DEBUG_BT) Log.d("MainActivity", "Bluetooth permissions granted, initializing BluetoothMeshManager")
             BluetoothMeshManager.initialize(this)
             
             // Add a test collector to verify events are flowing
@@ -2298,7 +2318,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "Starting test event collector...")
                 try {
                     BluetoothMeshManager.meshEvents.collect { event ->
-                        Log.d("MainActivity", "!!! MAIN ACTIVITY GOT EVENT: ${event::class.simpleName}")
+                        if (DEBUG_BT) Log.d("MainActivity", "!!! MAIN ACTIVITY GOT EVENT: ${event::class.simpleName}")
                         when (event) {
                             is BluetoothMeshManager.MeshEvent.MessageReceived -> {
                                 Log.d("MainActivity", "!!! Message from ${event.fromDevice}: ${event.message}")
@@ -2419,7 +2439,7 @@ class MainActivity : AppCompatActivity() {
             Log.e("MainActivity", "Bluetooth permissions NOT granted!")
         }
         
-        Log.d("MainActivity", "=== initializeBTMesh COMPLETED ===")
+        if (DEBUG_BT) Log.d("MainActivity", "=== initializeBTMesh COMPLETED ===")
     }
     
     private val shownApprovals = mutableSetOf<String>()

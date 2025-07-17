@@ -108,24 +108,36 @@
 
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Contact List -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/contactsRecyclerView"
+    <!-- Contact List Container -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:paddingHorizontal="16dp"
-        android:clipToPadding="false" />
+        android:layout_weight="1">
+        
+        <!-- Contact List -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/contactsRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="16dp"
+            android:clipToPadding="false" />
+        
+        <!-- Progress Bar -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
 
-    <!-- Empty State -->
-    <LinearLayout
-        android:id="@+id/emptyStateLayout"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:visibility="gone">
+        <!-- Empty State -->
+        <LinearLayout
+            android:id="@+id/emptyStateLayout"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:visibility="gone">
 
         <ImageView
             android:layout_width="80dp"
@@ -142,6 +154,8 @@
             android:textColor="@color/text_secondary"
             android:textSize="16sp" />
 
-    </LinearLayout>
+        </LinearLayout>
+        
+    </FrameLayout>
 
 </LinearLayout>
