@@ -96,8 +96,36 @@ class ContactsHelper(private val context: Context) {
                 }
             }
             
+            // Get notes
+            val notesCursor: Cursor? = contentResolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.Data.CONTACT_ID,
+                    ContactsContract.CommonDataKinds.Note.NOTE
+                ),
+                ContactsContract.Data.MIMETYPE + " = ?",
+                arrayOf(ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE),
+                null
+            )
+            
+            notesCursor?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val contactId = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Data.CONTACT_ID))
+                    val note = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Note.NOTE))
+                    
+                    contactsMap[contactId]?.let { contactInfo ->
+                        if (!note.isNullOrBlank()) {
+                            contactInfo.notes = note
+                        }
+                    }
+                }
+            }
+            
             // Convert to Contact objects
             contactsMap.values.forEach { contactInfo ->
+                // Check if notes contain @unicity
+                val hasUnicityInNotes = contactInfo.notes?.contains("@unicity", ignoreCase = true) ?: false
+                
                 // Create a contact for each email
                 contactInfo.emails.forEach { email ->
                     contacts.add(
@@ -106,7 +134,7 @@ class ContactsHelper(private val context: Context) {
                             name = contactInfo.name,
                             address = email,
                             avatarUrl = contactInfo.photoUri,
-                            isUnicityUser = email.contains("@unicity", ignoreCase = true)
+                            isUnicityUser = email.contains("@unicity", ignoreCase = true) || hasUnicityInNotes
                         )
                     )
                 }
@@ -119,7 +147,7 @@ class ContactsHelper(private val context: Context) {
                             name = contactInfo.name,
                             address = contactInfo.phoneNumbers.first(),
                             avatarUrl = contactInfo.photoUri,
-                            isUnicityUser = false
+                            isUnicityUser = hasUnicityInNotes
                         )
                     )
                 }
@@ -132,7 +160,7 @@ class ContactsHelper(private val context: Context) {
                             name = contactInfo.name,
                             address = "No contact info",
                             avatarUrl = contactInfo.photoUri,
-                            isUnicityUser = false
+                            isUnicityUser = hasUnicityInNotes
                         )
                     )
                 }
@@ -152,6 +180,7 @@ class ContactsHelper(private val context: Context) {
         val name: String,
         val photoUri: String?,
         val emails: MutableList<String> = mutableListOf(),
-        val phoneNumbers: MutableList<String> = mutableListOf()
+        val phoneNumbers: MutableList<String> = mutableListOf(),
+        var notes: String? = null
     )
 }
