@@ -53,6 +53,27 @@ class UserProfileActivity : AppCompatActivity() {
     }
     
     private fun setupViews() {
+        // Unicity tag section
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val savedTag = sharedPrefs.getString("unicity_tag", "")
+        binding.etUnicityTag.setText(savedTag)
+        
+        binding.btnSaveUnicityTag.setOnClickListener {
+            val tag = binding.etUnicityTag.text.toString().trim()
+            if (tag.isEmpty()) {
+                Toast.makeText(this, "Please enter a Unicity tag", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            
+            // Remove @unicity if user accidentally included it
+            val cleanTag = tag.removePrefix("@unicity").removePrefix("@")
+            
+            // Save to SharedPreferences
+            sharedPrefs.edit().putString("unicity_tag", cleanTag).apply()
+            
+            Toast.makeText(this, "Unicity tag saved: $cleanTag@unicity", Toast.LENGTH_SHORT).show()
+        }
+        
         // Recovery phrase section
         binding.btnShowHidePhrase.setOnClickListener {
             viewModel.togglePhraseVisibility()
