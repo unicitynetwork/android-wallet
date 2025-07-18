@@ -155,6 +155,26 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     priceEur = 0.91,
                     change24h = 0.0,
                     iconResId = R.drawable.subway
+                ),
+                CryptoCurrency(
+                    id = "usd-coin",
+                    symbol = "USDC",
+                    name = "USD Coin",
+                    balance = prefs.getFloat("usdc_balance", 1000.0f).toDouble(),
+                    priceUsd = 1.0,
+                    priceEur = 0.91,
+                    change24h = 0.0,
+                    iconResId = R.drawable.usdc
+                ),
+                CryptoCurrency(
+                    id = "solana",
+                    symbol = "SOL",
+                    name = "Solana",
+                    balance = prefs.getFloat("sol_balance", 10.0f).toDouble(),
+                    priceUsd = 100.0, // Will be updated from API
+                    priceEur = 91.0,  // Will be updated from API
+                    change24h = 0.0,
+                    iconResId = R.drawable.sol
                 )
             )
             Log.d("WalletViewModel", "Loaded BTC balance: ${_allCryptocurrencies.value.find { it.symbol == "BTC" }?.balance}")
@@ -180,6 +200,8 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     "ETH" -> putFloat("eth_balance", crypto.balance.toFloat())
                     "USDT" -> putFloat("usdt_balance", crypto.balance.toFloat())
                     "SUB" -> putFloat("sub_balance", crypto.balance.toFloat())
+                    "USDC" -> putFloat("usdc_balance", crypto.balance.toFloat())
+                    "SOL" -> putFloat("sol_balance", crypto.balance.toFloat())
                 }
             }
             apply()
@@ -269,6 +291,26 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 priceEur = 0.91,
                 change24h = 0.0, // Keep Subway stable
                 iconResId = R.drawable.subway
+            ),
+            CryptoCurrency(
+                id = "usd-coin",
+                symbol = "USDC",
+                name = "USD Coin",
+                balance = 1000.0,
+                priceUsd = 1.0,
+                priceEur = 0.91,
+                change24h = 0.0,
+                iconResId = R.drawable.usdc
+            ),
+            CryptoCurrency(
+                id = "solana",
+                symbol = "SOL",
+                name = "Solana",
+                balance = 10.0,
+                priceUsd = 100.0, // Will be updated from API
+                priceEur = 91.0,  // Will be updated from API
+                change24h = 0.0,
+                iconResId = R.drawable.sol
             )
         )
         

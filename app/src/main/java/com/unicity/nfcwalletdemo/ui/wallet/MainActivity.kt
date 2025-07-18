@@ -3126,7 +3126,9 @@ class MainActivity : AppCompatActivity() {
                     "USDT" -> R.drawable.ic_tether
                     "EXAF" -> R.drawable.ic_franc
                     "ENGN" -> R.drawable.ic_naira
-                    "SUB" -> R.drawable.ic_subway
+                    "SUB" -> R.drawable.subway
+                    "USDC" -> R.drawable.usdc
+                    "SOL" -> R.drawable.sol
                     else -> R.drawable.ic_coin_placeholder
                 }
                 assetIcon.setImageResource(iconRes)
