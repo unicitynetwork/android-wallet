@@ -115,6 +115,20 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintEnd_toEndOf="parent" />
                 
+            <!-- Location Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnLocation"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="0dp"
+                android:layout_marginBottom="0dp"
+                app:fabSize="mini"
+                app:backgroundTint="#FFFFFF"
+                app:tint="#000000"
+                android:src="@drawable/ic_location_on"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
             <!-- QR Scanner Button -->
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/btnScanQr"

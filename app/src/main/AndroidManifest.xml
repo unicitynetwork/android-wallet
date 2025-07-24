@@ -96,6 +96,12 @@
             android:label="User Profile" />
             
         <activity 
+            android:name=".ui.agent.AgentMapActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:label="Find Agents" />
+            
+        <activity 
             android:name=".ui.bluetooth.BluetoothMeshActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
@@ -139,6 +145,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        
+        <!-- Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
         
     </application>
 

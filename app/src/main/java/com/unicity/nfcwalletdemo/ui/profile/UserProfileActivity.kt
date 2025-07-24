@@ -1,9 +1,12 @@
 package com.unicity.nfcwalletdemo.ui.profile
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
@@ -11,19 +14,36 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.Priority
 import com.google.api.services.drive.DriveScopes
 import com.unicity.nfcwalletdemo.databinding.ActivityUserProfileBinding
+import com.unicity.nfcwalletdemo.network.AgentApiService
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 class UserProfileActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityUserProfileBinding
     private lateinit var viewModel: UserProfileViewModel
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var locationCallback: LocationCallback
+    private lateinit var agentApiService: AgentApiService
+    private var isAgentMode = false
+    
+    companion object {
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
+    }
     
     private val signInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -32,6 +52,17 @@ class UserProfileActivity : AppCompatActivity() {
             result.data?.let { intent ->
                 viewModel.handleSignInResult(intent)
             }
+        }
+    }
+    
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startLocationUpdates()
+        } else {
+            binding.switchAgent.isChecked = false
+            Toast.makeText(this, "Location permission is required for agent mode", Toast.LENGTH_LONG).show()
         }
     }
     
@@ -48,6 +79,10 @@ class UserProfileActivity : AppCompatActivity() {
             UserProfileViewModel.Factory(application)
         )[UserProfileViewModel::class.java]
         
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        agentApiService = AgentApiService()
+        setupLocationCallback()
+        
         setupViews()
         observeViewModel()
     }
@@ -56,7 +91,32 @@ class UserProfileActivity : AppCompatActivity() {
         // Unicity tag section
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
         val savedTag = sharedPrefs.getString("unicity_tag", "")
+        val savedAgentStatus = sharedPrefs.getBoolean("is_agent", false)
+        
         binding.etUnicityTag.setText(savedTag)
+        binding.switchAgent.isChecked = savedAgentStatus
+        isAgentMode = savedAgentStatus
+        
+        // If agent mode is already enabled, start location updates
+        if (savedAgentStatus) {
+            checkLocationPermissionAndStart()
+        }
+        
+        binding.switchAgent.setOnCheckedChangeListener { _, isChecked ->
+            isAgentMode = isChecked
+            if (isChecked) {
+                val tag = binding.etUnicityTag.text.toString().trim()
+                if (tag.isEmpty()) {
+                    Toast.makeText(this, "Please enter a Unicity tag first", Toast.LENGTH_SHORT).show()
+                    binding.switchAgent.isChecked = false
+                    return@setOnCheckedChangeListener
+                }
+                checkLocationPermissionAndStart()
+            } else {
+                stopLocationUpdates()
+            }
+            sharedPrefs.edit().putBoolean("is_agent", isChecked).apply()
+        }
         
         binding.btnSaveUnicityTag.setOnClickListener {
             val tag = binding.etUnicityTag.text.toString().trim()
@@ -72,6 +132,11 @@ class UserProfileActivity : AppCompatActivity() {
             sharedPrefs.edit().putString("unicity_tag", cleanTag).apply()
             
             Toast.makeText(this, "Unicity tag saved: $cleanTag@unicity", Toast.LENGTH_SHORT).show()
+            
+            // If agent mode is on, update location with new tag
+            if (isAgentMode) {
+                checkLocationPermissionAndStart()
+            }
         }
         
         // Recovery phrase section
@@ -226,6 +291,99 @@ class UserProfileActivity : AppCompatActivity() {
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+    
+    private fun setupLocationCallback() {
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                locationResult.lastLocation?.let { location ->
+                    updateAgentLocation(location)
+                }
+            }
+        }
+    }
+    
+    private fun checkLocationPermissionAndStart() {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            startLocationUpdates()
+        } else {
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+    
+    private fun startLocationUpdates() {
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            TimeUnit.MINUTES.toMillis(5) // Update every 5 minutes
+        ).apply {
+            setMinUpdateIntervalMillis(TimeUnit.MINUTES.toMillis(1)) // Minimum 1 minute between updates
+        }.build()
+        
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                mainLooper
+            )
+            
+            // Get immediate location
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let { updateAgentLocation(it) }
+            }
+        }
+    }
+    
+    private fun stopLocationUpdates() {
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        
+        // Mark agent as inactive
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+        
+        if (unicityTag.isNotEmpty()) {
+            lifecycleScope.launch {
+                try {
+                    agentApiService.deactivateAgent(unicityTag)
+                } catch (e: Exception) {
+                    // Ignore errors when deactivating
+                }
+            }
+        }
+    }
+    
+    private fun updateAgentLocation(location: Location) {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+        
+        if (unicityTag.isNotEmpty()) {
+            lifecycleScope.launch {
+                try {
+                    agentApiService.updateAgentLocation(
+                        unicityTag,
+                        location.latitude,
+                        location.longitude,
+                        true
+                    )
+                } catch (e: Exception) {
+                    // Silently ignore errors - this runs in background
+                }
+            }
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isAgentMode) {
+            stopLocationUpdates()
         }
     }
 }

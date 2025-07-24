@@ -286,6 +286,11 @@ class MainActivity : AppCompatActivity() {
             scanQRCode()
         }
         
+        // Setup location button
+        binding.btnLocation.setOnClickListener {
+            openAgentMap()
+        }
+        
         // Setup action buttons
         binding.buyButton.setOnClickListener {
             showBuySellDialog()
@@ -2686,6 +2691,11 @@ class MainActivity : AppCompatActivity() {
             .setCaptureActivity(PortraitCaptureActivity::class.java) // Force portrait mode
         
         barcodeLauncher.launch(options)
+    }
+    
+    private fun openAgentMap() {
+        val intent = Intent(this, com.unicity.nfcwalletdemo.ui.agent.AgentMapActivity::class.java)
+        startActivity(intent)
     }
     
     private fun handleScannedQRCode(content: String) {
