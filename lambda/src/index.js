@@ -9,8 +9,10 @@ const ddb = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME || 'PaymentRequests';
 const TRANSFER_TABLE_NAME = process.env.TRANSFER_TABLE_NAME || 'TransferRequests';
+const AGENTS_TABLE_NAME = process.env.AGENTS_TABLE_NAME || 'Agents';
 const TTL_SECONDS = parseInt(process.env.TTL_SECONDS || '60');
 const TRANSFER_TTL_SECONDS = parseInt(process.env.TRANSFER_TTL_SECONDS || '300'); // 5 minutes default
+const AGENT_TTL_SECONDS = parseInt(process.env.AGENT_TTL_SECONDS || '600'); // 10 minutes default
 
 // Helper to create CORS response
 const corsResponse = (statusCode, body) => ({
@@ -23,6 +25,18 @@ const corsResponse = (statusCode, body) => ({
   },
   body: JSON.stringify(body)
 });
+
+// Helper to calculate distance between two GPS coordinates in km
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Radius of the Earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
 
 // Main Lambda handler
 exports.handler = async (event) => {
@@ -224,6 +238,83 @@ exports.handler = async (event) => {
       }));
 
       return corsResponse(200, result.Attributes);
+    }
+
+    // POST /agents/update-location
+    if (method === 'POST' && path === '/agents/update-location') {
+      const body = JSON.parse(event.body);
+      const timestamp = Date.now();
+      const ttl = Math.floor(timestamp / 1000) + AGENT_TTL_SECONDS;
+
+      if (!body.unicityTag || !body.latitude || !body.longitude) {
+        return corsResponse(400, { error: 'Missing required fields: unicityTag, latitude, longitude' });
+      }
+
+      const item = {
+        unicityTag: body.unicityTag,
+        latitude: body.latitude,
+        longitude: body.longitude,
+        isActive: body.isActive !== false, // Default to true
+        lastUpdateAt: new Date(timestamp).toISOString(),
+        ttl // DynamoDB TTL attribute
+      };
+
+      await ddb.send(new PutCommand({
+        TableName: AGENTS_TABLE_NAME,
+        Item: item
+      }));
+
+      return corsResponse(200, { message: 'Location updated successfully' });
+    }
+
+    // GET /agents/nearby?lat=X&lon=Y&maxDistance=Z
+    if (method === 'GET' && path === '/agents/nearby') {
+      const params = event.queryStringParameters || {};
+      const userLat = parseFloat(params.lat);
+      const userLon = parseFloat(params.lon);
+      const maxDistance = parseFloat(params.maxDistance || '100'); // Default 100km
+
+      if (isNaN(userLat) || isNaN(userLon)) {
+        return corsResponse(400, { error: 'Invalid latitude or longitude' });
+      }
+
+      // Scan all agents (in production, use geospatial indexing)
+      const result = await ddb.send(new ScanCommand({
+        TableName: AGENTS_TABLE_NAME,
+        FilterExpression: 'isActive = :active',
+        ExpressionAttributeValues: {
+          ':active': true
+        }
+      }));
+
+      // Calculate distances and filter
+      const now = new Date();
+      const nearbyAgents = (result.Items || [])
+        .map(agent => {
+          const distance = calculateDistance(userLat, userLon, agent.latitude, agent.longitude);
+          return { ...agent, distance };
+        })
+        .filter(agent => agent.distance <= maxDistance)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 20); // Max 20 agents
+
+      return corsResponse(200, nearbyAgents);
+    }
+
+    // DELETE /agents/:unicityTag
+    if (method === 'DELETE' && path.startsWith('/agents/')) {
+      const unicityTag = decodeURIComponent(path.split('/')[2]);
+
+      await ddb.send(new UpdateCommand({
+        TableName: AGENTS_TABLE_NAME,
+        Key: { unicityTag },
+        UpdateExpression: 'SET isActive = :inactive',
+        ExpressionAttributeValues: {
+          ':inactive': false
+        }
+      }));
+
+      return corsResponse(200, { message: 'Agent deactivated successfully' });
     }
 
     // 404 for unknown routes

@@ -10,8 +10,10 @@ Globals:
       Variables:
         TABLE_NAME: !Ref PaymentRequestsTable
         TRANSFER_TABLE_NAME: !Ref TransferRequestsTable
+        AGENTS_TABLE_NAME: !Ref AgentsTable
         TTL_SECONDS: 60
         TRANSFER_TTL_SECONDS: 300
+        AGENT_TTL_SECONDS: 600
 
 Resources:
   # Lambda Function
@@ -66,11 +68,28 @@ Resources:
           Properties:
             Path: /transfer-requests/{id}/reject
             Method: PUT
+        UpdateAgentLocation:
+          Type: Api
+          Properties:
+            Path: /agents/update-location
+            Method: POST
+        GetNearbyAgents:
+          Type: Api
+          Properties:
+            Path: /agents/nearby
+            Method: GET
+        DeactivateAgent:
+          Type: Api
+          Properties:
+            Path: /agents/{tag}
+            Method: DELETE
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref PaymentRequestsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref TransferRequestsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AgentsTable
 
   # DynamoDB Table
   PaymentRequestsTable:
@@ -97,6 +116,21 @@ Resources:
           AttributeType: S
       KeySchema:
         - AttributeName: requestId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # Agents Table
+  AgentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: unicityTag
+          AttributeType: S
+      KeySchema:
+        - AttributeName: unicityTag
           KeyType: HASH
       TimeToLiveSpecification:
         AttributeName: ttl
