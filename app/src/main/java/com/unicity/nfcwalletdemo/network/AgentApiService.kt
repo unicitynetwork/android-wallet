@@ -53,7 +53,7 @@ class AgentApiService {
                 Log.d(TAG, "Agent location updated successfully")
                 Result.success(Unit)
             } else {
-                val error = connection.inputStream.bufferedReader().use { it.readText() }
+                val error = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                 Log.e(TAG, "Failed to update agent location: $responseCode - $error")
                 Result.failure(Exception("Failed to update agent location: $responseCode"))
             }

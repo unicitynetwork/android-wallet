@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.location.Location
 import android.location.LocationManager
+import kotlin.random.Random
 
 object DemoLocationManager {
     private const val PREFS_NAME = "UnicitywWalletPrefs"
@@ -74,12 +75,32 @@ object DemoLocationManager {
     
     fun createDemoLocation(context: Context): Location {
         val (latitude, longitude) = getDemoCoordinates(context)
+        // Randomize within 500 meters radius
+        val (randomLat, randomLon) = randomizeCoordinates(latitude, longitude, 500.0)
         val location = Location(LocationManager.GPS_PROVIDER)
-        location.latitude = latitude
-        location.longitude = longitude
+        location.latitude = randomLat
+        location.longitude = randomLon
         location.accuracy = 10f // Fake good accuracy
         location.time = System.currentTimeMillis()
         return location
+    }
+    
+    /**
+     * Randomize coordinates within a given radius (in meters) from a center point
+     */
+    private fun randomizeCoordinates(centerLat: Double, centerLon: Double, radiusMeters: Double): Pair<Double, Double> {
+        // Convert radius from meters to degrees
+        val radiusInDegrees = radiusMeters / 111320.0 // 1 degree is approximately 111320 meters
+        
+        // Generate random angle and distance
+        val angle = Random.nextDouble() * 2 * Math.PI
+        val distance = Random.nextDouble() * radiusInDegrees
+        
+        // Calculate new coordinates
+        val deltaLat = distance * Math.cos(angle)
+        val deltaLon = distance * Math.sin(angle) / Math.cos(Math.toRadians(centerLat))
+        
+        return Pair(centerLat + deltaLat, centerLon + deltaLon)
     }
     
     // Generate nearby agent locations for demo
@@ -87,13 +108,18 @@ object DemoLocationManager {
         val (centerLat, centerLon) = getDemoCoordinates(context)
         val locations = mutableListOf<Pair<Double, Double>>()
         
-        // Generate random points within ~5km radius
+        // Generate random points within 1-5km radius
         for (i in 0 until count) {
-            val angle = Math.random() * 2 * Math.PI
-            val distance = Math.random() * 0.05 // ~5km in degrees
+            val angle = Random.nextDouble() * 2 * Math.PI
+            // Distance between 1km and 5km
+            val distanceKm = 1.0 + Random.nextDouble() * 4.0
+            val distanceInDegrees = distanceKm / 111.32 // Convert km to degrees
             
-            val lat = centerLat + distance * Math.sin(angle)
-            val lon = centerLon + distance * Math.cos(angle)
+            val deltaLat = distanceInDegrees * Math.cos(angle)
+            val deltaLon = distanceInDegrees * Math.sin(angle) / Math.cos(Math.toRadians(centerLat))
+            
+            val lat = centerLat + deltaLat
+            val lon = centerLon + deltaLon
             
             locations.add(Pair(lat, lon))
         }

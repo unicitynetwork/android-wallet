@@ -19,6 +19,7 @@ import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityAgentMapBinding
@@ -50,14 +51,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         
-        // Update title to show demo mode status
-        val isDemoMode = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
-        if (isDemoMode) {
-            val demoLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.getDemoLocation(this)
-            supportActionBar?.title = "Find Agents (Demo: ${demoLocation.city})"
-        } else {
-            supportActionBar?.title = "Find Agents"
-        }
+        supportActionBar?.title = "Find Agents"
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
@@ -99,19 +93,34 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
         
-        // Enable my location if permission granted
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            googleMap?.isMyLocationEnabled = true
-        }
+        // Check if demo mode is enabled
+        val isDemoMode = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
         
-        // Move camera to current location if available
-        currentLocation?.let {
-            val latLng = LatLng(it.latitude, it.longitude)
-            googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
+        if (isDemoMode) {
+            // In demo mode, don't enable real location tracking
+            googleMap?.isMyLocationEnabled = false
+            
+            // Add a blue marker at demo location if available
+            currentLocation?.let {
+                addUserLocationMarker(it.latitude, it.longitude)
+                val latLng = LatLng(it.latitude, it.longitude)
+                googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
+            }
+        } else {
+            // Enable my location if permission granted
+            if (ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                googleMap?.isMyLocationEnabled = true
+            }
+            
+            // Move camera to current location if available
+            currentLocation?.let {
+                val latLng = LatLng(it.latitude, it.longitude)
+                googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
+            }
         }
     }
     
@@ -174,8 +183,15 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
             try {
                 val result = agentApiService.getNearbyAgents(latitude, longitude)
                 result.onSuccess { nearbyAgents ->
+                    // Get current user's unicityTag to filter it out
+                    val prefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+                    val currentUserTag = prefs.getString("user_unicity_tag", null)
+                    
                     agents.clear()
-                    agents.addAll(nearbyAgents)
+                    // Filter out current user from the list
+                    agents.addAll(nearbyAgents.filter { agent -> 
+                        agent.unicityTag != currentUserTag
+                    })
                     
                     // Update UI
                     updateAgentList()
@@ -215,6 +231,13 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun addAgentMarkersToMap() {
         googleMap?.clear()
         
+        // Re-add user location marker if in demo mode
+        if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
+            currentLocation?.let {
+                addUserLocationMarker(it.latitude, it.longitude)
+            }
+        }
+        
         agents.forEach { agent ->
             val latLng = LatLng(agent.latitude, agent.longitude)
             googleMap?.addMarker(
@@ -224,6 +247,16 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                     .snippet("${String.format("%.1f", agent.distance)} km away")
             )
         }
+    }
+    
+    private fun addUserLocationMarker(latitude: Double, longitude: Double) {
+        val latLng = LatLng(latitude, longitude)
+        googleMap?.addMarker(
+            MarkerOptions()
+                .position(latLng)
+                .title("Your Location")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
+        )
     }
     
     override fun onRequestPermissionsResult(
@@ -237,8 +270,9 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 loadCurrentLocationAndAgents()
                 
-                // Enable my location on map
-                if (ActivityCompat.checkSelfPermission(
+                // Enable my location on map only if not in demo mode
+                if (!com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this) &&
+                    ActivityCompat.checkSelfPermission(
                         this,
                         Manifest.permission.ACCESS_FINE_LOCATION
                     ) == PackageManager.PERMISSION_GRANTED
