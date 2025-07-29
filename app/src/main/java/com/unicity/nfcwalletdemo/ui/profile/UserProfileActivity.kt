@@ -336,8 +336,14 @@ class UserProfileActivity : AppCompatActivity() {
             )
             
             // Get immediate location
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                location?.let { updateAgentLocation(it) }
+            if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
+                // Use demo location immediately
+                val demoLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this)
+                updateAgentLocation(demoLocation)
+            } else {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    location?.let { updateAgentLocation(it) }
+                }
             }
         }
     }
@@ -365,12 +371,19 @@ class UserProfileActivity : AppCompatActivity() {
         val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
         
         if (unicityTag.isNotEmpty()) {
+            // Use demo location if demo mode is enabled
+            val finalLocation = if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
+                com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this)
+            } else {
+                location
+            }
+            
             lifecycleScope.launch {
                 try {
                     agentApiService.updateAgentLocation(
                         unicityTag,
-                        location.latitude,
-                        location.longitude,
+                        finalLocation.latitude,
+                        finalLocation.longitude,
                         true
                     )
                 } catch (e: Exception) {

@@ -49,7 +49,15 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         setContentView(binding.root)
         
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Find Agents"
+        
+        // Update title to show demo mode status
+        val isDemoMode = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
+        if (isDemoMode) {
+            val demoLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.getDemoLocation(this)
+            supportActionBar?.title = "Find Agents (Demo: ${demoLocation.city})"
+        } else {
+            supportActionBar?.title = "Find Agents"
+        }
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
@@ -126,7 +134,19 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun loadCurrentLocationAndAgents() {
         binding.progressBar.visibility = View.VISIBLE
         
-        if (ActivityCompat.checkSelfPermission(
+        // Check if demo mode is enabled
+        if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
+            // Use demo location
+            val demoLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this)
+            currentLocation = demoLocation
+            
+            // Update map camera
+            val latLng = LatLng(demoLocation.latitude, demoLocation.longitude)
+            googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
+            
+            // Load nearby agents
+            loadNearbyAgents(demoLocation.latitude, demoLocation.longitude)
+        } else if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED

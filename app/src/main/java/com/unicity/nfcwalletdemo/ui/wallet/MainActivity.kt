@@ -291,6 +291,11 @@ class MainActivity : AppCompatActivity() {
             openAgentMap()
         }
         
+        // Setup overflow menu button
+        binding.btnOverflowMenu.setOnClickListener { view ->
+            showOverflowMenu(view)
+        }
+        
         // Setup action buttons
         binding.buyButton.setOnClickListener {
             showBuySellDialog()
@@ -1015,7 +1020,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showSettingsDialog() {
-        val options = arrayOf("Mint a Token", "Reset Wallet", "Test NFC Transfer", "Test Offline Transfer", "Bluetooth Mesh Discovery")
+        val options = arrayOf("Mint a Token", "Reset Wallet", "Test NFC Transfer", "Test Offline Transfer", "Bluetooth Mesh Discovery", "Demo Mode")
         
         AlertDialog.Builder(this)
             .setTitle("Settings")
@@ -1026,9 +1031,75 @@ class MainActivity : AppCompatActivity() {
                     2 -> startNfcTestTransfer()
                     3 -> runOfflineTransferTest()
                     4 -> startActivity(Intent(this@MainActivity, com.unicity.nfcwalletdemo.ui.bluetooth.BluetoothMeshActivity::class.java))
+                    5 -> showDemoModeDialog()
                 }
             }
             .show()
+    }
+    
+    private fun showDemoModeDialog() {
+        val isDemoEnabled = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
+        val currentLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.getDemoLocation(this)
+        
+        val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_1, null)
+        
+        AlertDialog.Builder(this)
+            .setTitle("Demo Mode Settings")
+            .setMessage("Current: ${if (isDemoEnabled) "ON - ${currentLocation.city}, ${currentLocation.country}" else "OFF"}")
+            .setPositiveButton("Toggle Demo Mode") { _, _ ->
+                com.unicity.nfcwalletdemo.utils.DemoLocationManager.setDemoModeEnabled(this, !isDemoEnabled)
+                Toast.makeText(this, "Demo mode ${if (!isDemoEnabled) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton(if (isDemoEnabled) "Change Location" else "Select Location") { _, _ ->
+                if (!isDemoEnabled) {
+                    com.unicity.nfcwalletdemo.utils.DemoLocationManager.setDemoModeEnabled(this, true)
+                }
+                showLocationSelectionDialog()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun showLocationSelectionDialog() {
+        val locations = com.unicity.nfcwalletdemo.utils.DemoLocationManager.DemoLocation.values()
+            .filter { it != com.unicity.nfcwalletdemo.utils.DemoLocationManager.DemoLocation.CUSTOM }
+        val locationNames = locations.map { "${it.city}, ${it.country}" }.toTypedArray()
+        
+        AlertDialog.Builder(this)
+            .setTitle("Select Demo Location")
+            .setItems(locationNames) { _, which ->
+                val selectedLocation = locations[which]
+                com.unicity.nfcwalletdemo.utils.DemoLocationManager.setDemoLocation(this, selectedLocation)
+                Toast.makeText(this, "Demo location set to ${selectedLocation.city}", Toast.LENGTH_SHORT).show()
+                
+                // Also create some demo agents if user is in agent mode
+                createDemoAgents(selectedLocation)
+            }
+            .show()
+    }
+    
+    private fun createDemoAgents(location: com.unicity.nfcwalletdemo.utils.DemoLocationManager.DemoLocation) {
+        // Generate some demo agents near the selected location
+        lifecycleScope.launch {
+            try {
+                val agentLocations = com.unicity.nfcwalletdemo.utils.DemoLocationManager.generateNearbyAgentLocations(this@MainActivity, 5)
+                val agentNames = listOf("agent1", "agent2", "agent3", "agent4", "agent5")
+                val agentApiService = com.unicity.nfcwalletdemo.network.AgentApiService()
+                
+                agentLocations.forEachIndexed { index, (lat, lon) ->
+                    agentApiService.updateAgentLocation(
+                        agentNames[index],
+                        lat,
+                        lon,
+                        true
+                    )
+                }
+                
+                Toast.makeText(this@MainActivity, "Created ${agentLocations.size} demo agents nearby", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to create demo agents", e)
+            }
+        }
     }
     
     private fun showAboutDialog() {
@@ -2696,6 +2767,51 @@ class MainActivity : AppCompatActivity() {
     private fun openAgentMap() {
         val intent = Intent(this, com.unicity.nfcwalletdemo.ui.agent.AgentMapActivity::class.java)
         startActivity(intent)
+    }
+    
+    private fun showOverflowMenu(anchor: View) {
+        val popup = android.widget.PopupMenu(this, anchor)
+        val menu = popup.menu
+        
+        // Add custom menu items
+        menu.add(0, 1, 0, "About")
+        menu.add(0, 2, 1, "Mint a Token")
+        menu.add(0, 3, 2, "Test Offline Transfer")
+        menu.add(0, 4, 3, "Bluetooth Mesh Discovery")
+        menu.add(0, 5, 4, "Demo Mode")
+        menu.add(0, 6, 5, "Reset Wallet")
+        
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> {
+                    showAboutDialog()
+                    true
+                }
+                2 -> {
+                    showMintTokenDialog()
+                    true
+                }
+                3 -> {
+                    runOfflineTransferTest()
+                    true
+                }
+                4 -> {
+                    startActivity(Intent(this, com.unicity.nfcwalletdemo.ui.bluetooth.BluetoothMeshActivity::class.java))
+                    true
+                }
+                5 -> {
+                    showDemoModeDialog()
+                    true
+                }
+                6 -> {
+                    showResetWalletDialog()
+                    true
+                }
+                else -> false
+            }
+        }
+        
+        popup.show()
     }
     
     private fun handleScannedQRCode(content: String) {
