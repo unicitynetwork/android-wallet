@@ -20,6 +20,10 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import android.view.MotionEvent
+import kotlin.math.*
+import java.text.SimpleDateFormat
+import java.util.*
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityAgentMapBinding
@@ -38,10 +42,19 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private var googleMap: GoogleMap? = null
     private var currentLocation: Location? = null
     private val agents = mutableListOf<Agent>()
+    private var isSatelliteView = false
     
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
         private const val DEFAULT_ZOOM = 12f
+        
+        // Demo agent names
+        private val DEMO_AGENT_NAMES = listOf(
+            "john_trader", "maria_exchange", "ahmed_crypto", "sarah_wallet",
+            "david_cash", "fatima_money", "peter_exchange", "aisha_trader",
+            "michael_crypto", "zainab_wallet", "james_money", "linda_exchange",
+            "robert_trader", "amina_cash", "william_crypto"
+        )
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,7 +63,6 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         setContentView(binding.root)
         
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        
         supportActionBar?.title = "Find Agents"
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
@@ -59,6 +71,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         setupRecyclerView()
         setupBottomSheet()
         setupMap()
+        setupMapControls()
         
         checkLocationPermissionAndLoad()
     }
@@ -92,6 +105,10 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
+        
+        // Enable zoom controls
+        googleMap?.uiSettings?.isZoomControlsEnabled = false // We use custom controls
+        googleMap?.uiSettings?.isCompassEnabled = true
         
         // Check if demo mode is enabled
         val isDemoMode = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
@@ -224,7 +241,8 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         } else {
             binding.tvEmptyState.visibility = View.GONE
             binding.rvAgents.visibility = View.VISIBLE
-            agentAdapter.submitList(agents)
+            // Force adapter to update with new list
+            agentAdapter.submitList(agents.toList())
         }
     }
     
@@ -298,5 +316,126 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+    
+    private fun setupMapControls() {
+        // Map type toggle
+        binding.btnMapType.setOnClickListener {
+            isSatelliteView = !isSatelliteView
+            googleMap?.mapType = if (isSatelliteView) {
+                GoogleMap.MAP_TYPE_SATELLITE
+            } else {
+                GoogleMap.MAP_TYPE_NORMAL
+            }
+            // Update icon
+            binding.btnMapType.setImageResource(
+                if (isSatelliteView) R.drawable.ic_location_on else R.drawable.ic_satellite
+            )
+        }
+        
+        // Zoom controls
+        binding.btnZoomIn.setOnClickListener {
+            googleMap?.animateCamera(CameraUpdateFactory.zoomIn())
+        }
+        
+        binding.btnZoomOut.setOnClickListener {
+            googleMap?.animateCamera(CameraUpdateFactory.zoomOut())
+        }
+        
+        // Demo mode button
+        binding.btnDemoMode.setOnClickListener {
+            generateDemoAgentsAtCurrentView()
+        }
+    }
+    
+    
+    private var titlePressStartTime = 0L
+    
+    private fun generateDemoAgentsAtCurrentView() {
+        val map = googleMap ?: return
+        
+        // Get current map center
+        val centerLatLng = map.cameraPosition.target
+        val centerLat = centerLatLng.latitude
+        val centerLon = centerLatLng.longitude
+        
+        // Clear existing markers and agents
+        map.clear()
+        agents.clear()
+        
+        // Add user location marker at center
+        currentLocation = Location("demo").apply {
+            latitude = centerLat
+            longitude = centerLon
+        }
+        addUserLocationMarker(centerLat, centerLon)
+        
+        // Generate 10 random agents within visible bounds
+        val visibleRegion = map.projection.visibleRegion
+        val bounds = visibleRegion.latLngBounds
+        
+        val randomAgents = mutableListOf<Agent>()
+        val usedNames = mutableSetOf<String>()
+        
+        for (i in 0 until 10) {
+            // Get a unique name
+            var agentName: String
+            do {
+                agentName = DEMO_AGENT_NAMES.random()
+            } while (agentName in usedNames)
+            usedNames.add(agentName)
+            
+            // Generate random position within visible bounds
+            val latRange = bounds.northeast.latitude - bounds.southwest.latitude
+            val lonRange = bounds.northeast.longitude - bounds.southwest.longitude
+            
+            val randomLat = bounds.southwest.latitude + (Math.random() * latRange)
+            val randomLon = bounds.southwest.longitude + (Math.random() * lonRange)
+            
+            // Calculate distance from center
+            val distance = calculateDistance(centerLat, centerLon, randomLat, randomLon)
+            
+            // Generate a realistic timestamp (within last hour)
+            val minutesAgo = (Math.random() * 60).toInt()
+            val timestamp = Date(System.currentTimeMillis() - minutesAgo * 60 * 1000)
+            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            
+            randomAgents.add(
+                Agent(
+                    unicityTag = agentName,
+                    latitude = randomLat,
+                    longitude = randomLon,
+                    distance = distance,
+                    lastUpdateAt = sdf.format(timestamp)
+                )
+            )
+        }
+        
+        // Sort by distance and update UI
+        agents.clear() // Clear again to be sure
+        agents.addAll(randomAgents.sortedBy { it.distance })
+        
+        // Force UI update
+        updateAgentList()
+        addAgentMarkersToMap()
+        
+        // Expand bottom sheet to show the list
+        bottomSheetBehavior.state = BottomSheetBehavior.STATE_EXPANDED
+        
+        Toast.makeText(this, "Generated 10 demo agents", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val R = 6371.0 // Earth's radius in kilometers
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2) * sin(dLon / 2)
+        
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return R * c
     }
 }

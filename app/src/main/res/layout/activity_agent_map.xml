@@ -4,13 +4,86 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Map Fragment - takes 2/3 of screen -->
-    <fragment
-        android:id="@+id/mapFragment"
-        android:name="com.google.android.gms.maps.SupportMapFragment"
+    <!-- Map Container -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginBottom="200dp" />
+        android:layout_marginBottom="200dp">
+        
+        <!-- Map Fragment -->
+        <fragment
+            android:id="@+id/mapFragment"
+            android:name="com.google.android.gms.maps.SupportMapFragment"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        
+        <!-- Map Controls Container -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|top"
+            android:layout_margin="16dp"
+            android:orientation="vertical"
+            android:background="@android:color/white"
+            android:elevation="4dp">
+            
+            <!-- Satellite View Toggle -->
+            <ImageButton
+                android:id="@+id/btnMapType"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_satellite"
+                android:background="?android:attr/selectableItemBackground"
+                android:scaleType="centerInside"
+                android:padding="12dp" />
+            
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@android:color/darker_gray" />
+            
+            <!-- Zoom In Button -->
+            <ImageButton
+                android:id="@+id/btnZoomIn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_add"
+                android:background="?android:attr/selectableItemBackground"
+                android:scaleType="centerInside"
+                android:padding="12dp" />
+            
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@android:color/darker_gray" />
+            
+            <!-- Zoom Out Button -->
+            <ImageButton
+                android:id="@+id/btnZoomOut"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_remove"
+                android:background="?android:attr/selectableItemBackground"
+                android:scaleType="centerInside"
+                android:padding="12dp" />
+            
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@android:color/darker_gray" />
+            
+            <!-- Demo Mode Button -->
+            <ImageButton
+                android:id="@+id/btnDemoMode"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_location_on"
+                android:background="?android:attr/selectableItemBackground"
+                android:scaleType="centerInside"
+                android:padding="12dp"
+                app:tint="@color/primary" />
+        </LinearLayout>
+    </FrameLayout>
 
     <!-- Bottom Sheet for Agent List -->
     <LinearLayout
