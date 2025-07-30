@@ -10,6 +10,7 @@
     
     <!-- Primary Colors -->
     <color name="primary">#000000</color>
+    <color name="primary_color">#000000</color>
     <color name="primary_dark">#1A1A1A</color>
     <color name="primary_variant">#2D2D2D</color>
     

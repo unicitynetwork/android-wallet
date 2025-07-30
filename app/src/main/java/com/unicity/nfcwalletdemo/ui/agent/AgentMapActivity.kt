@@ -21,9 +21,13 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
+import com.google.android.gms.maps.model.Marker
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.view.MotionEvent
+import android.widget.TextView
+import android.content.Intent
+import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
 import kotlin.math.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -41,10 +45,12 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var agentApiService: AgentApiService
     private lateinit var agentAdapter: AgentAdapter
     private lateinit var bottomSheetBehavior: BottomSheetBehavior<View>
+    private lateinit var chatDatabase: com.unicity.nfcwalletdemo.data.chat.ChatDatabase
     
     private var googleMap: GoogleMap? = null
     private var currentLocation: Location? = null
     private val agents = mutableListOf<Agent>()
+    private val agentsWithChat = mutableSetOf<String>()
     private var isSatelliteView = false
     
     companion object {
@@ -70,6 +76,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
+        chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this)
         
         setupRecyclerView()
         setupBottomSheet()
@@ -77,6 +84,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         setupMapControls()
         
         checkLocationPermissionAndLoad()
+        loadAgentsWithChat()
     }
     
     private fun setupRecyclerView() {
@@ -112,6 +120,37 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         // Enable zoom controls
         googleMap?.uiSettings?.isZoomControlsEnabled = false // We use custom controls
         googleMap?.uiSettings?.isCompassEnabled = true
+        
+        // Set up custom info window adapter
+        map.setInfoWindowAdapter(object : GoogleMap.InfoWindowAdapter {
+            override fun getInfoWindow(marker: Marker): View? = null
+            
+            override fun getInfoContents(marker: Marker): View? {
+                if (marker.tag !is Agent) return null
+                
+                val view = layoutInflater.inflate(R.layout.custom_info_window, null)
+                val tvTitle = view.findViewById<TextView>(R.id.tvTitle)
+                val tvSnippet = view.findViewById<TextView>(R.id.tvSnippet)
+                
+                tvTitle.text = marker.title
+                tvSnippet.text = marker.snippet
+                
+                return view
+            }
+        })
+        
+        // Set up info window click listener for chat
+        map.setOnInfoWindowClickListener { marker ->
+            val agent = marker.tag as? Agent
+            if (agent != null) {
+                // Start chat activity
+                val intent = Intent(this, ChatActivity::class.java).apply {
+                    putExtra(ChatActivity.EXTRA_AGENT_TAG, agent.unicityTag)
+                    putExtra(ChatActivity.EXTRA_AGENT_NAME, "${agent.unicityTag}@unicity")
+                }
+                startActivity(intent)
+            }
+        }
         
         // Check if demo mode is enabled
         val isDemoMode = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
@@ -261,17 +300,26 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         
         // Create scaled Unicity logo for markers
         val unicityIcon = getScaledUnicityIcon()
+        val unicityIconWithChat = getScaledUnicityIconWithChat()
         
         agents.forEach { agent ->
             val latLng = LatLng(agent.latitude, agent.longitude)
-            googleMap?.addMarker(
+            val hasChat = agentsWithChat.contains(agent.unicityTag)
+            
+            val marker = googleMap?.addMarker(
                 MarkerOptions()
                     .position(latLng)
                     .title("${agent.unicityTag}@unicity")
-                    .snippet("${String.format("%.1f", agent.distance)} km away")
-                    .icon(unicityIcon)
+                    .snippet("${String.format("%.1f", agent.distance)} km away${if (hasChat) " • 💬" else ""}")
+                    .icon(if (hasChat) unicityIconWithChat else unicityIcon)
             )
+            marker?.tag = agent
         }
+    }
+    
+    private fun updateMapMarkers() {
+        // Clear and re-add all markers with updated chat status
+        addAgentMarkersToMap()
     }
     
     private fun getScaledUnicityIcon(): BitmapDescriptor {
@@ -279,6 +327,41 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         // Scale to approximately 80x80 pixels (adjust as needed)
         val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, 80, 80, true)
         return BitmapDescriptorFactory.fromBitmap(scaledBitmap)
+    }
+    
+    private fun getScaledUnicityIconWithChat(): BitmapDescriptor {
+        // Create a combined bitmap with unicity logo and chat bubble
+        val logoBitmap = BitmapFactory.decodeResource(resources, R.drawable.unicity_logo)
+        val scaledLogo = Bitmap.createScaledBitmap(logoBitmap, 80, 80, true)
+        
+        // Create a canvas to draw both icons
+        val combinedBitmap = Bitmap.createBitmap(80, 80, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(combinedBitmap)
+        
+        // Draw the logo
+        canvas.drawBitmap(scaledLogo, 0f, 0f, null)
+        
+        // Draw a small chat indicator in the bottom right
+        val chatPaint = android.graphics.Paint().apply {
+            color = resources.getColor(R.color.primary_color, null)
+            style = android.graphics.Paint.Style.FILL
+        }
+        
+        // Draw chat bubble background circle
+        val bgPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = android.graphics.Paint.Style.FILL
+        }
+        canvas.drawCircle(65f, 65f, 16f, bgPaint)
+        canvas.drawCircle(65f, 65f, 14f, chatPaint)
+        
+        // Draw chat icon
+        val chatIcon = resources.getDrawable(R.drawable.ic_chat_bubble, null)
+        chatIcon?.setBounds(55, 55, 75, 75)
+        chatIcon?.setTint(android.graphics.Color.WHITE)
+        chatIcon?.draw(canvas)
+        
+        return BitmapDescriptorFactory.fromBitmap(combinedBitmap)
     }
     
     private fun addUserLocationMarker(latitude: Double, longitude: Double) {
@@ -451,5 +534,19 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return R * c
+    }
+    
+    private fun loadAgentsWithChat() {
+        lifecycleScope.launch {
+            chatDatabase.conversationDao().getAllConversations().collect { conversations ->
+                agentsWithChat.clear()
+                agentsWithChat.addAll(conversations.map { it.conversationId })
+                
+                // Refresh map markers if available
+                if (googleMap != null) {
+                    updateMapMarkers()
+                }
+            }
+        }
     }
 }

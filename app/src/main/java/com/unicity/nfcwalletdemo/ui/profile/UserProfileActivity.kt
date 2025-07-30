@@ -40,6 +40,7 @@ class UserProfileActivity : AppCompatActivity() {
     private lateinit var locationCallback: LocationCallback
     private lateinit var agentApiService: AgentApiService
     private var isAgentMode = false
+    private var p2pMessagingService: com.unicity.nfcwalletdemo.p2p.P2PMessagingService? = null
     
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
@@ -92,14 +93,20 @@ class UserProfileActivity : AppCompatActivity() {
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
         val savedTag = sharedPrefs.getString("unicity_tag", "")
         val savedAgentStatus = sharedPrefs.getBoolean("is_agent", false)
+        val savedAvailability = sharedPrefs.getBoolean("agent_available", true)
         
         binding.etUnicityTag.setText(savedTag)
         binding.switchAgent.isChecked = savedAgentStatus
         isAgentMode = savedAgentStatus
         
-        // If agent mode is already enabled, start location updates
+        // Show/hide availability switch based on agent mode
+        binding.switchAvailability.visibility = if (savedAgentStatus) View.VISIBLE else View.GONE
+        binding.switchAvailability.isChecked = savedAvailability
+        
+        // If agent mode is already enabled, start location updates and P2P service
         if (savedAgentStatus) {
             checkLocationPermissionAndStart()
+            startP2PService()
         }
         
         binding.switchAgent.setOnCheckedChangeListener { _, isChecked ->
@@ -112,10 +119,37 @@ class UserProfileActivity : AppCompatActivity() {
                     return@setOnCheckedChangeListener
                 }
                 checkLocationPermissionAndStart()
+                startP2PService()
+                binding.switchAvailability.visibility = View.VISIBLE
             } else {
                 stopLocationUpdates()
+                stopP2PService()
+                binding.switchAvailability.visibility = View.GONE
             }
             sharedPrefs.edit().putBoolean("is_agent", isChecked).apply()
+        }
+        
+        // Handle availability toggle
+        binding.switchAvailability.setOnCheckedChangeListener { _, isChecked ->
+            sharedPrefs.edit().putBoolean("agent_available", isChecked).apply()
+            p2pMessagingService?.updateAvailability(isChecked)
+            
+            // Update agent availability in backend
+            val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+            if (unicityTag.isNotEmpty()) {
+                lifecycleScope.launch {
+                    try {
+                        agentApiService.updateAgentLocation(
+                            unicityTag,
+                            0.0, // Will be updated with actual location
+                            0.0,
+                            isChecked
+                        )
+                    } catch (e: Exception) {
+                        // Ignore errors
+                    }
+                }
+            }
         }
         
         binding.btnSaveUnicityTag.setOnClickListener {
@@ -393,10 +427,37 @@ class UserProfileActivity : AppCompatActivity() {
         }
     }
     
+    private fun startP2PService() {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+        
+        if (unicityTag.isNotEmpty()) {
+            // TODO: Get actual public key from wallet
+            // For now, use unicity tag as a placeholder for public key
+            val publicKey = unicityTag
+            
+            p2pMessagingService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService(
+                context = applicationContext,
+                userTag = unicityTag,
+                userPublicKey = publicKey
+            )
+            
+            // Set initial availability
+            val isAvailable = sharedPrefs.getBoolean("agent_available", true)
+            p2pMessagingService?.updateAvailability(isAvailable)
+        }
+    }
+    
+    private fun stopP2PService() {
+        p2pMessagingService?.shutdown()
+        p2pMessagingService = null
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         if (isAgentMode) {
             stopLocationUpdates()
+            stopP2PService()
         }
     }
 }
