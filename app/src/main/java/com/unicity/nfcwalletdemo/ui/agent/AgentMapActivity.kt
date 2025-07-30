@@ -20,6 +20,9 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.BitmapDescriptor
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.view.MotionEvent
 import kotlin.math.*
 import java.text.SimpleDateFormat
@@ -256,6 +259,9 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
             }
         }
         
+        // Create scaled Unicity logo for markers
+        val unicityIcon = getScaledUnicityIcon()
+        
         agents.forEach { agent ->
             val latLng = LatLng(agent.latitude, agent.longitude)
             googleMap?.addMarker(
@@ -263,8 +269,16 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                     .position(latLng)
                     .title("${agent.unicityTag}@unicity")
                     .snippet("${String.format("%.1f", agent.distance)} km away")
+                    .icon(unicityIcon)
             )
         }
+    }
+    
+    private fun getScaledUnicityIcon(): BitmapDescriptor {
+        val originalBitmap = BitmapFactory.decodeResource(resources, R.drawable.unicity_logo)
+        // Scale to approximately 80x80 pixels (adjust as needed)
+        val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, 80, 80, true)
+        return BitmapDescriptorFactory.fromBitmap(scaledBitmap)
     }
     
     private fun addUserLocationMarker(latitude: Double, longitude: Double) {
