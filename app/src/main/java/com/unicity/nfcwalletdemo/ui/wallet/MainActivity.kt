@@ -167,6 +167,9 @@ class MainActivity : AppCompatActivity() {
         
         // Don't load cryptocurrencies here - ViewModel init handles it
         
+        // Initialize P2P service if agent is available
+        initializeP2PServiceIfNeeded()
+        
         // Handle deep links
         handleDeepLink(intent)
         
@@ -177,6 +180,68 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         intent?.let { handleDeepLink(it) }
+    }
+    
+    private fun initializeP2PServiceIfNeeded() {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val isAgent = sharedPrefs.getBoolean("is_agent", false)
+        val isAvailable = sharedPrefs.getBoolean("agent_available", true)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+        
+        Log.d("MainActivity", "initializeP2PServiceIfNeeded - isAgent: $isAgent, isAvailable: $isAvailable, unicityTag: $unicityTag")
+        
+        if (isAgent && isAvailable && unicityTag.isNotEmpty()) {
+            // Check if P2P service is already running
+            val existingService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+            if (existingService == null) {
+                Log.d("MainActivity", "Starting P2P service automatically")
+                try {
+                    val publicKey = unicityTag // TODO: Get actual public key
+                    com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getInstance(
+                        context = applicationContext,
+                        userTag = unicityTag,
+                        userPublicKey = publicKey
+                    )
+                    Log.d("MainActivity", "P2P service started successfully")
+                    Toast.makeText(this, "P2P messaging service started", Toast.LENGTH_SHORT).show()
+                    updateLocationIconColor()
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Failed to start P2P service", e)
+                }
+            } else {
+                Log.d("MainActivity", "P2P service already running")
+                updateLocationIconColor()
+            }
+        } else {
+            Log.d("MainActivity", "Not starting P2P service - agent: $isAgent, available: $isAvailable")
+            updateLocationIconColor()
+        }
+    }
+    
+    private fun updateLocationIconColor() {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val isAgent = sharedPrefs.getBoolean("is_agent", false)
+        val isAvailable = sharedPrefs.getBoolean("agent_available", true)
+        val p2pService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+        
+        when {
+            !isAgent -> {
+                // Not an agent - default black icon
+                binding.btnLocation.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.BLACK))
+            }
+            isAgent && isAvailable && p2pService != null -> {
+                // Agent available with P2P running - green icon
+                binding.btnLocation.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#4CAF50")))
+            }
+            isAgent && !isAvailable -> {
+                // Agent not available - red icon
+                binding.btnLocation.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#F44336")))
+            }
+            else -> {
+                // Agent available but P2P not running - orange icon (warning state)
+                binding.btnLocation.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FF9800")))
+            }
+        }
     }
     
     private fun handleDeepLink(intent: Intent) {
@@ -290,6 +355,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnLocation.setOnClickListener {
             openAgentMap()
         }
+        
+        // Update location icon color based on P2P status
+        updateLocationIconColor()
         
         // Setup overflow menu button
         binding.btnOverflowMenu.setOnClickListener { view ->
@@ -806,6 +874,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("MainActivity", "onResume called")
+        
+        // Update location icon color in case settings changed
+        updateLocationIconColor()
         
         // Log current balances before any operations
         val cryptosBefore = viewModel.cryptocurrencies.value
