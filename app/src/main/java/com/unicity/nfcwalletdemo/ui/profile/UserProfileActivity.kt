@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
@@ -105,6 +106,8 @@ class UserProfileActivity : AppCompatActivity() {
         
         // If agent mode is already enabled, start location updates and P2P service
         if (savedAgentStatus) {
+            Log.d("UserProfileActivity", "Agent mode enabled: $savedAgentStatus")
+            Log.d("UserProfileActivity", "Unicity tag: ${sharedPrefs.getString("unicity_tag", "")}")
             checkLocationPermissionAndStart()
             startP2PService()
         }
@@ -428,23 +431,35 @@ class UserProfileActivity : AppCompatActivity() {
     }
     
     private fun startP2PService() {
+        Log.d("UserProfileActivity", "Starting P2P service...")
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
         val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
         
+        Log.d("UserProfileActivity", "Attempting to start P2P with tag: $unicityTag")
+        
         if (unicityTag.isNotEmpty()) {
+            Log.d("UserProfileActivity", "Creating P2P service for tag: $unicityTag")
             // TODO: Get actual public key from wallet
             // For now, use unicity tag as a placeholder for public key
             val publicKey = unicityTag
             
-            p2pMessagingService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService(
-                context = applicationContext,
-                userTag = unicityTag,
-                userPublicKey = publicKey
-            )
-            
-            // Set initial availability
-            val isAvailable = sharedPrefs.getBoolean("agent_available", true)
-            p2pMessagingService?.updateAvailability(isAvailable)
+            try {
+                p2pMessagingService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getInstance(
+                    context = applicationContext,
+                    userTag = unicityTag,
+                    userPublicKey = publicKey
+                )
+                Log.d("UserProfileActivity", "P2P service created successfully")
+                
+                // Set initial availability
+                val isAvailable = sharedPrefs.getBoolean("agent_available", true)
+                p2pMessagingService?.updateAvailability(isAvailable)
+                Log.d("UserProfileActivity", "P2P service availability set to: $isAvailable")
+            } catch (e: Exception) {
+                Log.e("UserProfileActivity", "Failed to create P2P service", e)
+            }
+        } else {
+            Log.w("UserProfileActivity", "Cannot start P2P service: unicity tag is empty")
         }
     }
     

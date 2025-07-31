@@ -7,6 +7,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.chat.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.java_websocket.WebSocket
@@ -19,8 +20,17 @@ import java.net.URI
 import java.security.MessageDigest
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import com.unicity.nfcwalletdemo.R
+import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
 
-class P2PMessagingService(
+class P2PMessagingService private constructor(
     private val context: Context,
     private val userTag: String,
     private val userPublicKey: String
@@ -31,6 +41,25 @@ class P2PMessagingService(
         private const val SERVICE_NAME_PREFIX = "unicity-"
         private const val WS_PORT_MIN = 9000
         private const val WS_PORT_MAX = 9999
+        private const val NOTIFICATION_CHANNEL_ID = "unicity_chat"
+        private const val NOTIFICATION_ID = 1001
+        
+        @Volatile
+        private var INSTANCE: P2PMessagingService? = null
+        
+        fun getInstance(
+            context: Context,
+            userTag: String,
+            userPublicKey: String
+        ): P2PMessagingService {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: P2PMessagingService(context, userTag, userPublicKey).also {
+                    INSTANCE = it
+                }
+            }
+        }
+        
+        fun getExistingInstance(): P2PMessagingService? = INSTANCE
     }
     
     private val gson = Gson()
@@ -40,6 +69,7 @@ class P2PMessagingService(
     
     private var webSocketServer: WebSocketServer? = null
     private val activeConnections = ConcurrentHashMap<String, WebSocketClient>()
+    private val serverConnections = ConcurrentHashMap<String, WebSocket>() // Incoming connections
     private val pendingMessages = ConcurrentHashMap<String, MutableList<P2PMessage>>()
     
     private val nsdManager: NsdManager by lazy {
@@ -68,26 +98,52 @@ class P2PMessagingService(
     )
     
     init {
+        Log.d(TAG, "P2PMessagingService initializing for user: $userTag")
+        createNotificationChannel()
         startWebSocketServer()
-        startNsdDiscovery()
+        // Delay NSD discovery to ensure server is ready
+        scope.launch {
+            delay(500) // Give WebSocket server time to start
+            startNsdDiscovery()
+        }
         processPendingMessages()
     }
     
     private fun startWebSocketServer() {
         val port = findAvailablePort()
-        val address = InetSocketAddress(port)
+        Log.d(TAG, "Starting WebSocket server on port $port")
+        // Bind to all interfaces (0.0.0.0) instead of localhost
+        val address = InetSocketAddress("0.0.0.0", port)
         
         webSocketServer = object : WebSocketServer(address) {
             override fun onOpen(conn: WebSocket?, handshake: ClientHandshake?) {
-                Log.d(TAG, "WebSocket connection opened")
+                Log.d(TAG, "WebSocket server connection opened from: ${conn?.remoteSocketAddress}")
+                // Wait for identification message to know who connected
             }
             
             override fun onClose(conn: WebSocket?, code: Int, reason: String?, remote: Boolean) {
                 Log.d(TAG, "WebSocket connection closed: $reason")
+                // Remove from server connections
+                serverConnections.values.remove(conn)
             }
             
             override fun onMessage(conn: WebSocket?, message: String?) {
-                message?.let { handleIncomingMessage(it) }
+                Log.d(TAG, "WebSocket server received message: $message")
+                message?.let { 
+                    try {
+                        val p2pMessage = gson.fromJson(it, P2PMessage::class.java)
+                        // Store the connection mapping when we receive the first message
+                        if (!serverConnections.containsKey(p2pMessage.from)) {
+                            conn?.let { ws ->
+                                serverConnections[p2pMessage.from] = ws
+                                Log.d(TAG, "Mapped incoming connection from ${p2pMessage.from}")
+                            }
+                        }
+                        handleIncomingMessage(it)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse incoming message", e)
+                    }
+                }
             }
             
             override fun onError(conn: WebSocket?, ex: Exception?) {
@@ -96,11 +152,30 @@ class P2PMessagingService(
             
             override fun onStart() {
                 Log.d(TAG, "WebSocket server started on port $port")
+                // Verify server is actually listening
+                scope.launch {
+                    delay(100) // Small delay to ensure server is ready
+                    try {
+                        val testSocket = java.net.Socket()
+                        testSocket.connect(InetSocketAddress("127.0.0.1", port), 1000)
+                        testSocket.close()
+                        Log.d(TAG, "WebSocket server verified listening on port $port")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "WebSocket server NOT listening on port $port", e)
+                    }
+                }
                 registerNsdService(port)
             }
         }
         
-        webSocketServer?.start()
+        try {
+            webSocketServer?.isReuseAddr = true
+            webSocketServer?.start()
+            Log.d(TAG, "WebSocket server start() called successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start WebSocket server", e)
+            throw e
+        }
     }
     
     private fun findAvailablePort(): Int {
@@ -153,13 +228,18 @@ class P2PMessagingService(
             }
             
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                Log.d(TAG, "Service found: ${serviceInfo.serviceName}")
                 if (serviceInfo.serviceName.startsWith(SERVICE_NAME_PREFIX) &&
                     !serviceInfo.serviceName.contains(userTag)) {
+                    Log.d(TAG, "Resolving service: ${serviceInfo.serviceName}")
                     resolveService(serviceInfo)
+                } else {
+                    Log.d(TAG, "Ignoring service: ${serviceInfo.serviceName} (own service or wrong prefix)")
                 }
             }
             
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+                Log.d(TAG, "Service lost: ${serviceInfo.serviceName}")
                 val agentTag = serviceInfo.serviceName.removePrefix(SERVICE_NAME_PREFIX)
                 updateConnectionStatus(agentTag, false)
             }
@@ -187,37 +267,54 @@ class P2PMessagingService(
             }
             
             override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                Log.d(TAG, "Service resolved: ${serviceInfo.serviceName}")
                 val agentTag = serviceInfo.serviceName.removePrefix(SERVICE_NAME_PREFIX)
                 val host = serviceInfo.host
                 val port = serviceInfo.port
+                Log.d(TAG, "Agent: $agentTag, Host: $host, Port: $port")
                 
                 host.hostAddress?.let { hostAddress ->
+                    Log.d(TAG, "Connecting to peer at $hostAddress:$port")
                     connectToPeer(agentTag, hostAddress, port)
-                }
+                } ?: Log.e(TAG, "No host address for resolved service")
             }
         }
         
         nsdManager.resolveService(serviceInfo, resolveListener)
     }
     
-    private fun connectToPeer(agentTag: String, host: String, port: Int) {
+    private fun connectToPeer(agentTag: String, host: String, port: Int, retryCount: Int = 0) {
+        Log.d(TAG, "connectToPeer called - agentTag: $agentTag, host: $host, port: $port, retry: $retryCount")
         if (activeConnections.containsKey(agentTag)) {
+            Log.d(TAG, "Already connected to $agentTag")
             return // Already connected
         }
         
         try {
             val uri = URI("ws://$host:$port")
+            Log.d(TAG, "Creating WebSocket client to $uri")
             val client = object : WebSocketClient(uri) {
                 override fun onOpen(handshake: ServerHandshake?) {
                     Log.d(TAG, "Connected to $agentTag")
                     activeConnections[agentTag] = this
                     updateConnectionStatus(agentTag, true)
                     
+                    // Send identification message so server knows who we are
+                    val identMessage = P2PMessage(
+                        from = userTag,
+                        to = agentTag,
+                        type = MessageType.IDENTIFICATION,
+                        content = userPublicKey
+                    )
+                    send(gson.toJson(identMessage))
+                    Log.d(TAG, "Sent identification message to $agentTag")
+                    
                     // Send any pending messages
                     sendPendingMessages(agentTag)
                 }
                 
                 override fun onMessage(message: String?) {
+                    Log.d(TAG, "WebSocket client received message: $message")
                     message?.let { handleIncomingMessage(it) }
                 }
                 
@@ -229,9 +326,17 @@ class P2PMessagingService(
                 
                 override fun onError(ex: Exception?) {
                     Log.e(TAG, "Connection error with $agentTag", ex)
+                    // Retry connection after a delay
+                    if (retryCount < 3) {
+                        scope.launch {
+                            delay(2000) // Wait 2 seconds before retry
+                            connectToPeer(agentTag, host, port, retryCount + 1)
+                        }
+                    }
                 }
             }
             
+            Log.d(TAG, "Connecting WebSocket client...")
             client.connect()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to connect to $agentTag", e)
@@ -239,17 +344,29 @@ class P2PMessagingService(
     }
     
     private fun handleIncomingMessage(messageJson: String) {
+        Log.d(TAG, "Received message: $messageJson")
+        Log.d(TAG, "Current userTag: $userTag")
         scope.launch {
             try {
+                Log.d(TAG, "Inside coroutine, parsing message...")
                 val p2pMessage = gson.fromJson(messageJson, P2PMessage::class.java)
+                Log.d(TAG, "Parsed message - from: ${p2pMessage.from}, to: ${p2pMessage.to}, type: ${p2pMessage.type}")
                 
                 // Verify message is for us
+                Log.d(TAG, "Checking if message is for us - to: ${p2pMessage.to}, userTag: $userTag, equals: ${p2pMessage.to == userTag}")
                 if (p2pMessage.to != userTag) {
+                    Log.d(TAG, "Message not for us - ignoring (to: ${p2pMessage.to}, our tag: $userTag)")
                     return@launch
                 }
                 
                 // Handle different message types
+                Log.d(TAG, "Message is for us, handling type: ${p2pMessage.type}")
+                Log.d(TAG, "MessageType enum check - HANDSHAKE_REQUEST: ${MessageType.HANDSHAKE_REQUEST}, equals: ${p2pMessage.type == MessageType.HANDSHAKE_REQUEST}")
                 when (p2pMessage.type) {
+                    MessageType.IDENTIFICATION -> {
+                        // Don't save identification messages, they're just for connection mapping
+                        Log.d(TAG, "Received identification from ${p2pMessage.from}")
+                    }
                     MessageType.HANDSHAKE_REQUEST -> handleHandshakeRequest(p2pMessage)
                     MessageType.HANDSHAKE_ACCEPT -> handleHandshakeAccept(p2pMessage)
                     MessageType.AVAILABILITY_UPDATE -> handleAvailabilityUpdate(p2pMessage)
@@ -257,14 +374,17 @@ class P2PMessagingService(
                 }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Error handling message", e)
+                Log.e(TAG, "Error handling message: ${e.message}", e)
+                e.printStackTrace()
             }
         }
     }
     
     private suspend fun handleHandshakeRequest(message: P2PMessage) {
+        Log.d(TAG, "handleHandshakeRequest called for message from: ${message.from}")
         // Create or update conversation
         var conversation = conversationDao.getConversation(message.from)
+        Log.d(TAG, "Existing conversation: ${conversation != null}")
         if (conversation == null) {
             conversation = ChatConversation(
                 conversationId = message.from,
@@ -275,10 +395,13 @@ class P2PMessagingService(
                 isApproved = false
             )
             conversationDao.insertConversation(conversation)
+            Log.d(TAG, "Created new conversation for ${message.from}")
         }
         
         // Save handshake message
+        Log.d(TAG, "Saving handshake message...")
         saveIncomingMessage(message)
+        Log.d(TAG, "Handshake request handled successfully - awaiting agent approval")
     }
     
     private suspend fun handleHandshakeAccept(message: P2PMessage) {
@@ -293,6 +416,7 @@ class P2PMessagingService(
     }
     
     private suspend fun saveIncomingMessage(p2pMessage: P2PMessage) {
+        Log.d(TAG, "saveIncomingMessage called - type: ${p2pMessage.type}, from: ${p2pMessage.from}")
         val chatMessage = ChatMessage(
             messageId = p2pMessage.messageId,
             conversationId = p2pMessage.from,
@@ -322,9 +446,13 @@ class P2PMessagingService(
                 )
             )
         }
+        
+        // Show notification for new message
+        showMessageNotification(p2pMessage)
     }
     
     fun sendMessage(agentTag: String, content: String, type: MessageType = MessageType.TEXT): String {
+        Log.d(TAG, "sendMessage called - to: $agentTag, type: $type, content: $content")
         val messageId = UUID.randomUUID().toString()
         val p2pMessage = P2PMessage(
             messageId = messageId,
@@ -362,15 +490,51 @@ class P2PMessagingService(
     }
     
     private fun sendP2PMessage(agentTag: String, message: P2PMessage): Boolean {
-        val client = activeConnections[agentTag] ?: return false
+        Log.d(TAG, "sendP2PMessage - looking for connection to: $agentTag")
+        Log.d(TAG, "Active connections: ${activeConnections.keys}")
+        Log.d(TAG, "Server connections: ${serverConnections.keys}")
         
-        return try {
-            val messageJson = gson.toJson(message)
-            client.send(messageJson)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send message", e)
-            false
+        // Check both outgoing and incoming connections
+        val client = activeConnections[agentTag]
+        val serverConn = serverConnections[agentTag]
+        
+        return when {
+            client != null -> {
+                // Use outgoing connection
+                try {
+                    val messageJson = gson.toJson(message)
+                    Log.d(TAG, "Sending message via client connection: $messageJson")
+                    client.send(messageJson)
+                    Log.d(TAG, "Message sent successfully via client")
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send via client connection", e)
+                    false
+                }
+            }
+            serverConn != null -> {
+                // Use incoming connection
+                try {
+                    val messageJson = gson.toJson(message)
+                    Log.d(TAG, "Sending message via server connection: $messageJson")
+                    serverConn.send(messageJson)
+                    Log.d(TAG, "Message sent successfully via server")
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send via server connection", e)
+                    false
+                }
+            }
+            else -> {
+                Log.w(TAG, "No connection available to $agentTag")
+                // Try to rediscover and reconnect
+                scope.launch {
+                    Log.d(TAG, "Attempting to rediscover $agentTag")
+                    // Force a new discovery
+                    startNsdDiscovery()
+                }
+                false
+            }
         }
     }
     
@@ -437,6 +601,25 @@ class P2PMessagingService(
     }
     
     fun initiateHandshake(agentTag: String) {
+        Log.d(TAG, "initiateHandshake called for: $agentTag")
+        
+        // Create conversation on sender side
+        scope.launch {
+            var conversation = conversationDao.getConversation(agentTag)
+            if (conversation == null) {
+                conversation = ChatConversation(
+                    conversationId = agentTag,
+                    agentTag = agentTag,
+                    agentPublicKey = null, // Will be updated when we get response
+                    lastMessageTime = System.currentTimeMillis(),
+                    lastMessageText = "Handshake sent",
+                    isApproved = false // Will be true when we get acceptance
+                )
+                conversationDao.insertConversation(conversation)
+                Log.d(TAG, "Created conversation for handshake to $agentTag")
+            }
+        }
+        
         sendMessage(agentTag, userPublicKey, MessageType.HANDSHAKE_REQUEST)
     }
     
@@ -456,20 +639,120 @@ class P2PMessagingService(
             content = isAvailable.toString()
         )
         
+        // Send to outgoing connections
         activeConnections.forEach { (agentTag, client) ->
             try {
                 val personalizedMessage = message.copy(to = agentTag)
                 client.send(gson.toJson(personalizedMessage))
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send availability update to $agentTag", e)
+                Log.e(TAG, "Failed to send availability update to $agentTag (client)", e)
+            }
+        }
+        
+        // Send to incoming connections
+        serverConnections.forEach { (agentTag, conn) ->
+            try {
+                val personalizedMessage = message.copy(to = agentTag)
+                conn.send(gson.toJson(personalizedMessage))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send availability update to $agentTag (server)", e)
             }
         }
     }
     
     fun shutdown() {
+        Log.d(TAG, "Shutting down P2P service")
         scope.cancel()
         webSocketServer?.stop()
         activeConnections.values.forEach { it.close() }
         activeConnections.clear()
+        INSTANCE = null
+    }
+    
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Unicity Chat Messages"
+            val descriptionText = "Notifications for new chat messages"
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+    
+    private fun showMessageNotification(message: P2PMessage) {
+        Log.d(TAG, "Showing notification for message from ${message.from}")
+        
+        // Create intent to open chat
+        val intent = Intent(context, ChatActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(ChatActivity.EXTRA_AGENT_TAG, message.from)
+            putExtra(ChatActivity.EXTRA_AGENT_NAME, "${message.from}@unicity")
+        }
+        
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            message.from.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notificationText = when (message.type) {
+            MessageType.HANDSHAKE_REQUEST -> "New chat request from ${message.from}"
+            MessageType.HANDSHAKE_ACCEPT -> "${message.from} accepted your chat request"
+            MessageType.LOCATION -> "${message.from} shared their location"
+            MessageType.MEETING_REQUEST -> "${message.from} requested a meeting"
+            MessageType.TRANSACTION_CONFIRM -> "${message.from} confirmed the transaction"
+            else -> message.content
+        }
+        
+        val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_chat_bubble)
+            .setContentTitle("${message.from}@unicity")
+            .setContentText(notificationText)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        
+        if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            try {
+                NotificationManagerCompat.from(context).notify(
+                    message.from.hashCode(),
+                    notification
+                )
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Failed to show notification - missing permission", e)
+                showInAppAlert(message)
+            }
+        } else {
+            Log.w(TAG, "Notifications are disabled")
+            showInAppAlert(message)
+        }
+    }
+    
+    private fun showInAppAlert(message: P2PMessage) {
+        Log.d(TAG, "Showing in-app alert for message from ${message.from}")
+        
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        handler.post {
+            val alertText = when (message.type) {
+                MessageType.HANDSHAKE_REQUEST -> "New chat request from ${message.from}"
+                MessageType.HANDSHAKE_ACCEPT -> "${message.from} accepted your chat request"
+                MessageType.LOCATION -> "${message.from} shared their location"
+                MessageType.MEETING_REQUEST -> "${message.from} requested a meeting"
+                MessageType.TRANSACTION_CONFIRM -> "${message.from} confirmed the transaction"
+                else -> "New message from ${message.from}: ${message.content}"
+            }
+            
+            android.widget.Toast.makeText(
+                context,
+                alertText,
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
     }
 }

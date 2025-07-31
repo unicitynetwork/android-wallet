@@ -934,6 +934,40 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
+    private fun showChatConversations() {
+        lifecycleScope.launch {
+            val chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this@MainActivity)
+            val conversations = chatDatabase.conversationDao().getAllConversationsList()
+            
+            if (conversations.isEmpty()) {
+                Toast.makeText(this@MainActivity, "No chat conversations yet", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            
+            // Create a dialog to show conversations
+            val dialogBuilder = AlertDialog.Builder(this@MainActivity)
+            dialogBuilder.setTitle("Chat Conversations")
+            
+            val conversationNames = conversations.map { conv ->
+                val unreadBadge = if (conv.unreadCount > 0) " (${conv.unreadCount})" else ""
+                "${conv.agentTag}@unicity$unreadBadge"
+            }.toTypedArray()
+            
+            dialogBuilder.setItems(conversationNames) { _, which ->
+                val selectedConversation = conversations[which]
+                // Open chat with selected conversation
+                val intent = Intent(this@MainActivity, com.unicity.nfcwalletdemo.ui.chat.ChatActivity::class.java).apply {
+                    putExtra(com.unicity.nfcwalletdemo.ui.chat.ChatActivity.EXTRA_AGENT_TAG, selectedConversation.conversationId)
+                    putExtra(com.unicity.nfcwalletdemo.ui.chat.ChatActivity.EXTRA_AGENT_NAME, "${selectedConversation.agentTag}@unicity")
+                }
+                startActivity(intent)
+            }
+            
+            dialogBuilder.setNegativeButton("Cancel", null)
+            dialogBuilder.show()
+        }
+    }
+    
     private fun showResetWalletDialog() {
         AlertDialog.Builder(this)
             .setTitle("Reset Wallet")
@@ -2781,6 +2815,13 @@ class MainActivity : AppCompatActivity() {
         menu.add(0, 5, 4, "Demo Mode")
         menu.add(0, 6, 5, "Reset Wallet")
         
+        // Add chat conversations for agents
+        val prefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+        val isAgent = prefs.getBoolean("is_agent", false)
+        if (isAgent) {
+            menu.add(0, 7, 6, "Chat Conversations")
+        }
+        
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> {
@@ -2805,6 +2846,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 6 -> {
                     showResetWalletDialog()
+                    true
+                }
+                7 -> {
+                    showChatConversations()
                     true
                 }
                 else -> false

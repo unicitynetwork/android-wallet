@@ -56,6 +56,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
         private const val DEFAULT_ZOOM = 12f
+        private const val TAG = "AgentMapActivity"
         
         // Demo agent names
         private val DEMO_AGENT_NAMES = listOf(
@@ -77,6 +78,9 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
         chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this)
+        
+        // Ensure P2P service is running if agent mode is enabled
+        ensureP2PServiceRunning()
         
         setupRecyclerView()
         setupBottomSheet()
@@ -546,6 +550,35 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                 if (googleMap != null) {
                     updateMapMarkers()
                 }
+            }
+        }
+    }
+    
+    private fun ensureP2PServiceRunning() {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", android.content.Context.MODE_PRIVATE)
+        val isAgent = sharedPrefs.getBoolean("is_agent", false)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+        
+        android.util.Log.d(TAG, "ensureP2PServiceRunning - isAgent: $isAgent, unicityTag: $unicityTag")
+        
+        if (isAgent && unicityTag.isNotEmpty()) {
+            // Check if P2P service is already running
+            val existingService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+            if (existingService == null) {
+                android.util.Log.d(TAG, "P2P service not running, starting it now...")
+                try {
+                    val publicKey = unicityTag // TODO: Get actual public key
+                    com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getInstance(
+                        context = applicationContext,
+                        userTag = unicityTag,
+                        userPublicKey = publicKey
+                    )
+                    android.util.Log.d(TAG, "P2P service started from AgentMapActivity")
+                } catch (e: Exception) {
+                    android.util.Log.e(TAG, "Failed to start P2P service", e)
+                }
+            } else {
+                android.util.Log.d(TAG, "P2P service already running")
             }
         }
     }

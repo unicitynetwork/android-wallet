@@ -8,6 +8,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY lastMessageTime DESC")
     fun getAllConversations(): Flow<List<ChatConversation>>
     
+    @Query("SELECT * FROM conversations ORDER BY lastMessageTime DESC")
+    suspend fun getAllConversationsList(): List<ChatConversation>
+    
     @Query("SELECT * FROM conversations WHERE conversationId = :conversationId")
     suspend fun getConversation(conversationId: String): ChatConversation?
     
@@ -40,6 +43,9 @@ interface ConversationDao {
 interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
     fun getMessagesForConversation(conversationId: String): Flow<List<ChatMessage>>
+    
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
+    suspend fun getMessagesForConversationList(conversationId: String): List<ChatMessage>
     
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND status = :status")
     suspend fun getMessagesByStatus(conversationId: String, status: MessageStatus): List<ChatMessage>

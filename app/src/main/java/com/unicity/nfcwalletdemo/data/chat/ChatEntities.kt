@@ -56,5 +56,6 @@ enum class MessageType {
     TRANSACTION_CONFIRM,
     HANDSHAKE_REQUEST,
     HANDSHAKE_ACCEPT,
-    AVAILABILITY_UPDATE
+    AVAILABILITY_UPDATE,
+    IDENTIFICATION  // Used to identify who connected
 }

@@ -2,6 +2,7 @@ package com.unicity.nfcwalletdemo.ui.chat
 
 import android.os.Bundle
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -91,12 +92,18 @@ class ChatActivity : AppCompatActivity() {
     }
     
     private fun initializeP2PService() {
-        val publicKey = userTag // TODO: Get actual public key from wallet
-        p2pService = P2PMessagingService(
-            context = applicationContext,
-            userTag = userTag,
-            userPublicKey = publicKey
-        )
+        // Try to get existing instance first
+        p2pService = P2PMessagingService.getExistingInstance()
+        
+        if (p2pService == null) {
+            // If no instance exists, create one
+            val publicKey = userTag // TODO: Get actual public key from wallet
+            p2pService = P2PMessagingService.getInstance(
+                context = applicationContext,
+                userTag = userTag,
+                userPublicKey = publicKey
+            )
+        }
     }
     
     private fun observeConversation() {
@@ -137,9 +144,55 @@ class ChatActivity : AppCompatActivity() {
     
     private fun updateUIForApprovalStatus() {
         if (!isApproved) {
-            binding.etMessage.hint = "Send handshake request to start chatting"
+            // Check if we have received a handshake request
+            lifecycleScope.launch {
+                val messages = messageDao.getMessagesForConversationList(agentTag)
+                val hasIncomingHandshake = messages.any { 
+                    it.type == MessageType.HANDSHAKE_REQUEST && !it.isFromMe 
+                }
+                
+                if (hasIncomingHandshake) {
+                    // Show accept/reject buttons for agent
+                    binding.etMessage.visibility = View.GONE
+                    binding.btnSend.visibility = View.GONE
+                    
+                    // Create accept/reject layout
+                    showHandshakeResponseButtons()
+                } else {
+                    // Show normal handshake prompt for user
+                    binding.etMessage.hint = "Send handshake request to start chatting"
+                }
+            }
         } else {
             binding.etMessage.hint = "Type a message..."
+            binding.etMessage.visibility = View.VISIBLE
+            binding.btnSend.visibility = View.VISIBLE
+        }
+    }
+    
+    private fun showHandshakeResponseButtons() {
+        // For agents receiving handshakes, let them respond by typing
+        binding.etMessage.hint = "Type a message to accept chat request..."
+        binding.etMessage.visibility = View.VISIBLE
+        binding.btnSend.visibility = View.VISIBLE
+        
+        // When agent sends first message, it auto-accepts the handshake
+        binding.btnSend.setOnClickListener {
+            val message = binding.etMessage.text.toString().trim()
+            if (message.isNotEmpty()) {
+                // Accept handshake and send message
+                p2pService?.acceptHandshake(agentTag)
+                sendMessage(message)
+                Toast.makeText(this, "Chat request accepted", Toast.LENGTH_SHORT).show()
+                
+                // Reset to normal send button behavior
+                binding.btnSend.setOnClickListener {
+                    val msg = binding.etMessage.text.toString().trim()
+                    if (msg.isNotEmpty()) {
+                        sendMessage(msg)
+                    }
+                }
+            }
         }
     }
     
@@ -148,8 +201,12 @@ class ChatActivity : AppCompatActivity() {
             .setTitle("Start Chat")
             .setMessage("Send a handshake request to $agentName?")
             .setPositiveButton("Send") { _, _ ->
-                p2pService?.initiateHandshake(agentTag)
-                Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
+                if (p2pService != null) {
+                    p2pService?.initiateHandshake(agentTag)
+                    Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "P2P service not available. Please enable agent mode first.", Toast.LENGTH_LONG).show()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -172,6 +229,7 @@ class ChatActivity : AppCompatActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        p2pService?.shutdown()
+        // Don't shutdown the shared instance
+        // p2pService?.shutdown()
     }
 }
