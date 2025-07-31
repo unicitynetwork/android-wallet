@@ -3,6 +3,9 @@ package com.unicity.nfcwalletdemo.ui.wallet
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -113,6 +116,26 @@ class MainActivity : AppCompatActivity() {
     private val transferApiService = TransferApiService()
     private val processedTransferIds = mutableSetOf<String>()
     
+    // Handshake dialog receiver
+    private val handshakeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == com.unicity.nfcwalletdemo.p2p.P2PMessagingService.ACTION_HANDSHAKE_REQUEST) {
+                val fromTag = intent.getStringExtra(com.unicity.nfcwalletdemo.p2p.P2PMessagingService.EXTRA_FROM_TAG) ?: return
+                val fromName = intent.getStringExtra(com.unicity.nfcwalletdemo.p2p.P2PMessagingService.EXTRA_FROM_NAME) ?: return
+                showHandshakeDialog(fromTag, fromName)
+            }
+        }
+    }
+    
+    // P2P status update receiver
+    private val p2pStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.unicity.nfcwalletdemo.UPDATE_P2P_STATUS") {
+                updateLocationIconColor()
+            }
+        }
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -175,6 +198,18 @@ class MainActivity : AppCompatActivity() {
         
         // Start polling for transfer requests
         startTransferPolling()
+        
+        // Register handshake receiver
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            handshakeReceiver,
+            IntentFilter(com.unicity.nfcwalletdemo.p2p.P2PMessagingService.ACTION_HANDSHAKE_REQUEST)
+        )
+        
+        // Register P2P status receiver
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            p2pStatusReceiver,
+            IntentFilter("com.unicity.nfcwalletdemo.UPDATE_P2P_STATUS")
+        )
     }
     
     override fun onNewIntent(intent: Intent?) {
@@ -3504,5 +3539,30 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         stopTransferPolling()
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(handshakeReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(p2pStatusReceiver)
+    }
+    
+    private fun showHandshakeDialog(fromTag: String, fromName: String) {
+        runOnUiThread {
+            AlertDialog.Builder(this)
+                .setTitle("New Chat Request")
+                .setMessage("$fromTag is trying to chat")
+                .setPositiveButton("Accept") { _, _ ->
+                    // Get P2P service instance and accept handshake
+                    val p2pService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+                    p2pService?.acceptHandshake(fromTag)
+                    
+                    // Open chat activity
+                    val intent = Intent(this, com.unicity.nfcwalletdemo.ui.chat.ChatActivity::class.java).apply {
+                        putExtra("extra_agent_tag", fromTag)
+                        putExtra("extra_agent_name", fromName)
+                    }
+                    startActivity(intent)
+                }
+                .setNegativeButton("Close", null)
+                .setCancelable(true)
+                .show()
+        }
     }
 }

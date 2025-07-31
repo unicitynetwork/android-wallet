@@ -165,14 +165,22 @@ class UserProfileActivity : AppCompatActivity() {
             // Remove @unicity if user accidentally included it
             val cleanTag = tag.removePrefix("@unicity").removePrefix("@")
             
+            // Check if tag actually changed
+            val oldTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+            val tagChanged = oldTag != cleanTag
+            
             // Save to SharedPreferences
             sharedPrefs.edit().putString("unicity_tag", cleanTag).apply()
             
             Toast.makeText(this, "Unicity tag saved: $cleanTag@unicity", Toast.LENGTH_SHORT).show()
             
-            // If agent mode is on, update location with new tag
+            // If agent mode is on, update location and restart P2P if tag changed
             if (isAgentMode) {
                 checkLocationPermissionAndStart()
+                if (tagChanged) {
+                    // Restart P2P service with new tag
+                    startP2PService()
+                }
             }
         }
         
@@ -432,6 +440,16 @@ class UserProfileActivity : AppCompatActivity() {
     
     private fun startP2PService() {
         Log.d("UserProfileActivity", "Starting P2P service...")
+        
+        // First check if there's an existing P2P service and shut it down
+        val existingService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+        if (existingService != null) {
+            Log.d("UserProfileActivity", "Shutting down existing P2P service before starting new one")
+            existingService.shutdown()
+            // Give it a moment to clean up
+            Thread.sleep(100)
+        }
+        
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
         val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
         
@@ -455,6 +473,10 @@ class UserProfileActivity : AppCompatActivity() {
                 val isAvailable = sharedPrefs.getBoolean("agent_available", true)
                 p2pMessagingService?.updateAvailability(isAvailable)
                 Log.d("UserProfileActivity", "P2P service availability set to: $isAvailable")
+                
+                // Send a broadcast to update MainActivity's location icon color
+                val intent = Intent("com.unicity.nfcwalletdemo.UPDATE_P2P_STATUS")
+                androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
             } catch (e: Exception) {
                 Log.e("UserProfileActivity", "Failed to create P2P service", e)
             }

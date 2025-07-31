@@ -29,6 +29,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 class P2PMessagingService private constructor(
     private val context: Context,
@@ -43,6 +44,9 @@ class P2PMessagingService private constructor(
         private const val WS_PORT_MAX = 9999
         private const val NOTIFICATION_CHANNEL_ID = "unicity_chat"
         private const val NOTIFICATION_ID = 1001
+        const val ACTION_HANDSHAKE_REQUEST = "com.unicity.nfcwalletdemo.ACTION_HANDSHAKE_REQUEST"
+        const val EXTRA_FROM_TAG = "from_tag"
+        const val EXTRA_FROM_NAME = "from_name"
         
         @Volatile
         private var INSTANCE: P2PMessagingService? = null
@@ -71,6 +75,10 @@ class P2PMessagingService private constructor(
     private val activeConnections = ConcurrentHashMap<String, WebSocketClient>()
     private val serverConnections = ConcurrentHashMap<String, WebSocket>() // Incoming connections
     private val pendingMessages = ConcurrentHashMap<String, MutableList<P2PMessage>>()
+    
+    // Track NSD listeners for proper cleanup
+    private var registrationListener: NsdManager.RegistrationListener? = null
+    private var discoveryListener: NsdManager.DiscoveryListener? = null
     
     private val nsdManager: NsdManager by lazy {
         context.getSystemService(Context.NSD_SERVICE) as NsdManager
@@ -192,6 +200,17 @@ class P2PMessagingService private constructor(
     }
     
     private fun registerNsdService(port: Int) {
+        // Unregister any existing service first
+        try {
+            registrationListener?.let {
+                Log.d(TAG, "Unregistering existing NSD service before new registration")
+                nsdManager.unregisterService(it)
+                registrationListener = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering existing service", e)
+        }
+        
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = "$SERVICE_NAME_PREFIX$userTag"
             serviceType = SERVICE_TYPE
@@ -200,9 +219,27 @@ class P2PMessagingService private constructor(
             setAttribute("pubkey", userPublicKey)
         }
         
-        val registrationListener = object : NsdManager.RegistrationListener {
+        registrationListener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
                 Log.d(TAG, "Service registered: ${serviceInfo.serviceName}")
+                // Log network interfaces for debugging
+                try {
+                    val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                    while (interfaces.hasMoreElements()) {
+                        val networkInterface = interfaces.nextElement()
+                        if (networkInterface.isUp && !networkInterface.isLoopback) {
+                            val addresses = networkInterface.inetAddresses
+                            while (addresses.hasMoreElements()) {
+                                val address = addresses.nextElement()
+                                if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
+                                    Log.d(TAG, "Network interface ${networkInterface.name}: ${address.hostAddress}")
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error listing network interfaces", e)
+                }
             }
             
             override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
@@ -222,7 +259,18 @@ class P2PMessagingService private constructor(
     }
     
     private fun startNsdDiscovery() {
-        val discoveryListener = object : NsdManager.DiscoveryListener {
+        // Stop any existing discovery first
+        try {
+            discoveryListener?.let {
+                Log.d(TAG, "Stopping existing NSD discovery before starting new one")
+                nsdManager.stopServiceDiscovery(it)
+                discoveryListener = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping existing discovery", e)
+        }
+        
+        discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {
                 Log.d(TAG, "Discovery started")
             }
@@ -676,10 +724,41 @@ class P2PMessagingService private constructor(
     
     fun shutdown() {
         Log.d(TAG, "Shutting down P2P service")
+        
+        // Stop NSD discovery
+        try {
+            discoveryListener?.let {
+                Log.d(TAG, "Stopping NSD discovery")
+                nsdManager.stopServiceDiscovery(it)
+                discoveryListener = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping discovery", e)
+        }
+        
+        // Unregister NSD service
+        try {
+            registrationListener?.let {
+                Log.d(TAG, "Unregistering NSD service")
+                nsdManager.unregisterService(it)
+                registrationListener = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering service", e)
+        }
+        
+        // Cancel coroutines
         scope.cancel()
+        
+        // Stop WebSocket server
         webSocketServer?.stop()
+        
+        // Close all connections
         activeConnections.values.forEach { it.close() }
         activeConnections.clear()
+        serverConnections.clear()
+        
+        // Clear instance
         INSTANCE = null
     }
     
@@ -700,11 +779,20 @@ class P2PMessagingService private constructor(
     private fun showMessageNotification(message: P2PMessage) {
         Log.d(TAG, "Showing notification for message from ${message.from}")
         
+        // TODO: Check if we're currently in ChatActivity with this user
+        // For now, we'll show notifications for all messages
+        
+        // Special handling for handshake requests - show dialog instead of notification
+        if (message.type == MessageType.HANDSHAKE_REQUEST) {
+            showHandshakeDialog(message)
+            return
+        }
+        
         // Create intent to open chat
         val intent = Intent(context, ChatActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(ChatActivity.EXTRA_AGENT_TAG, message.from)
-            putExtra(ChatActivity.EXTRA_AGENT_NAME, "${message.from}@unicity")
+            putExtra("extra_agent_tag", message.from)
+            putExtra("extra_agent_name", "${message.from}@unicity")
         }
         
         val pendingIntent = PendingIntent.getActivity(
@@ -767,6 +855,62 @@ class P2PMessagingService private constructor(
                 alertText,
                 android.widget.Toast.LENGTH_LONG
             ).show()
+        }
+    }
+    
+    
+    private fun showHandshakeDialog(message: P2PMessage) {
+        Log.d(TAG, "Showing handshake dialog for ${message.from}")
+        
+        // Send a broadcast to show the dialog in the current activity
+        val intent = Intent(ACTION_HANDSHAKE_REQUEST).apply {
+            putExtra(EXTRA_FROM_TAG, message.from)
+            putExtra(EXTRA_FROM_NAME, "${message.from}@unicity")
+        }
+        LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
+        
+        // Also show a notification as fallback
+        showHandshakeNotification(message)
+    }
+    
+    private fun showHandshakeNotification(message: P2PMessage) {
+        // Create intent to open chat
+        val intent = Intent(context, ChatActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("extra_agent_tag", message.from)
+            putExtra("extra_agent_name", "${message.from}@unicity")
+        }
+        
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            message.from.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_chat_bubble)
+            .setContentTitle("New Chat Request")
+            .setContentText("${message.from} is trying to chat")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .addAction(
+                R.drawable.ic_chat_bubble,
+                "Accept",
+                pendingIntent
+            )
+            .build()
+        
+        if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            try {
+                NotificationManagerCompat.from(context).notify(
+                    message.from.hashCode(),
+                    notification
+                )
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Failed to show notification - missing permission", e)
+            }
         }
     }
 }

@@ -20,6 +20,10 @@ class ChatActivity : AppCompatActivity() {
         const val EXTRA_AGENT_NAME = "extra_agent_name"
     }
     
+    fun getCurrentChatPartner(): String? {
+        return agentTag
+    }
+    
     private lateinit var binding: ActivityChatBinding
     private lateinit var chatAdapter: ChatAdapter
     private lateinit var chatDatabase: ChatDatabase
