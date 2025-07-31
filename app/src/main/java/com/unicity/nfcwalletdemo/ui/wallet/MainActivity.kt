@@ -937,7 +937,14 @@ class MainActivity : AppCompatActivity() {
     private fun showChatConversations() {
         lifecycleScope.launch {
             val chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this@MainActivity)
-            val conversations = chatDatabase.conversationDao().getAllConversationsList()
+            val allConversations = chatDatabase.conversationDao().getAllConversationsList()
+            
+            // Get current user tag
+            val prefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+            val currentUserTag = prefs.getString("unicity_tag", "") ?: ""
+            
+            // Filter out conversations with self
+            val conversations = allConversations.filter { it.conversationId != currentUserTag }
             
             if (conversations.isEmpty()) {
                 Toast.makeText(this@MainActivity, "No chat conversations yet", Toast.LENGTH_SHORT).show()

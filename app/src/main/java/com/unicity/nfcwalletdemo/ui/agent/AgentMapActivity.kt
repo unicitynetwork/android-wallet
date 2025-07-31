@@ -248,7 +248,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                 result.onSuccess { nearbyAgents ->
                     // Get current user's unicityTag to filter it out
                     val prefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
-                    val currentUserTag = prefs.getString("user_unicity_tag", null)
+                    val currentUserTag = prefs.getString("unicity_tag", null)
                     
                     agents.clear()
                     // Filter out current user from the list

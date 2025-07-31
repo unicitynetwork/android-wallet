@@ -285,6 +285,13 @@ class P2PMessagingService private constructor(
     
     private fun connectToPeer(agentTag: String, host: String, port: Int, retryCount: Int = 0) {
         Log.d(TAG, "connectToPeer called - agentTag: $agentTag, host: $host, port: $port, retry: $retryCount")
+        
+        // Don't connect to self
+        if (agentTag == userTag) {
+            Log.d(TAG, "Skipping connection to self")
+            return
+        }
+        
         if (activeConnections.containsKey(agentTag)) {
             Log.d(TAG, "Already connected to $agentTag")
             return // Already connected
@@ -453,6 +460,13 @@ class P2PMessagingService private constructor(
     
     fun sendMessage(agentTag: String, content: String, type: MessageType = MessageType.TEXT): String {
         Log.d(TAG, "sendMessage called - to: $agentTag, type: $type, content: $content")
+        
+        // Don't send messages to self
+        if (agentTag == userTag) {
+            Log.w(TAG, "Cannot send message to self")
+            return ""
+        }
+        
         val messageId = UUID.randomUUID().toString()
         val p2pMessage = P2PMessage(
             messageId = messageId,
