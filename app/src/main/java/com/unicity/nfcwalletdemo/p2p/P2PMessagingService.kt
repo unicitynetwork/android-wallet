@@ -472,6 +472,22 @@ class P2PMessagingService private constructor(
     
     private suspend fun saveIncomingMessage(p2pMessage: P2PMessage) {
         Log.d(TAG, "saveIncomingMessage called - type: ${p2pMessage.type}, from: ${p2pMessage.from}")
+        
+        // Ensure conversation exists before saving message
+        var conversation = conversationDao.getConversation(p2pMessage.from)
+        if (conversation == null) {
+            Log.d(TAG, "Creating conversation for ${p2pMessage.from} before saving message")
+            conversation = ChatConversation(
+                conversationId = p2pMessage.from,
+                agentTag = p2pMessage.from,
+                agentPublicKey = null, // Will be updated when we get identification or handshake
+                lastMessageTime = p2pMessage.timestamp,
+                lastMessageText = p2pMessage.content,
+                isApproved = true // Auto-approve for regular messages
+            )
+            conversationDao.insertConversation(conversation)
+        }
+        
         val chatMessage = ChatMessage(
             messageId = p2pMessage.messageId,
             conversationId = p2pMessage.from,
@@ -487,8 +503,8 @@ class P2PMessagingService private constructor(
         
         // Update conversation
         conversationDao.incrementUnreadCount(p2pMessage.from)
-        val conversation = conversationDao.getConversation(p2pMessage.from)
-        conversation?.let {
+        val updatedConversation = conversationDao.getConversation(p2pMessage.from)
+        updatedConversation?.let {
             conversationDao.updateConversation(
                 it.copy(
                     lastMessageTime = p2pMessage.timestamp,
