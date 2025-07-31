@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -624,31 +625,95 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
             val currentUserTag = sharedPrefs.getString("unicity_tag", "") ?: ""
             val conversations = allConversations.filter { it.conversationId != currentUserTag }
             
-            if (conversations.isEmpty()) {
-                Toast.makeText(this@AgentMapActivity, "No chat conversations yet", Toast.LENGTH_SHORT).show()
-                return@launch
+            // Create custom dialog view
+            val dialogView = layoutInflater.inflate(R.layout.dialog_conversations, null)
+            val recyclerView = dialogView.findViewById<RecyclerView>(R.id.rvConversations)
+            val emptyStateView = dialogView.findViewById<TextView>(R.id.tvEmptyState)
+            
+            val dialog = AlertDialog.Builder(this@AgentMapActivity)
+                .setView(dialogView)
+                .setPositiveButton("Close", null)
+                .create()
+            
+            // Create adapter with deferred actions
+            lateinit var adapter: ConversationsAdapter
+            
+            // Function to refresh the list
+            val refreshList: suspend () -> Unit = {
+                val updatedConversations = chatDatabase.conversationDao().getAllConversationsList()
+                    .filter { it.conversationId != currentUserTag }
+                
+                if (updatedConversations.isEmpty()) {
+                    recyclerView.visibility = View.GONE
+                    emptyStateView.visibility = View.VISIBLE
+                } else {
+                    recyclerView.visibility = View.VISIBLE
+                    emptyStateView.visibility = View.GONE
+                    adapter.submitList(updatedConversations)
+                }
             }
             
-            // Create list of conversation strings with unread indicators
-            val conversationItems = conversations.map { conversation ->
-                val unreadIndicator = if (conversation.unreadCount > 0) " (${conversation.unreadCount})" else ""
-                val timeAgo = getTimeAgo(conversation.lastMessageTime)
-                "${conversation.agentTag}@unicity$unreadIndicator\n${conversation.lastMessageText}\n$timeAgo"
-            }.toTypedArray()
+            adapter = ConversationsAdapter(
+                    onItemClick = { conversation ->
+                        val intent = Intent(this@AgentMapActivity, ChatActivity::class.java).apply {
+                            putExtra(ChatActivity.EXTRA_AGENT_TAG, conversation.agentTag)
+                            putExtra(ChatActivity.EXTRA_AGENT_NAME, "${conversation.agentTag}@unicity")
+                        }
+                        startActivity(intent)
+                        dialog.dismiss()
+                    },
+                    onClearClick = { conversation ->
+                        // Clear all messages in the conversation
+                        lifecycleScope.launch {
+                            chatDatabase.messageDao().deleteAllMessagesForConversation(conversation.conversationId)
+                            // Reset conversation
+                            chatDatabase.conversationDao().updateConversation(
+                                conversation.copy(
+                                    lastMessageTime = System.currentTimeMillis(),
+                                    lastMessageText = null,
+                                    unreadCount = 0
+                                )
+                            )
+                            Toast.makeText(this@AgentMapActivity, "Messages cleared", Toast.LENGTH_SHORT).show()
+                            refreshList()
+                        }
+                    },
+                    onDeleteClick = { conversation ->
+                        // Show confirmation dialog
+                        AlertDialog.Builder(this@AgentMapActivity)
+                            .setTitle("Delete Conversation")
+                            .setMessage("Are you sure you want to delete this conversation? A new handshake will be required to chat again.")
+                            .setPositiveButton("Delete") { _, _ ->
+                                lifecycleScope.launch {
+                                    // Delete all messages
+                                    chatDatabase.messageDao().deleteAllMessagesForConversation(conversation.conversationId)
+                                    // Delete conversation
+                                    chatDatabase.conversationDao().deleteConversation(conversation)
+                                    Toast.makeText(this@AgentMapActivity, "Conversation deleted", Toast.LENGTH_SHORT).show()
+                                    refreshList()
+                                }
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                )
+            
+            // Setup RecyclerView
+            recyclerView.layoutManager = LinearLayoutManager(this@AgentMapActivity)
+            recyclerView.adapter = adapter
+            
+            // Show appropriate view based on conversations
+            if (conversations.isEmpty()) {
+                recyclerView.visibility = View.GONE
+                emptyStateView.visibility = View.VISIBLE
+            } else {
+                recyclerView.visibility = View.VISIBLE
+                emptyStateView.visibility = View.GONE
+                adapter.submitList(conversations)
+            }
             
             // Show dialog
-            AlertDialog.Builder(this@AgentMapActivity)
-                .setTitle("Chat Conversations")
-                .setItems(conversationItems) { _, which ->
-                    val conversation = conversations[which]
-                    val intent = Intent(this@AgentMapActivity, ChatActivity::class.java).apply {
-                        putExtra(ChatActivity.EXTRA_AGENT_TAG, conversation.agentTag)
-                        putExtra(ChatActivity.EXTRA_AGENT_NAME, "${conversation.agentTag}@unicity")
-                    }
-                    startActivity(intent)
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+            dialog.show()
         }
     }
     
