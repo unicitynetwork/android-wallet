@@ -37,6 +37,8 @@ import com.unicity.nfcwalletdemo.databinding.ActivityAgentMapBinding
 import com.unicity.nfcwalletdemo.network.Agent
 import com.unicity.nfcwalletdemo.network.AgentApiService
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import androidx.appcompat.app.AlertDialog
 
 class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     
@@ -72,8 +74,11 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         binding = ActivityAgentMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
+        // Set up custom toolbar
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Find Agents"
+        supportActionBar?.setDisplayShowTitleEnabled(false) // We use custom title
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
@@ -89,6 +94,8 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         
         checkLocationPermissionAndLoad()
         loadAgentsWithChat()
+        setupChatIcon()
+        observeUnreadCount()
     }
     
     private fun setupRecyclerView() {
@@ -580,6 +587,80 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
             } else {
                 android.util.Log.d(TAG, "P2P service already running")
             }
+        }
+    }
+    
+    private fun setupChatIcon() {
+        val chatIconContainer = findViewById<View>(R.id.chat_icon_container)
+        chatIconContainer.setOnClickListener {
+            showChatConversations()
+        }
+    }
+    
+    private fun observeUnreadCount() {
+        lifecycleScope.launch {
+            chatDatabase.conversationDao().getTotalUnreadCount().collectLatest { unreadCount ->
+                updateUnreadBadge(unreadCount ?: 0)
+            }
+        }
+    }
+    
+    private fun updateUnreadBadge(count: Int) {
+        val badge = findViewById<TextView>(R.id.unread_badge)
+        if (count > 0) {
+            badge.visibility = View.VISIBLE
+            badge.text = if (count > 99) "99+" else count.toString()
+        } else {
+            badge.visibility = View.GONE
+        }
+    }
+    
+    private fun showChatConversations() {
+        lifecycleScope.launch {
+            val allConversations = chatDatabase.conversationDao().getAllConversationsList()
+            
+            // Filter out conversations with self
+            val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+            val currentUserTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+            val conversations = allConversations.filter { it.conversationId != currentUserTag }
+            
+            if (conversations.isEmpty()) {
+                Toast.makeText(this@AgentMapActivity, "No chat conversations yet", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            
+            // Create list of conversation strings with unread indicators
+            val conversationItems = conversations.map { conversation ->
+                val unreadIndicator = if (conversation.unreadCount > 0) " (${conversation.unreadCount})" else ""
+                val timeAgo = getTimeAgo(conversation.lastMessageTime)
+                "${conversation.agentTag}@unicity$unreadIndicator\n${conversation.lastMessageText}\n$timeAgo"
+            }.toTypedArray()
+            
+            // Show dialog
+            AlertDialog.Builder(this@AgentMapActivity)
+                .setTitle("Chat Conversations")
+                .setItems(conversationItems) { _, which ->
+                    val conversation = conversations[which]
+                    val intent = Intent(this@AgentMapActivity, ChatActivity::class.java).apply {
+                        putExtra(ChatActivity.EXTRA_AGENT_TAG, conversation.agentTag)
+                        putExtra(ChatActivity.EXTRA_AGENT_NAME, "${conversation.agentTag}@unicity")
+                    }
+                    startActivity(intent)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+    
+    private fun getTimeAgo(timestamp: Long): String {
+        val now = System.currentTimeMillis()
+        val diff = now - timestamp
+        
+        return when {
+            diff < 60_000 -> "just now"
+            diff < 3600_000 -> "${diff / 60_000}m ago"
+            diff < 86400_000 -> "${diff / 3600_000}h ago"
+            else -> "${diff / 86400_000}d ago"
         }
     }
 }

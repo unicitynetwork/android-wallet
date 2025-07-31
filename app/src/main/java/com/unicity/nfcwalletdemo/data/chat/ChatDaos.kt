@@ -35,6 +35,9 @@ interface ConversationDao {
     @Query("UPDATE conversations SET isApproved = :isApproved WHERE conversationId = :conversationId")
     suspend fun updateApprovalStatus(conversationId: String, isApproved: Boolean)
     
+    @Query("SELECT SUM(unreadCount) FROM conversations")
+    fun getTotalUnreadCount(): Flow<Int?>
+    
     @Delete
     suspend fun deleteConversation(conversation: ChatConversation)
 }
