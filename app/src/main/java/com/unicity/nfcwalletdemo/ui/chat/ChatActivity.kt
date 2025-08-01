@@ -51,6 +51,10 @@ class ChatActivity : AppCompatActivity() {
             return
         }
         
+        // Mark this as the current chat partner
+        val prefs = getSharedPreferences("chat_prefs", MODE_PRIVATE)
+        prefs.edit().putString("current_chat_partner", agentTag).apply()
+        
         // Setup toolbar
         supportActionBar?.apply {
             setDisplayHomeAsUpEnabled(true)
@@ -229,6 +233,20 @@ class ChatActivity : AppCompatActivity() {
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Mark this as the current chat partner when resuming
+        val prefs = getSharedPreferences("chat_prefs", MODE_PRIVATE)
+        prefs.edit().putString("current_chat_partner", agentTag).apply()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Clear current chat partner when pausing
+        val prefs = getSharedPreferences("chat_prefs", MODE_PRIVATE)
+        prefs.edit().remove("current_chat_partner").apply()
     }
     
     override fun onDestroy() {

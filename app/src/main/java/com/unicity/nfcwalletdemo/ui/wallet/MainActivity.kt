@@ -240,16 +240,52 @@ class MainActivity : AppCompatActivity() {
                     Log.d("MainActivity", "P2P service started successfully")
                     Toast.makeText(this, "P2P messaging service started", Toast.LENGTH_SHORT).show()
                     updateLocationIconColor()
+                    
+                    // Register agent location with backend
+                    registerAgentLocation()
                 } catch (e: Exception) {
                     Log.e("MainActivity", "Failed to start P2P service", e)
                 }
             } else {
                 Log.d("MainActivity", "P2P service already running")
                 updateLocationIconColor()
+                
+                // Ensure agent is registered even if service is already running
+                registerAgentLocation()
             }
         } else {
             Log.d("MainActivity", "Not starting P2P service - agent: $isAgent, available: $isAvailable")
             updateLocationIconColor()
+        }
+    }
+    
+    private fun registerAgentLocation() {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+        
+        if (unicityTag.isNotEmpty()) {
+            lifecycleScope.launch {
+                try {
+                    // Always use demo location for initial registration from MainActivity
+                    // Real location updates will be handled by UserProfileActivity
+                    val location = com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this@MainActivity)
+                    
+                    if (location != null) {
+                        val agentApiService = com.unicity.nfcwalletdemo.network.AgentApiService()
+                        agentApiService.updateAgentLocation(
+                            unicityTag,
+                            location.latitude,
+                            location.longitude,
+                            true
+                        )
+                        Log.d("MainActivity", "Agent location registered: ${location.latitude}, ${location.longitude}")
+                    } else {
+                        Log.w("MainActivity", "Unable to get location for agent registration")
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Failed to register agent location", e)
+                }
+            }
         }
     }
     

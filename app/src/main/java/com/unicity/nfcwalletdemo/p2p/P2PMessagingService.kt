@@ -321,14 +321,68 @@ class P2PMessagingService private constructor(
                 val port = serviceInfo.port
                 Log.d(TAG, "Agent: $agentTag, Host: $host, Port: $port")
                 
-                host.hostAddress?.let { hostAddress ->
-                    Log.d(TAG, "Connecting to peer at $hostAddress:$port")
-                    connectToPeer(agentTag, hostAddress, port)
-                } ?: Log.e(TAG, "No host address for resolved service")
+                // For emulators, we need to handle special networking
+                val hostAddress = host.hostAddress
+                if (hostAddress != null) {
+                    // Check if this is an emulator localhost address
+                    val finalAddress = if (hostAddress == "10.0.2.2" || hostAddress == "127.0.0.1") {
+                        // Try to use the actual IP from network interfaces
+                        Log.d(TAG, "Detected emulator localhost, using actual network IP")
+                        getEmulatorHostAddress() ?: hostAddress
+                    } else {
+                        hostAddress
+                    }
+                    Log.d(TAG, "Connecting to peer at $finalAddress:$port")
+                    connectToPeer(agentTag, finalAddress, port)
+                } else {
+                    Log.e(TAG, "No host address for resolved service")
+                }
             }
         }
         
         nsdManager.resolveService(serviceInfo, resolveListener)
+    }
+    
+    private fun getEmulatorHostAddress(): String? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (networkInterface.isUp && !networkInterface.isLoopback) {
+                    val addresses = networkInterface.inetAddresses
+                    while (addresses.hasMoreElements()) {
+                        val address = addresses.nextElement()
+                        if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
+                            val hostAddress = address.hostAddress
+                            // Prefer 10.0.2.x addresses for emulator networking
+                            if (hostAddress.startsWith("10.0.2.")) {
+                                Log.d(TAG, "Found emulator network address: $hostAddress")
+                                return hostAddress
+                            }
+                        }
+                    }
+                }
+            }
+            // If no 10.0.2.x address found, try to find any non-localhost address
+            val interfaces2 = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces2.hasMoreElements()) {
+                val networkInterface = interfaces2.nextElement()
+                if (networkInterface.isUp && !networkInterface.isLoopback) {
+                    val addresses = networkInterface.inetAddresses
+                    while (addresses.hasMoreElements()) {
+                        val address = addresses.nextElement()
+                        if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
+                            val hostAddress = address.hostAddress
+                            Log.d(TAG, "Found network address: $hostAddress")
+                            return hostAddress
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting network addresses", e)
+        }
+        return null
     }
     
     private fun connectToPeer(agentTag: String, host: String, port: Int, retryCount: Int = 0) {
@@ -380,13 +434,19 @@ class P2PMessagingService private constructor(
                 }
                 
                 override fun onError(ex: Exception?) {
-                    Log.e(TAG, "Connection error with $agentTag", ex)
+                    Log.e(TAG, "Connection error with $agentTag: ${ex?.message}", ex)
+                    activeConnections.remove(agentTag)
+                    updateConnectionStatus(agentTag, false)
+                    
                     // Retry connection after a delay
                     if (retryCount < 3) {
                         scope.launch {
                             delay(2000) // Wait 2 seconds before retry
+                            Log.d(TAG, "Retrying connection to $agentTag (attempt ${retryCount + 1}/3)")
                             connectToPeer(agentTag, host, port, retryCount + 1)
                         }
+                    } else {
+                        Log.e(TAG, "Failed to connect to $agentTag after 3 attempts")
                     }
                 }
             }
@@ -542,6 +602,21 @@ class P2PMessagingService private constructor(
         )
         
         scope.launch {
+            // Ensure conversation exists before saving message
+            var conversation = conversationDao.getConversation(agentTag)
+            if (conversation == null) {
+                Log.d(TAG, "Creating conversation for outgoing message to $agentTag")
+                conversation = ChatConversation(
+                    conversationId = agentTag,
+                    agentTag = agentTag,
+                    agentPublicKey = null,
+                    lastMessageTime = p2pMessage.timestamp,
+                    lastMessageText = content,
+                    isApproved = true
+                )
+                conversationDao.insertConversation(conversation)
+            }
+            
             // Save to database as pending
             val chatMessage = ChatMessage(
                 messageId = messageId,
@@ -561,6 +636,7 @@ class P2PMessagingService private constructor(
             } else {
                 // Queue for later
                 pendingMessages.getOrPut(agentTag) { mutableListOf() }.add(p2pMessage)
+                Log.w(TAG, "Message queued for later delivery to $agentTag")
             }
         }
         
@@ -795,8 +871,14 @@ class P2PMessagingService private constructor(
     private fun showMessageNotification(message: P2PMessage) {
         Log.d(TAG, "Showing notification for message from ${message.from}")
         
-        // TODO: Check if we're currently in ChatActivity with this user
-        // For now, we'll show notifications for all messages
+        // Check if we're currently in ChatActivity with this user
+        val prefs = context.getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+        val currentChatPartner = prefs.getString("current_chat_partner", null)
+        
+        if (currentChatPartner == message.from) {
+            Log.d(TAG, "User is currently chatting with ${message.from}, skipping notification")
+            return
+        }
         
         // Special handling for handshake requests - show dialog instead of notification
         if (message.type == MessageType.HANDSHAKE_REQUEST) {
@@ -854,6 +936,15 @@ class P2PMessagingService private constructor(
     
     private fun showInAppAlert(message: P2PMessage) {
         Log.d(TAG, "Showing in-app alert for message from ${message.from}")
+        
+        // Check if we're currently chatting with this user
+        val prefs = context.getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+        val currentChatPartner = prefs.getString("current_chat_partner", null)
+        
+        if (currentChatPartner == message.from) {
+            Log.d(TAG, "User is currently chatting with ${message.from}, skipping in-app alert")
+            return
+        }
         
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         handler.post {
