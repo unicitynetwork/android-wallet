@@ -7,6 +7,19 @@ plugins {
     id("kotlin-kapt")
 }
 
+// Task to copy holepunch-js to assets for nodejs-mobile
+tasks.register<Copy>("copyHolepunchToAssets") {
+    from("../holepunch-js")
+    into("src/main/assets/nodejs-project")
+    exclude("node_modules/**")
+    exclude("webpack.config.js")
+    exclude("*.md")
+}
+
+tasks.named("preBuild") {
+    dependsOn("copyHolepunchToAssets")
+}
+
 // Load local.properties
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
@@ -28,7 +41,7 @@ android {
 
     defaultConfig {
         applicationId = "com.unicity.nfcwalletdemo"
-        minSdk = 24
+        minSdk = 31
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -158,6 +171,8 @@ dependencies {
     
     // WebSocket for P2P
     implementation("org.java-websocket:Java-WebSocket:1.5.6")
+    
+    // Holepunch P2P via Node.js subprocess (no extra dependencies needed)
     
     // Network Service Discovery (NSD) is built into Android
     

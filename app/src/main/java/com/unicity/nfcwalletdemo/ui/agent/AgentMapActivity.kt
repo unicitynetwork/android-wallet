@@ -165,7 +165,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         }
         
         // Check if demo mode is enabled
-        val isDemoMode = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
+        val isDemoMode = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this)
         
         if (isDemoMode) {
             // In demo mode, don't enable real location tracking
@@ -215,9 +215,9 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.progressBar.visibility = View.VISIBLE
         
         // Check if demo mode is enabled
-        if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
+        if (com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this)) {
             // Use demo location
-            val demoLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this)
+            val demoLocation = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.createDemoLocation(this)
             currentLocation = demoLocation
             
             // Update map camera
@@ -304,7 +304,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         googleMap?.clear()
         
         // Re-add user location marker if in demo mode
-        if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
+        if (com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this)) {
             currentLocation?.let {
                 addUserLocationMarker(it.latitude, it.longitude)
             }
@@ -398,7 +398,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                 loadCurrentLocationAndAgents()
                 
                 // Enable my location on map only if not in demo mode
-                if (!com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this) &&
+                if (!com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this) &&
                     ActivityCompat.checkSelfPermission(
                         this,
                         Manifest.permission.ACCESS_FINE_LOCATION

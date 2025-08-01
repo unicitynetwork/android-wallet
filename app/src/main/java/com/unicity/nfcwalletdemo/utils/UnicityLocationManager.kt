@@ -6,7 +6,11 @@ import android.location.Location
 import android.location.LocationManager
 import kotlin.random.Random
 
-object DemoLocationManager {
+/**
+ * Location Manager for Unicity Wallet
+ * Handles both real GPS and testing mode for development
+ */
+object UnicityLocationManager {
     private const val PREFS_NAME = "UnicitywWalletPrefs"
     private const val KEY_DEMO_MODE = "demo_mode_enabled"
     private const val KEY_DEMO_LOCATION = "demo_location"

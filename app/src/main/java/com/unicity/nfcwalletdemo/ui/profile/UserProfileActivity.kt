@@ -381,9 +381,9 @@ class UserProfileActivity : AppCompatActivity() {
             )
             
             // Get immediate location
-            if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
+            if (com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this)) {
                 // Use demo location immediately
-                val demoLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this)
+                val demoLocation = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.createDemoLocation(this)
                 updateAgentLocation(demoLocation)
             } else {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location ->
@@ -417,8 +417,8 @@ class UserProfileActivity : AppCompatActivity() {
         
         if (unicityTag.isNotEmpty()) {
             // Use demo location if demo mode is enabled
-            val finalLocation = if (com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)) {
-                com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this)
+            val finalLocation = if (com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this)) {
+                com.unicity.nfcwalletdemo.utils.UnicityLocationManager.createDemoLocation(this)
             } else {
                 location
             }

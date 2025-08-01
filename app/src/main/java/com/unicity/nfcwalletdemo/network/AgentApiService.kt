@@ -25,7 +25,8 @@ class AgentApiService {
         unicityTag: String,
         latitude: Double,
         longitude: Double,
-        isActive: Boolean
+        isActive: Boolean,
+        connectionInfo: AgentConnectionInfo? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val url = URL("$API_URL/agents/update-location")
@@ -42,6 +43,16 @@ class AgentApiService {
                 put("latitude", latitude)
                 put("longitude", longitude)
                 put("isActive", isActive)
+                
+                // Add connection info for P2P
+                connectionInfo?.let {
+                    put("connectionInfo", JSONObject().apply {
+                        put("localIp", it.localIp)
+                        put("publicIp", it.publicIp)
+                        put("wsPort", it.wsPort)
+                        put("supportsRelay", it.supportsRelay)
+                    })
+                }
             }
             
             OutputStreamWriter(connection.outputStream).use { writer ->
@@ -143,4 +154,11 @@ data class Agent(
     val longitude: Double,
     val distance: Double,
     val lastUpdateAt: String
+)
+
+data class AgentConnectionInfo(
+    val localIp: String,
+    val publicIp: String?,
+    val wsPort: Int,
+    val supportsRelay: Boolean
 )

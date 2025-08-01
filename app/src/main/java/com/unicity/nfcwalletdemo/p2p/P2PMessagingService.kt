@@ -107,14 +107,23 @@ class P2PMessagingService private constructor(
     
     init {
         Log.d(TAG, "P2PMessagingService initializing for user: $userTag")
-        createNotificationChannel()
-        startWebSocketServer()
-        // Delay NSD discovery to ensure server is ready
-        scope.launch {
-            delay(500) // Give WebSocket server time to start
-            startNsdDiscovery()
+        try {
+            createNotificationChannel()
+            startWebSocketServer()
+            // Delay NSD discovery to ensure server is ready
+            scope.launch {
+                delay(500) // Give WebSocket server time to start
+                try {
+                    startNsdDiscovery()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to start NSD discovery", e)
+                }
+            }
+            processPendingMessages()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing P2P service", e)
+            // Service will still be created but might not be fully functional
         }
-        processPendingMessages()
     }
     
     private fun startWebSocketServer() {
@@ -182,12 +191,16 @@ class P2PMessagingService private constructor(
             Log.d(TAG, "WebSocket server start() called successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start WebSocket server", e)
-            throw e
+            // Don't throw - just log the error to prevent crashes
         }
     }
     
     private fun findAvailablePort(): Int {
-        for (port in WS_PORT_MIN..WS_PORT_MAX) {
+        // Try a smaller range first to avoid blocking
+        val startPort = WS_PORT_MIN + (System.currentTimeMillis() % 100).toInt()
+        for (i in 0..20) {
+            val port = startPort + i
+            if (port > WS_PORT_MAX) break
             try {
                 val socket = java.net.ServerSocket(port)
                 socket.close()
@@ -196,7 +209,10 @@ class P2PMessagingService private constructor(
                 // Port is in use, try next
             }
         }
-        throw RuntimeException("No available ports found")
+        
+        Log.e(TAG, "Could not find available port in range $startPort-${startPort + 20}")
+        // Return a default port and let the server handle the error
+        return WS_PORT_MIN
     }
     
     private fun registerNsdService(port: Int) {
@@ -221,7 +237,7 @@ class P2PMessagingService private constructor(
         
         registrationListener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
-                Log.d(TAG, "Service registered: ${serviceInfo.serviceName}")
+                Log.d(TAG, "Service registered: ${serviceInfo.serviceName} on port $port")
                 // Log network interfaces for debugging
                 try {
                     val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
@@ -321,19 +337,10 @@ class P2PMessagingService private constructor(
                 val port = serviceInfo.port
                 Log.d(TAG, "Agent: $agentTag, Host: $host, Port: $port")
                 
-                // For emulators, we need to handle special networking
                 val hostAddress = host.hostAddress
                 if (hostAddress != null) {
-                    // Check if this is an emulator localhost address
-                    val finalAddress = if (hostAddress == "10.0.2.2" || hostAddress == "127.0.0.1") {
-                        // Try to use the actual IP from network interfaces
-                        Log.d(TAG, "Detected emulator localhost, using actual network IP")
-                        getEmulatorHostAddress() ?: hostAddress
-                    } else {
-                        hostAddress
-                    }
-                    Log.d(TAG, "Connecting to peer at $finalAddress:$port")
-                    connectToPeer(agentTag, finalAddress, port)
+                    Log.d(TAG, "Connecting to peer at $hostAddress:$port")
+                    connectToPeer(agentTag, hostAddress, port)
                 } else {
                     Log.e(TAG, "No host address for resolved service")
                 }
@@ -341,48 +348,6 @@ class P2PMessagingService private constructor(
         }
         
         nsdManager.resolveService(serviceInfo, resolveListener)
-    }
-    
-    private fun getEmulatorHostAddress(): String? {
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                if (networkInterface.isUp && !networkInterface.isLoopback) {
-                    val addresses = networkInterface.inetAddresses
-                    while (addresses.hasMoreElements()) {
-                        val address = addresses.nextElement()
-                        if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
-                            val hostAddress = address.hostAddress
-                            // Prefer 10.0.2.x addresses for emulator networking
-                            if (hostAddress.startsWith("10.0.2.")) {
-                                Log.d(TAG, "Found emulator network address: $hostAddress")
-                                return hostAddress
-                            }
-                        }
-                    }
-                }
-            }
-            // If no 10.0.2.x address found, try to find any non-localhost address
-            val interfaces2 = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces2.hasMoreElements()) {
-                val networkInterface = interfaces2.nextElement()
-                if (networkInterface.isUp && !networkInterface.isLoopback) {
-                    val addresses = networkInterface.inetAddresses
-                    while (addresses.hasMoreElements()) {
-                        val address = addresses.nextElement()
-                        if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
-                            val hostAddress = address.hostAddress
-                            Log.d(TAG, "Found network address: $hostAddress")
-                            return hostAddress
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting network addresses", e)
-        }
-        return null
     }
     
     private fun connectToPeer(agentTag: String, host: String, port: Int, retryCount: Int = 0) {

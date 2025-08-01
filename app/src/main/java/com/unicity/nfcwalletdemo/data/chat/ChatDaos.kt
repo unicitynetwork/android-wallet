@@ -40,6 +40,18 @@ interface ConversationDao {
     
     @Delete
     suspend fun deleteConversation(conversation: ChatConversation)
+    
+    @Query("UPDATE conversations SET lastMessageTime = :lastMessageTime, lastMessageText = :lastMessageText WHERE conversationId = :conversationId")
+    suspend fun updateLastMessage(conversationId: String, lastMessageTime: Long, lastMessageText: String?)
+    
+    // Since we don't have a handshakeStatus column, we'll use a combination of isApproved flag
+    suspend fun updateHandshakeStatus(conversationId: String, status: HandshakeStatus) {
+        when (status) {
+            HandshakeStatus.APPROVED -> updateApprovalStatus(conversationId, true)
+            HandshakeStatus.REJECTED -> updateApprovalStatus(conversationId, false)
+            else -> { /* For SENT, RECEIVED, NONE we don't update approval status */ }
+        }
+    }
 }
 
 @Dao

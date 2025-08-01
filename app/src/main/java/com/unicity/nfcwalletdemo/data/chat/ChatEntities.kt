@@ -56,6 +56,16 @@ enum class MessageType {
     TRANSACTION_CONFIRM,
     HANDSHAKE_REQUEST,
     HANDSHAKE_ACCEPT,
+    HANDSHAKE_REJECT,
     AVAILABILITY_UPDATE,
-    IDENTIFICATION  // Used to identify who connected
+    IDENTIFICATION,  // Used to identify who connected
+    IDENTIFY  // Alias for IDENTIFICATION
+}
+
+enum class HandshakeStatus {
+    NONE,
+    SENT,
+    RECEIVED,
+    APPROVED,
+    REJECTED
 }

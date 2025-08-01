@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.unicity.nfcwalletdemo.data.chat.*
 import com.unicity.nfcwalletdemo.databinding.ActivityChatBinding
 import com.unicity.nfcwalletdemo.p2p.P2PMessagingService
+import com.unicity.nfcwalletdemo.p2p.P2PServiceFactory
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -101,16 +102,19 @@ class ChatActivity : AppCompatActivity() {
     
     private fun initializeP2PService() {
         // Try to get existing instance first
-        p2pService = P2PMessagingService.getExistingInstance()
+        p2pService = P2PServiceFactory.getExistingInstance() as? P2PMessagingService
         
         if (p2pService == null) {
             // If no instance exists, create one
-            val publicKey = userTag // TODO: Get actual public key from wallet
-            p2pService = P2PMessagingService.getInstance(
+            val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+            val publicKey = sharedPrefs.getString("wallet_public_key", userTag) ?: userTag
+            val service = P2PServiceFactory.getInstance(
                 context = applicationContext,
                 userTag = userTag,
                 userPublicKey = publicKey
             )
+            // For backward compatibility, cast to P2PMessagingService if needed
+            p2pService = service as? P2PMessagingService
         }
     }
     

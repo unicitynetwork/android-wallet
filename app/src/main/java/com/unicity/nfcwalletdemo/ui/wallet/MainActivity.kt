@@ -119,9 +119,9 @@ class MainActivity : AppCompatActivity() {
     // Handshake dialog receiver
     private val handshakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == com.unicity.nfcwalletdemo.p2p.P2PMessagingService.ACTION_HANDSHAKE_REQUEST) {
-                val fromTag = intent.getStringExtra(com.unicity.nfcwalletdemo.p2p.P2PMessagingService.EXTRA_FROM_TAG) ?: return
-                val fromName = intent.getStringExtra(com.unicity.nfcwalletdemo.p2p.P2PMessagingService.EXTRA_FROM_NAME) ?: return
+            if (intent?.action == "com.unicity.nfcwalletdemo.ACTION_HANDSHAKE_REQUEST") {
+                val fromTag = intent.getStringExtra("from_tag") ?: return
+                val fromName = intent.getStringExtra("from_name") ?: return
                 showHandshakeDialog(fromTag, fromName)
             }
         }
@@ -202,7 +202,7 @@ class MainActivity : AppCompatActivity() {
         // Register handshake receiver
         LocalBroadcastManager.getInstance(this).registerReceiver(
             handshakeReceiver,
-            IntentFilter(com.unicity.nfcwalletdemo.p2p.P2PMessagingService.ACTION_HANDSHAKE_REQUEST)
+            IntentFilter("com.unicity.nfcwalletdemo.ACTION_HANDSHAKE_REQUEST")
         )
         
         // Register P2P status receiver
@@ -227,12 +227,14 @@ class MainActivity : AppCompatActivity() {
         
         if (isAgent && isAvailable && unicityTag.isNotEmpty()) {
             // Check if P2P service is already running
-            val existingService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+            val existingService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
             if (existingService == null) {
                 Log.d("MainActivity", "Starting P2P service automatically")
                 try {
-                    val publicKey = unicityTag // TODO: Get actual public key
-                    com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getInstance(
+                    // Get wallet public key from preferences
+                    val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+                    val publicKey = sharedPrefs.getString("wallet_public_key", unicityTag) ?: unicityTag
+                    com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getInstance(
                         context = applicationContext,
                         userTag = unicityTag,
                         userPublicKey = publicKey
@@ -268,7 +270,7 @@ class MainActivity : AppCompatActivity() {
                 try {
                     // Always use demo location for initial registration from MainActivity
                     // Real location updates will be handled by UserProfileActivity
-                    val location = com.unicity.nfcwalletdemo.utils.DemoLocationManager.createDemoLocation(this@MainActivity)
+                    val location = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.createDemoLocation(this@MainActivity)
                     
                     if (location != null) {
                         val agentApiService = com.unicity.nfcwalletdemo.network.AgentApiService()
@@ -293,7 +295,7 @@ class MainActivity : AppCompatActivity() {
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
         val isAgent = sharedPrefs.getBoolean("is_agent", false)
         val isAvailable = sharedPrefs.getBoolean("agent_available", true)
-        val p2pService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+        val p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
         
         when {
             !isAgent -> {
@@ -1182,8 +1184,8 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showDemoModeDialog() {
-        val isDemoEnabled = com.unicity.nfcwalletdemo.utils.DemoLocationManager.isDemoModeEnabled(this)
-        val currentLocation = com.unicity.nfcwalletdemo.utils.DemoLocationManager.getDemoLocation(this)
+        val isDemoEnabled = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this)
+        val currentLocation = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.getDemoLocation(this)
         
         val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_1, null)
         
@@ -1191,12 +1193,12 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Demo Mode Settings")
             .setMessage("Current: ${if (isDemoEnabled) "ON - ${currentLocation.city}, ${currentLocation.country}" else "OFF"}")
             .setPositiveButton("Toggle Demo Mode") { _, _ ->
-                com.unicity.nfcwalletdemo.utils.DemoLocationManager.setDemoModeEnabled(this, !isDemoEnabled)
+                com.unicity.nfcwalletdemo.utils.UnicityLocationManager.setDemoModeEnabled(this, !isDemoEnabled)
                 Toast.makeText(this, "Demo mode ${if (!isDemoEnabled) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
             }
             .setNeutralButton(if (isDemoEnabled) "Change Location" else "Select Location") { _, _ ->
                 if (!isDemoEnabled) {
-                    com.unicity.nfcwalletdemo.utils.DemoLocationManager.setDemoModeEnabled(this, true)
+                    com.unicity.nfcwalletdemo.utils.UnicityLocationManager.setDemoModeEnabled(this, true)
                 }
                 showLocationSelectionDialog()
             }
@@ -1205,15 +1207,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showLocationSelectionDialog() {
-        val locations = com.unicity.nfcwalletdemo.utils.DemoLocationManager.DemoLocation.values()
-            .filter { it != com.unicity.nfcwalletdemo.utils.DemoLocationManager.DemoLocation.CUSTOM }
+        val locations = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.DemoLocation.values()
+            .filter { it != com.unicity.nfcwalletdemo.utils.UnicityLocationManager.DemoLocation.CUSTOM }
         val locationNames = locations.map { "${it.city}, ${it.country}" }.toTypedArray()
         
         AlertDialog.Builder(this)
             .setTitle("Select Demo Location")
             .setItems(locationNames) { _, which ->
                 val selectedLocation = locations[which]
-                com.unicity.nfcwalletdemo.utils.DemoLocationManager.setDemoLocation(this, selectedLocation)
+                com.unicity.nfcwalletdemo.utils.UnicityLocationManager.setDemoLocation(this, selectedLocation)
                 Toast.makeText(this, "Demo location set to ${selectedLocation.city}", Toast.LENGTH_SHORT).show()
                 
                 // Also create some demo agents if user is in agent mode
@@ -1222,11 +1224,11 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun createDemoAgents(location: com.unicity.nfcwalletdemo.utils.DemoLocationManager.DemoLocation) {
+    private fun createDemoAgents(location: com.unicity.nfcwalletdemo.utils.UnicityLocationManager.DemoLocation) {
         // Generate some demo agents near the selected location
         lifecycleScope.launch {
             try {
-                val agentLocations = com.unicity.nfcwalletdemo.utils.DemoLocationManager.generateNearbyAgentLocations(this@MainActivity, 5)
+                val agentLocations = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.generateNearbyAgentLocations(this@MainActivity, 5)
                 val agentNames = listOf("agent1", "agent2", "agent3", "agent4", "agent5")
                 val agentApiService = com.unicity.nfcwalletdemo.network.AgentApiService()
                 
@@ -3586,7 +3588,7 @@ class MainActivity : AppCompatActivity() {
                 .setMessage("$fromTag is trying to chat")
                 .setPositiveButton("Accept") { _, _ ->
                     // Get P2P service instance and accept handshake
-                    val p2pService = com.unicity.nfcwalletdemo.p2p.P2PMessagingService.getExistingInstance()
+                    val p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
                     p2pService?.acceptHandshake(fromTag)
                     
                     // Open chat activity
