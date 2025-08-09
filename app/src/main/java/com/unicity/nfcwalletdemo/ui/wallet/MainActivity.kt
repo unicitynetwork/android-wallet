@@ -429,6 +429,12 @@ class MainActivity : AppCompatActivity() {
             openAgentMap()
         }
         
+        // Long press on location button for emulator P2P testing
+        binding.btnLocation.setOnLongClickListener {
+            testEmulatorP2P()
+            true
+        }
+        
         // Update location icon color based on P2P status
         updateLocationIconColor()
         
@@ -3606,23 +3612,37 @@ class MainActivity : AppCompatActivity() {
     
     // Test method for emulator P2P connections
     fun testEmulatorP2P() {
-        // This can be called from debug tools or developer options
-        // Connect emulator 1 to emulator 2 using host machine as bridge
-        val p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
-        if (p2pService != null) {
-            val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
-            val userTag = sharedPrefs.getString("unicity_tag", "") ?: ""
-            
-            // If this is user emulator, connect to agent emulator
-            if (userTag.contains("user")) {
-                // Connect to agent on the other emulator via host (10.0.2.2 points to host from emulator)
-                p2pService.connectDirectly("agent", "10.0.2.2", 9001)
-                Toast.makeText(this, "Connecting to agent emulator via host...", Toast.LENGTH_LONG).show()
-            } else if (userTag.contains("agent")) {
-                // Connect to user on the other emulator via host
-                p2pService.connectDirectly("user", "10.0.2.2", 9000)
-                Toast.makeText(this, "Connecting to user emulator via host...", Toast.LENGTH_LONG).show()
+        showEmulatorConnectDialog()
+    }
+    
+    private fun showEmulatorConnectDialog() {
+        val input = android.widget.EditText(this)
+        input.hint = "Enter peer tag (e.g., user123 or agent007)"
+        
+        AlertDialog.Builder(this)
+            .setTitle("Connect to Emulator Peer")
+            .setMessage("For testing P2P between emulators.\nThe other emulator's tag:")
+            .setView(input)
+            .setPositiveButton("Connect via Port 9059") { _, _ ->
+                val peerTag = input.text.toString()
+                connectToEmulatorPeer(peerTag, 9059)
             }
+            .setNeutralButton("Connect via Port 9030") { _, _ ->
+                val peerTag = input.text.toString()
+                connectToEmulatorPeer(peerTag, 9030)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun connectToEmulatorPeer(peerTag: String, port: Int) {
+        val p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
+        if (p2pService != null && peerTag.isNotEmpty()) {
+            // Connect through host machine (10.0.2.2 from emulator perspective)
+            p2pService.connectDirectly(peerTag, "10.0.2.2", port)
+            Toast.makeText(this, "Connecting to $peerTag via host:$port...", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "P2P service not running or invalid tag", Toast.LENGTH_SHORT).show()
         }
     }
 }

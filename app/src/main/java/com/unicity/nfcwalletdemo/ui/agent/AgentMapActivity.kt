@@ -48,7 +48,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var agentApiService: AgentApiService
     private lateinit var agentAdapter: AgentAdapter
     private lateinit var bottomSheetBehavior: BottomSheetBehavior<View>
-    private lateinit var chatDatabase: com.unicity.nfcwalletdemo.data.chat.ChatDatabase
+    private var chatDatabase: com.unicity.nfcwalletdemo.data.chat.ChatDatabase? = null
     
     private var googleMap: GoogleMap? = null
     private var currentLocation: Location? = null
@@ -83,20 +83,22 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
-        chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this)
-        
-        // Ensure P2P service is running if agent mode is enabled
-        ensureP2PServiceRunning()
         
         setupRecyclerView()
         setupBottomSheet()
         setupMap()
         setupMapControls()
         
+        // Initialize heavy components asynchronously
+        lifecycleScope.launch {
+            chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this@AgentMapActivity)
+            ensureP2PServiceRunning()
+            loadAgentsWithChat()
+            observeUnreadCount()
+        }
+        
         checkLocationPermissionAndLoad()
-        loadAgentsWithChat()
         setupChatIcon()
-        observeUnreadCount()
     }
     
     private fun setupRecyclerView() {
@@ -550,7 +552,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     
     private fun loadAgentsWithChat() {
         lifecycleScope.launch {
-            chatDatabase.conversationDao().getAllConversations().collect { conversations ->
+            chatDatabase?.conversationDao()?.getAllConversations()?.collect { conversations ->
                 agentsWithChat.clear()
                 agentsWithChat.addAll(conversations.map { it.conversationId })
                 
@@ -600,7 +602,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     
     private fun observeUnreadCount() {
         lifecycleScope.launch {
-            chatDatabase.conversationDao().getTotalUnreadCount().collectLatest { unreadCount ->
+            chatDatabase?.conversationDao()?.getTotalUnreadCount()?.collectLatest { unreadCount ->
                 updateUnreadBadge(unreadCount ?: 0)
             }
         }
@@ -618,7 +620,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     
     private fun showChatConversations() {
         lifecycleScope.launch {
-            val allConversations = chatDatabase.conversationDao().getAllConversationsList()
+            val allConversations = chatDatabase?.conversationDao()?.getAllConversationsList() ?: emptyList()
             
             // Filter out conversations with self
             val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
@@ -640,7 +642,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
             
             // Function to refresh the list
             val refreshList: suspend () -> Unit = {
-                val updatedConversations = chatDatabase.conversationDao().getAllConversationsList()
+                val updatedConversations = (chatDatabase?.conversationDao()?.getAllConversationsList() ?: emptyList())
                     .filter { it.conversationId != currentUserTag }
                 
                 if (updatedConversations.isEmpty()) {
@@ -665,9 +667,9 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                     onClearClick = { conversation ->
                         // Clear all messages in the conversation
                         lifecycleScope.launch {
-                            chatDatabase.messageDao().deleteAllMessagesForConversation(conversation.conversationId)
+                            chatDatabase?.messageDao()?.deleteAllMessagesForConversation(conversation.conversationId)
                             // Reset conversation
-                            chatDatabase.conversationDao().updateConversation(
+                            chatDatabase?.conversationDao()?.updateConversation(
                                 conversation.copy(
                                     lastMessageTime = System.currentTimeMillis(),
                                     lastMessageText = null,
@@ -686,9 +688,9 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                             .setPositiveButton("Delete") { _, _ ->
                                 lifecycleScope.launch {
                                     // Delete all messages
-                                    chatDatabase.messageDao().deleteAllMessagesForConversation(conversation.conversationId)
+                                    chatDatabase?.messageDao()?.deleteAllMessagesForConversation(conversation.conversationId)
                                     // Delete conversation
-                                    chatDatabase.conversationDao().deleteConversation(conversation)
+                                    chatDatabase?.conversationDao()?.deleteConversation(conversation)
                                     Toast.makeText(this@AgentMapActivity, "Conversation deleted", Toast.LENGTH_SHORT).show()
                                     refreshList()
                                 }
