@@ -54,16 +54,25 @@ open class RealHolepunchBridge(private val context: Context) {
             copyAssetFolder("holepunch-node", nodeDir.parentFile!!)
         }
         
+        // Check if bundled Node.js exists and extract if needed
+        val bundledNodePath = "${context.filesDir}/node/bin/node"
+        if (!File(bundledNodePath).exists()) {
+            // Try to extract bundled Node.js if it exists in assets
+            if (extractBundledNodeJS()) {
+                Log.d(TAG, "Successfully extracted bundled Node.js")
+            }
+        }
+        
         // Try to find Node.js
         val nodePaths = listOf(
-            "/data/data/com.termux/files/usr/bin/node", // Termux
-            "/system/bin/node", // System (unlikely)
-            "${context.filesDir}/node/bin/node" // Bundled with app
+            bundledNodePath, // Bundled with app (priority for production)
+            "/data/data/com.termux/files/usr/bin/node", // Termux (for development)
+            "/system/bin/node" // System (unlikely)
         )
         
         val nodePath = nodePaths.find { File(it).exists() }
         if (nodePath == null) {
-            Log.e(TAG, "Node.js not found. Install Termux and run: pkg install nodejs")
+            Log.e(TAG, "Node.js not found. Please ensure Node.js binary is bundled in assets/node/")
             return false
         }
         
@@ -144,6 +153,37 @@ open class RealHolepunchBridge(private val context: Context) {
                 put("cmd", command)
                 put("data", data)
             })
+        }
+    }
+    
+    private fun extractBundledNodeJS(): Boolean {
+        return try {
+            // Check if node binary exists in assets
+            val nodeAssets = context.assets.list("node") ?: return false
+            if (nodeAssets.isEmpty()) {
+                Log.d(TAG, "No bundled Node.js found in assets/node/")
+                return false
+            }
+            
+            // Create target directory
+            val nodeDir = File(context.filesDir, "node")
+            nodeDir.mkdirs()
+            
+            // Extract all node files
+            copyAssetFolder("node", context.filesDir)
+            
+            // Make node binary executable
+            val nodeBinary = File(nodeDir, "bin/node")
+            if (nodeBinary.exists()) {
+                nodeBinary.setExecutable(true)
+                Log.d(TAG, "Extracted Node.js binary to: ${nodeBinary.absolutePath}")
+                return true
+            }
+            
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract bundled Node.js", e)
+            false
         }
     }
     

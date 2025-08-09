@@ -10,8 +10,8 @@ import android.util.Log
 object P2PServiceFactory {
     private const val TAG = "P2PServiceFactory"
     
-    // DISABLED: Revert to NSD until real Holepunch is working
-    private const val USE_HOLEPUNCH = false
+    // ENABLED: Using real Holepunch for production
+    private const val USE_HOLEPUNCH = true
     
     fun getInstance(
         context: Context,
