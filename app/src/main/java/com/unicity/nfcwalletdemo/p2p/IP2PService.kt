@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Interface for P2P messaging services
- * Allows switching between different P2P implementations (NSD, Holepunch, etc.)
+ * Allows switching between different P2P implementations (WebSocket, WebRTC, etc.)
  */
 interface IP2PService {
     

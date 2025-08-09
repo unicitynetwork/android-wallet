@@ -1,9 +1,0 @@
-{
-  "name": "holepunch-android",
-  "version": "1.0.0",
-  "main": "index.js",
-  "dependencies": {
-    "hyperswarm": "^4.5.1",
-    "b4a": "^1.6.4"
-  }
-}
