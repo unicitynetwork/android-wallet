@@ -35,7 +35,7 @@ class P2PMessagingService private constructor(
     private val context: Context,
     private val userTag: String,
     private val userPublicKey: String
-) {
+) : IP2PService {
     companion object {
         private const val TAG = "P2PMessagingService"
         private const val SERVICE_TYPE = "_unicity-chat._tcp"
@@ -84,16 +84,10 @@ class P2PMessagingService private constructor(
         context.getSystemService(Context.NSD_SERVICE) as NsdManager
     }
     
-    private val _connectionStatus = MutableStateFlow<Map<String, ConnectionStatus>>(emptyMap())
-    val connectionStatus: StateFlow<Map<String, ConnectionStatus>> = _connectionStatus
+    private val _connectionStatus = MutableStateFlow<Map<String, IP2PService.ConnectionStatus>>(emptyMap())
+    override val connectionStatus: StateFlow<Map<String, IP2PService.ConnectionStatus>> = _connectionStatus
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    
-    data class ConnectionStatus(
-        val isConnected: Boolean,
-        val isAvailable: Boolean = false,
-        val lastSeen: Long = 0
-    )
     
     data class P2PMessage(
         val messageId: String = UUID.randomUUID().toString(),
@@ -107,22 +101,26 @@ class P2PMessagingService private constructor(
     
     init {
         Log.d(TAG, "P2PMessagingService initializing for user: $userTag")
-        try {
-            createNotificationChannel()
-            startWebSocketServer()
-            // Delay NSD discovery to ensure server is ready
-            scope.launch {
+        
+        // Create notification channel synchronously (lightweight operation)
+        createNotificationChannel()
+        
+        // Initialize service components asynchronously to avoid blocking main thread
+        scope.launch {
+            try {
+                startWebSocketServer()
+                // Delay NSD discovery to ensure server is ready
                 delay(500) // Give WebSocket server time to start
                 try {
                     startNsdDiscovery()
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start NSD discovery", e)
                 }
+                processPendingMessages()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing P2P service", e)
+                // Service will still be created but might not be fully functional
             }
-            processPendingMessages()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing P2P service", e)
-            // Service will still be created but might not be fully functional
         }
     }
     
@@ -547,6 +545,10 @@ class P2PMessagingService private constructor(
         showMessageNotification(p2pMessage)
     }
     
+    override fun sendMessage(toTag: String, content: String) {
+        sendMessage(toTag, content, MessageType.TEXT)
+    }
+    
     fun sendMessage(agentTag: String, content: String, type: MessageType = MessageType.TEXT): String {
         Log.d(TAG, "sendMessage called - to: $agentTag, type: $type, content: $content")
         
@@ -704,7 +706,7 @@ class P2PMessagingService private constructor(
     
     private fun updateConnectionStatus(agentTag: String, isConnected: Boolean, isAvailable: Boolean = false) {
         val currentStatus = _connectionStatus.value.toMutableMap()
-        currentStatus[agentTag] = ConnectionStatus(
+        currentStatus[agentTag] = IP2PService.ConnectionStatus(
             isConnected = isConnected,
             isAvailable = isAvailable,
             lastSeen = if (isConnected) System.currentTimeMillis() else currentStatus[agentTag]?.lastSeen ?: 0
@@ -719,7 +721,7 @@ class P2PMessagingService private constructor(
             .joinToString("") { "%02x".format(it) }
     }
     
-    fun initiateHandshake(agentTag: String) {
+    override fun initiateHandshake(agentTag: String) {
         Log.d(TAG, "initiateHandshake called for: $agentTag")
         
         // Create conversation on sender side
@@ -742,10 +744,10 @@ class P2PMessagingService private constructor(
         sendMessage(agentTag, userPublicKey, MessageType.HANDSHAKE_REQUEST)
     }
     
-    fun acceptHandshake(agentTag: String) {
+    override fun acceptHandshake(fromTag: String) {
         scope.launch {
-            conversationDao.updateApprovalStatus(agentTag, true)
-            sendMessage(agentTag, "accepted", MessageType.HANDSHAKE_ACCEPT)
+            conversationDao.updateApprovalStatus(fromTag, true)
+            sendMessage(fromTag, "accepted", MessageType.HANDSHAKE_ACCEPT)
         }
     }
     
@@ -755,7 +757,7 @@ class P2PMessagingService private constructor(
      * @param ipAddress The IP address of the peer (e.g., "10.0.2.2" for host machine from emulator)
      * @param port The port the peer is listening on
      */
-    fun connectDirectly(agentTag: String, ipAddress: String, port: Int) {
+    override fun connectDirectly(agentTag: String, ipAddress: String, port: Int) {
         Log.d(TAG, "Direct connection requested to $agentTag at $ipAddress:$port")
         scope.launch {
             connectToPeer(agentTag, ipAddress, port)
@@ -792,7 +794,7 @@ class P2PMessagingService private constructor(
         }
     }
     
-    fun shutdown() {
+    override fun shutdown() {
         Log.d(TAG, "Shutting down P2P service")
         
         // Stop NSD discovery
@@ -830,6 +832,33 @@ class P2PMessagingService private constructor(
         
         // Clear instance
         INSTANCE = null
+    }
+    
+    override fun rejectHandshake(fromTag: String) {
+        // For now, rejecting means just not accepting
+        // Could send a rejection message if needed
+        Log.d(TAG, "Rejecting handshake from $fromTag")
+    }
+    
+    override fun start() {
+        // Service starts automatically in init block
+        Log.d(TAG, "P2P service start requested")
+    }
+    
+    override fun stop() {
+        // Stop discovery but keep server running for incoming connections
+        try {
+            discoveryListener?.let {
+                nsdManager.stopServiceDiscovery(it)
+                discoveryListener = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping discovery", e)
+        }
+    }
+    
+    override fun isRunning(): Boolean {
+        return webSocketServer != null
     }
     
     private fun createNotificationChannel() {
