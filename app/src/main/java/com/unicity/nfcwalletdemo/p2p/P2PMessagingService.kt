@@ -749,6 +749,19 @@ class P2PMessagingService private constructor(
         }
     }
     
+    /**
+     * Connect directly to a peer at a specific IP and port (for emulator testing)
+     * @param agentTag The tag of the peer to connect to
+     * @param ipAddress The IP address of the peer (e.g., "10.0.2.2" for host machine from emulator)
+     * @param port The port the peer is listening on
+     */
+    fun connectDirectly(agentTag: String, ipAddress: String, port: Int) {
+        Log.d(TAG, "Direct connection requested to $agentTag at $ipAddress:$port")
+        scope.launch {
+            connectToPeer(agentTag, ipAddress, port)
+        }
+    }
+    
     fun updateAvailability(isAvailable: Boolean) {
         // Broadcast to all connected peers
         val message = P2PMessage(

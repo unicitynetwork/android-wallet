@@ -3603,4 +3603,26 @@ class MainActivity : AppCompatActivity() {
                 .show()
         }
     }
+    
+    // Test method for emulator P2P connections
+    fun testEmulatorP2P() {
+        // This can be called from debug tools or developer options
+        // Connect emulator 1 to emulator 2 using host machine as bridge
+        val p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
+        if (p2pService != null) {
+            val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+            val userTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+            
+            // If this is user emulator, connect to agent emulator
+            if (userTag.contains("user")) {
+                // Connect to agent on the other emulator via host (10.0.2.2 points to host from emulator)
+                p2pService.connectDirectly("agent", "10.0.2.2", 9001)
+                Toast.makeText(this, "Connecting to agent emulator via host...", Toast.LENGTH_LONG).show()
+            } else if (userTag.contains("agent")) {
+                // Connect to user on the other emulator via host
+                p2pService.connectDirectly("user", "10.0.2.2", 9000)
+                Toast.makeText(this, "Connecting to user emulator via host...", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 }
