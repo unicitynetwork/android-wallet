@@ -3621,28 +3621,79 @@ class MainActivity : AppCompatActivity() {
         
         AlertDialog.Builder(this)
             .setTitle("Connect to Emulator Peer")
-            .setMessage("For testing P2P between emulators.\nThe other emulator's tag:")
+            .setMessage("For testing P2P between emulators.\nEnter the other emulator's tag and port.\n\nNote: Check logcat for the actual port being used by the peer's WebSocket server.")
             .setView(input)
-            .setPositiveButton("Connect via Port 9059") { _, _ ->
+            .setPositiveButton("Connect") { _, _ ->
                 val peerTag = input.text.toString()
-                connectToEmulatorPeer(peerTag, 9059)
+                // Show another dialog for port input
+                showPortInputDialog(peerTag)
             }
-            .setNeutralButton("Connect via Port 9030") { _, _ ->
-                val peerTag = input.text.toString()
-                connectToEmulatorPeer(peerTag, 9030)
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun showPortInputDialog(peerTag: String) {
+        val portInput = android.widget.EditText(this)
+        portInput.hint = "Enter port (e.g., 9036)"
+        portInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        
+        AlertDialog.Builder(this)
+            .setTitle("Enter Port")
+            .setMessage("Enter the port number of $peerTag's WebSocket server:")
+            .setView(portInput)
+            .setPositiveButton("Connect") { _, _ ->
+                val portStr = portInput.text.toString()
+                val port = portStr.toIntOrNull() ?: 0
+                if (port > 0) {
+                    connectToEmulatorPeer(peerTag, port)
+                } else {
+                    Toast.makeText(this, "Invalid port number", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
     
     private fun connectToEmulatorPeer(peerTag: String, port: Int) {
-        val p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
-        if (p2pService != null && peerTag.isNotEmpty()) {
-            // Connect through host machine (10.0.2.2 from emulator perspective)
+        if (peerTag.isEmpty()) {
+            Toast.makeText(this, "Please enter a peer tag", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Get or create P2P service
+        var p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getExistingInstance()
+        
+        if (p2pService == null) {
+            // Start P2P service if not running
+            val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+            val userTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+            val publicKey = sharedPrefs.getString("wallet_public_key", userTag) ?: userTag
+            
+            if (userTag.isEmpty()) {
+                Toast.makeText(this, "Please set up your profile first", Toast.LENGTH_SHORT).show()
+                return
+            }
+            
+            try {
+                p2pService = com.unicity.nfcwalletdemo.p2p.P2PServiceFactory.getInstance(
+                    context = applicationContext,
+                    userTag = userTag,
+                    userPublicKey = publicKey
+                )
+                Toast.makeText(this, "Starting P2P service...", Toast.LENGTH_SHORT).show()
+                
+                // Give the service a moment to initialize
+                Handler(Looper.getMainLooper()).postDelayed({
+                    p2pService?.connectDirectly(peerTag, "10.0.2.2", port)
+                    Toast.makeText(this, "Connecting to $peerTag via host:$port...", Toast.LENGTH_LONG).show()
+                }, 1000)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Failed to start P2P service: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            // P2P service already running, connect directly
             p2pService.connectDirectly(peerTag, "10.0.2.2", port)
             Toast.makeText(this, "Connecting to $peerTag via host:$port...", Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, "P2P service not running or invalid tag", Toast.LENGTH_SHORT).show()
         }
     }
 }

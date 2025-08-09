@@ -28,6 +28,7 @@ import android.graphics.BitmapFactory
 import android.view.MotionEvent
 import android.widget.TextView
 import android.content.Intent
+import android.util.Log
 import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
 import kotlin.math.*
 import java.text.SimpleDateFormat
@@ -39,13 +40,15 @@ import com.unicity.nfcwalletdemo.network.Agent
 import com.unicity.nfcwalletdemo.network.AgentApiService
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.appcompat.app.AlertDialog
 
 class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     
     private lateinit var binding: ActivityAgentMapBinding
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var agentApiService: AgentApiService
+    private var fusedLocationClient: FusedLocationProviderClient? = null
+    private var agentApiService: AgentApiService? = null
     private lateinit var agentAdapter: AgentAdapter
     private lateinit var bottomSheetBehavior: BottomSheetBehavior<View>
     private var chatDatabase: com.unicity.nfcwalletdemo.data.chat.ChatDatabase? = null
@@ -81,24 +84,46 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setDisplayShowTitleEnabled(false) // We use custom title
         
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        agentApiService = AgentApiService()
+        // Show progress bar immediately while loading
+        binding.progressBar.visibility = View.VISIBLE
         
+        // Initialize only the most essential UI components first
         setupRecyclerView()
         setupBottomSheet()
-        setupMap()
         setupMapControls()
-        
-        // Initialize heavy components asynchronously
-        lifecycleScope.launch {
-            chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this@AgentMapActivity)
-            ensureP2PServiceRunning()
-            loadAgentsWithChat()
-            observeUnreadCount()
-        }
-        
-        checkLocationPermissionAndLoad()
         setupChatIcon()
+        
+        // Defer ALL initialization to avoid ANR during activity transition
+        // Use a longer delay to ensure the activity is completely rendered
+        binding.root.postDelayed({
+            // Initialize location client and API service after UI is ready
+            fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+            agentApiService = AgentApiService()
+            
+            // Setup map after a delay to avoid blocking during transition
+            setupMap()
+            
+            // Initialize heavy components asynchronously
+            lifecycleScope.launch {
+                try {
+                    chatDatabase = com.unicity.nfcwalletdemo.data.chat.ChatDatabase.getDatabase(this@AgentMapActivity)
+                    ensureP2PServiceRunning()
+                    loadAgentsWithChat()
+                    observeUnreadCount()
+                    
+                    // Check permissions and load location after other initialization
+                    withContext(Dispatchers.Main) {
+                        checkLocationPermissionAndLoad()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error during initialization", e)
+                    withContext(Dispatchers.Main) {
+                        binding.progressBar.visibility = View.GONE
+                        Toast.makeText(this@AgentMapActivity, "Error loading map", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }, 100) // 100ms delay to ensure smooth transition
     }
     
     private fun setupRecyclerView() {
@@ -216,36 +241,51 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun loadCurrentLocationAndAgents() {
         binding.progressBar.visibility = View.VISIBLE
         
-        // Check if demo mode is enabled
-        if (com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this)) {
-            // Use demo location
-            val demoLocation = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.createDemoLocation(this)
-            currentLocation = demoLocation
-            
-            // Update map camera
-            val latLng = LatLng(demoLocation.latitude, demoLocation.longitude)
-            googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
-            
-            // Load nearby agents
-            loadNearbyAgents(demoLocation.latitude, demoLocation.longitude)
-        } else if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                location?.let {
-                    currentLocation = it
+        // Load location and agents asynchronously to avoid blocking UI thread
+        lifecycleScope.launch {
+            try {
+                // Check if demo mode is enabled
+                if (com.unicity.nfcwalletdemo.utils.UnicityLocationManager.isDemoModeEnabled(this@AgentMapActivity)) {
+                    // Use demo location
+                    val demoLocation = com.unicity.nfcwalletdemo.utils.UnicityLocationManager.createDemoLocation(this@AgentMapActivity)
+                    currentLocation = demoLocation
                     
-                    // Update map camera
-                    val latLng = LatLng(it.latitude, it.longitude)
-                    googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
+                    // Update map camera on main thread
+                    withContext(Dispatchers.Main) {
+                        val latLng = LatLng(demoLocation.latitude, demoLocation.longitude)
+                        googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
+                    }
                     
-                    // Load nearby agents
-                    loadNearbyAgents(it.latitude, it.longitude)
-                } ?: run {
+                    // Load nearby agents (already runs in IO dispatcher)
+                    loadNearbyAgents(demoLocation.latitude, demoLocation.longitude)
+                } else if (ActivityCompat.checkSelfPermission(
+                        this@AgentMapActivity,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    fusedLocationClient?.lastLocation?.addOnSuccessListener { location ->
+                        location?.let {
+                            currentLocation = it
+                            
+                            // Update map camera
+                            val latLng = LatLng(it.latitude, it.longitude)
+                            googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM))
+                            
+                            // Load nearby agents in coroutine
+                            lifecycleScope.launch {
+                                loadNearbyAgents(it.latitude, it.longitude)
+                            }
+                        } ?: run {
+                            binding.progressBar.visibility = View.GONE
+                            Toast.makeText(this@AgentMapActivity, "Unable to get current location", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading location and agents", e)
+                withContext(Dispatchers.Main) {
                     binding.progressBar.visibility = View.GONE
-                    Toast.makeText(this, "Unable to get current location", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AgentMapActivity, "Error loading location", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -254,7 +294,7 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun loadNearbyAgents(latitude: Double, longitude: Double) {
         lifecycleScope.launch {
             try {
-                val result = agentApiService.getNearbyAgents(latitude, longitude)
+                val result = agentApiService?.getNearbyAgents(latitude, longitude) ?: return@launch
                 result.onSuccess { nearbyAgents ->
                     // Get current user's unicityTag to filter it out
                     val prefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
