@@ -3,6 +3,7 @@ package com.unicity.nfcwalletdemo.p2p
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.chat.*
@@ -84,6 +85,8 @@ class P2PMessagingService private constructor(
         context.getSystemService(Context.NSD_SERVICE) as NsdManager
     }
     
+    private var multicastLock: WifiManager.MulticastLock? = null
+    
     private val _connectionStatus = MutableStateFlow<Map<String, IP2PService.ConnectionStatus>>(emptyMap())
     override val connectionStatus: StateFlow<Map<String, IP2PService.ConnectionStatus>> = _connectionStatus
     
@@ -105,17 +108,25 @@ class P2PMessagingService private constructor(
         // Create notification channel synchronously (lightweight operation)
         createNotificationChannel()
         
+        // Check if user is an agent
+        val sharedPrefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val isAgent = sharedPrefs.getBoolean("is_agent", false)
+        Log.d(TAG, "User is agent: $isAgent")
+        
         // Initialize service components asynchronously to avoid blocking main thread
         scope.launch {
             try {
+                // Everyone needs a WebSocket server to receive messages
                 startWebSocketServer()
-                // Delay NSD discovery to ensure server is ready
                 delay(500) // Give WebSocket server time to start
+                
+                // Both agents and non-agents need to discover others
                 try {
                     startNsdDiscovery()
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start NSD discovery", e)
                 }
+                
                 processPendingMessages()
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing P2P service", e)
@@ -179,7 +190,16 @@ class P2PMessagingService private constructor(
                         Log.e(TAG, "WebSocket server NOT listening on port $port", e)
                     }
                 }
-                registerNsdService(port)
+                
+                // Only register NSD service for agents (to be discoverable)
+                val sharedPrefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+                val isAgent = sharedPrefs.getBoolean("is_agent", false)
+                if (isAgent) {
+                    Log.d(TAG, "Agent mode - registering NSD service")
+                    registerNsdService(port)
+                } else {
+                    Log.d(TAG, "Non-agent mode - NOT registering NSD service (not discoverable)")
+                }
             }
         }
         
@@ -273,6 +293,9 @@ class P2PMessagingService private constructor(
     }
     
     private fun startNsdDiscovery() {
+        // Acquire multicast lock for NSD to work properly
+        acquireMulticastLock()
+        
         // Stop any existing discovery first
         try {
             discoveryListener?.let {
@@ -291,12 +314,19 @@ class P2PMessagingService private constructor(
             
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 Log.d(TAG, "Service found: ${serviceInfo.serviceName}")
-                if (serviceInfo.serviceName.startsWith(SERVICE_NAME_PREFIX) &&
-                    !serviceInfo.serviceName.contains(userTag)) {
-                    Log.d(TAG, "Resolving service: ${serviceInfo.serviceName}")
-                    resolveService(serviceInfo)
+                // Check if it's a Unicity service and not our own
+                if (serviceInfo.serviceName.startsWith(SERVICE_NAME_PREFIX)) {
+                    val foundServiceName = serviceInfo.serviceName
+                    val ownServiceName = "$SERVICE_NAME_PREFIX$userTag"
+                    
+                    if (foundServiceName != ownServiceName) {
+                        Log.d(TAG, "Resolving service: ${serviceInfo.serviceName}")
+                        resolveService(serviceInfo)
+                    } else {
+                        Log.d(TAG, "Ignoring own service: ${serviceInfo.serviceName}")
+                    }
                 } else {
-                    Log.d(TAG, "Ignoring service: ${serviceInfo.serviceName} (own service or wrong prefix)")
+                    Log.d(TAG, "Ignoring non-Unicity service: ${serviceInfo.serviceName}")
                 }
             }
             
@@ -335,10 +365,33 @@ class P2PMessagingService private constructor(
                 val port = serviceInfo.port
                 Log.d(TAG, "Agent: $agentTag, Host: $host, Port: $port")
                 
+                // Log all available addresses for debugging
+                try {
+                    val addresses = host.hostAddress
+                    Log.d(TAG, "Host addresses: $addresses")
+                    val hostname = host.hostName
+                    Log.d(TAG, "Host name: $hostname")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error getting host info", e)
+                }
+                
+                // Update connection status to show peer is available
+                updateConnectionStatus(agentTag, false, true)
+                
                 val hostAddress = host.hostAddress
                 if (hostAddress != null) {
-                    Log.d(TAG, "Connecting to peer at $hostAddress:$port")
-                    connectToPeer(agentTag, hostAddress, port)
+                    Log.d(TAG, "Discovered peer at $hostAddress:$port")
+                    Log.d(TAG, "My user tag: $userTag, peer tag: $agentTag")
+                    
+                    // Only connect if we don't already have a connection (either direction)
+                    if (!activeConnections.containsKey(agentTag) && !serverConnections.containsKey(agentTag)) {
+                        Log.d(TAG, "Attempting to connect to peer at $hostAddress:$port")
+                        connectToPeer(agentTag, hostAddress, port)
+                    } else {
+                        Log.d(TAG, "Already have connection with $agentTag, skipping new connection")
+                        Log.d(TAG, "Active connections: ${activeConnections.keys}")
+                        Log.d(TAG, "Server connections: ${serverConnections.keys}")
+                    }
                 } else {
                     Log.e(TAG, "No host address for resolved service")
                 }
@@ -362,8 +415,24 @@ class P2PMessagingService private constructor(
             return // Already connected
         }
         
+        // Check if we have a server connection from this peer already
+        if (serverConnections.containsKey(agentTag)) {
+            Log.d(TAG, "Already have incoming connection from $agentTag, skipping outgoing connection")
+            return
+        }
+        
         try {
-            val uri = URI("ws://$host:$port")
+            // For emulator connections, try to detect and use the proper address
+            var connectHost = host
+            
+            // If the host is a link-local or emulator address, we might need special handling
+            if (host.startsWith("10.0.2.") || host.startsWith("fe80:")) {
+                Log.d(TAG, "Detected emulator/link-local address: $host")
+                // For emulators, the host machine is at 10.0.2.2
+                // But we should use the actual discovered address
+            }
+            
+            val uri = URI("ws://$connectHost:$port")
             Log.d(TAG, "Creating WebSocket client to $uri")
             val client = object : WebSocketClient(uri) {
                 override fun onOpen(handshake: ServerHandshake?) {
@@ -751,19 +820,6 @@ class P2PMessagingService private constructor(
         }
     }
     
-    /**
-     * Connect directly to a peer at a specific IP and port (for emulator testing)
-     * @param agentTag The tag of the peer to connect to
-     * @param ipAddress The IP address of the peer (e.g., "10.0.2.2" for host machine from emulator)
-     * @param port The port the peer is listening on
-     */
-    override fun connectDirectly(agentTag: String, ipAddress: String, port: Int) {
-        Log.d(TAG, "Direct connection requested to $agentTag at $ipAddress:$port")
-        scope.launch {
-            connectToPeer(agentTag, ipAddress, port)
-        }
-    }
-    
     fun updateAvailability(isAvailable: Boolean) {
         // Broadcast to all connected peers
         val message = P2PMessage(
@@ -794,8 +850,38 @@ class P2PMessagingService private constructor(
         }
     }
     
+    private fun acquireMulticastLock() {
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifiManager.createMulticastLock("UnicityChatMulticast").apply {
+                setReferenceCounted(false)
+                acquire()
+                Log.d(TAG, "Multicast lock acquired")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire multicast lock", e)
+        }
+    }
+    
+    private fun releaseMulticastLock() {
+        try {
+            multicastLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(TAG, "Multicast lock released")
+                }
+            }
+            multicastLock = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing multicast lock", e)
+        }
+    }
+    
     override fun shutdown() {
         Log.d(TAG, "Shutting down P2P service")
+        
+        // Release multicast lock
+        releaseMulticastLock()
         
         // Stop NSD discovery
         try {

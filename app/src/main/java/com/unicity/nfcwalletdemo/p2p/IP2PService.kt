@@ -34,11 +34,6 @@ interface IP2PService {
     fun rejectHandshake(fromTag: String)
     
     /**
-     * Connect directly to a peer (for testing - e.g., emulators)
-     */
-    fun connectDirectly(agentTag: String, ipAddress: String, port: Int)
-    
-    /**
      * Start the P2P service
      */
     fun start()

@@ -124,6 +124,13 @@ class ChatActivity : AppCompatActivity() {
                 if (conversation != null) {
                     isApproved = conversation.isApproved
                     updateUIForApprovalStatus()
+                    
+                    // Show handshake dialog immediately if not approved
+                    if (!isApproved) {
+                        runOnUiThread {
+                            showHandshakeDialogImmediately()
+                        }
+                    }
                 } else {
                     // Create new conversation
                     val newConversation = ChatConversation(
@@ -135,6 +142,11 @@ class ChatActivity : AppCompatActivity() {
                         isApproved = false
                     )
                     conversationDao.insertConversation(newConversation)
+                    
+                    // Show handshake dialog for new conversation
+                    runOnUiThread {
+                        showHandshakeDialogImmediately()
+                    }
                 }
             }
         }
@@ -206,6 +218,33 @@ class ChatActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+    
+    private var handshakeDialogShown = false
+    
+    private fun showHandshakeDialogImmediately() {
+        // Prevent showing dialog multiple times
+        if (handshakeDialogShown) return
+        handshakeDialogShown = true
+        
+        AlertDialog.Builder(this)
+            .setTitle("Start Chat")
+            .setMessage("Send a handshake request to $agentName?")
+            .setPositiveButton("Send") { _, _ ->
+                if (p2pService != null) {
+                    p2pService?.initiateHandshake(agentTag)
+                    Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "P2P service not available. Please enable agent mode first.", Toast.LENGTH_LONG).show()
+                    finish() // Close chat if P2P is not available
+                }
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                // User cancelled, close the chat activity and go back to map
+                finish()
+            }
+            .setCancelable(false) // Force user to make a choice
+            .show()
     }
     
     private fun showApprovalDialog() {
