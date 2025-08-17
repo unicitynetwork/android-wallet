@@ -36,7 +36,18 @@ class ContactAdapter(
         fun bind(contact: Contact) {
             // Set contact info
             binding.contactName.text = contact.name
-            binding.contactAddress.text = contact.address
+            
+            // Parse address to separate phone/email from unicity tag
+            val addressText = if (contact.address.contains("(") && contact.address.contains("@unicity")) {
+                // Extract phone/email and unicity tag
+                val parts = contact.address.split("(")
+                val primaryAddress = parts[0].trim()
+                val unicityTag = parts.getOrNull(1)?.removeSuffix(")")?.trim() ?: ""
+                "$primaryAddress\n$unicityTag"
+            } else {
+                contact.address
+            }
+            binding.contactAddress.text = addressText
             
             // Set avatar
             binding.avatarText.text = contact.getInitials()
