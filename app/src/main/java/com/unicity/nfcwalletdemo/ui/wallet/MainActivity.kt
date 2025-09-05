@@ -472,6 +472,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
+        binding.mineButton.setOnClickListener {
+            showMineDialog()
+        }
+        
         // Setup currency selector
         binding.currencySelector.setOnClickListener {
             showCurrencyDialog()
@@ -1976,6 +1980,19 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error dismissing success dialog", e)
+        }
+    }
+    
+    private fun showMineDialog() {
+        // Open Friendly Miners website in browser
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse("https://friendly-miners.com/")
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to open browser", e)
+            Toast.makeText(this, "Unable to open browser", Toast.LENGTH_SHORT).show()
         }
     }
     
