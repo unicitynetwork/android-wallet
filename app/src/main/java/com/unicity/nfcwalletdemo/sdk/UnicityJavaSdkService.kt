@@ -44,7 +44,7 @@ class UnicityJavaSdkService {
         private const val TAG = "UnicityJavaSdkService"
         
         // Test network configuration
-        private const val AGGREGATOR_URL = "https://aggregator-test-1.mainnet.unicity.network"
+        private const val AGGREGATOR_URL = "https://goggregator-test.unicity.network"
         
         @Volatile
         private var instance: UnicityJavaSdkService? = null
