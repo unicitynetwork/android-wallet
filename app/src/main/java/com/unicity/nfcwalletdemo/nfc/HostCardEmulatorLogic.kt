@@ -557,40 +557,41 @@ class HostCardEmulatorLogic(
             Log.d(TAG, "Starting receiver address generation for token ID: $tokenIdString, Type: $tokenTypeString")
 
             // Generate receiver identity for this device
-            sdkService.generateIdentity { identityResult ->
-                identityResult.onSuccess { identityJson ->
-                    try {
-                        @Suppress("UNCHECKED_CAST")
-                        val receiverIdentity = gson.fromJson(identityJson, Map::class.java) as Map<String, String>
-                        generatedReceiverIdentity = receiverIdentity
-                        generatedReceiverIdentityStatic = receiverIdentity // Store in static for ReceiveActivity
-
-                        Log.d(TAG, "Receiver identity generated successfully")
-
-                        // Generate receiving address based on the receiver identity
-                        // For the demo, we'll use a simple format based on the identity secret
-                        val secret = receiverIdentity["secret"] as? String
-                        if (secret != null) {
-                            // Create a simple address format for the demo
-                            generatedReceiverAddress = "oddity_${secret.take(16)}"
-                            Log.d(TAG, "Receiver address generated successfully: $generatedReceiverAddress")
-                            Log.d(TAG, "Receiver address ready for sender retrieval")
-                        } else {
-                            Log.e(TAG, "No secret found in receiver identity")
-                            generatedReceiverAddress = null
-                        }
-
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to parse receiver identity", e)
-                        generatedReceiverIdentity = null
-                        generatedReceiverAddress = null
-                    }
+            try {
+                // Create a test identity for receiver
+                val receiverSecret = "receiver-${System.currentTimeMillis()}"
+                val receiverNonce = ByteArray(32).apply {
+                    java.security.SecureRandom().nextBytes(this)
                 }
-                identityResult.onFailure { error ->
-                    Log.e(TAG, "Failed to generate receiver identity", error)
-                    generatedReceiverIdentity = null
+                
+                @Suppress("UNCHECKED_CAST")
+                val receiverIdentity = mapOf(
+                    "secret" to receiverSecret,
+                    "nonce" to receiverNonce.joinToString("") { "%02x".format(it) }
+                ) as Map<String, String>
+                
+                generatedReceiverIdentity = receiverIdentity
+                generatedReceiverIdentityStatic = receiverIdentity // Store in static for ReceiveActivity
+
+                Log.d(TAG, "Receiver identity generated successfully")
+
+                // Generate receiving address based on the receiver identity
+                // For the demo, we'll use a simple format based on the identity secret
+                val secret = receiverIdentity["secret"] as? String
+                if (secret != null) {
+                    // Create a simple address format for the demo
+                    generatedReceiverAddress = "oddity_${secret.take(16)}"
+                    Log.d(TAG, "Receiver address generated successfully: $generatedReceiverAddress")
+                    Log.d(TAG, "Receiver address ready for sender retrieval")
+                } else {
+                    Log.e(TAG, "No secret found in receiver identity")
                     generatedReceiverAddress = null
                 }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to generate receiver identity", e)
+                generatedReceiverIdentity = null
+                generatedReceiverAddress = null
             }
 
         } catch (e: Exception) {
@@ -901,12 +902,22 @@ class HostCardEmulatorLogic(
             
             // Launch coroutine to call suspend function
             kotlinx.coroutines.GlobalScope.launch {
-                val result = sdkService.completeOfflineTransfer(
-                    receiverIdentityJson,
-                    finalTransactionData
+                // Parse receiver identity
+                val identityJson = gson.fromJson(receiverIdentityJson, Map::class.java)
+                val receiverSecret = (identityJson["secret"] as? String ?: "").toByteArray()
+                val receiverNonce = hexStringToByteArray(identityJson["nonce"] as? String ?: "")
+                
+                val processedToken = sdkService.completeOfflineTransfer(
+                    finalTransactionData,
+                    receiverSecret,
+                    receiverNonce
                 )
-                result.onSuccess { processedTokenJson: String ->
+                
+                if (processedToken != null) {
                     Log.d(TAG, "Offline transaction processed successfully by SDK")
+                    
+                    // Serialize token for broadcast
+                    val processedTokenJson = sdkService.serializeToken(processedToken) ?: ""
                     
                     // Broadcast the processed token to ReceiveActivity
                     val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
@@ -917,14 +928,13 @@ class HostCardEmulatorLogic(
                     context.sendBroadcast(intent)
                     
                     Log.d(TAG, "Broadcast sent for processed offline transaction")
-                }
-                result.onFailure { error: Throwable ->
-                    Log.e(TAG, "Failed to process offline transaction with SDK", error)
+                } else {
+                    Log.e(TAG, "Failed to process offline transaction with SDK")
                     
                     // Broadcast error to ReceiveActivity
                     val intent = Intent("com.unicity.nfcwalletdemo.TOKEN_RECEIVED").apply {
                         putExtra("transfer_type", "unicity_offline_error")
-                        putExtra("error_message", error.message ?: "Unknown error")
+                        putExtra("error_message", "Failed to process offline transfer")
                         setPackage(context.packageName)
                     }
                     context.sendBroadcast(intent)
@@ -1059,5 +1069,16 @@ class HostCardEmulatorLogic(
             Log.e(TAG, "Error handling hybrid handshake", e)
             return SW_ERROR
         }
+    }
+    
+    private fun hexStringToByteArray(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
     }
 }
