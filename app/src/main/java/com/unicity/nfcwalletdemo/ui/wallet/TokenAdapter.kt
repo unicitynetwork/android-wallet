@@ -8,7 +8,9 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.google.gson.Gson
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.unicity.sdk.serializer.UnicityObjectMapper
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
@@ -26,7 +28,7 @@ class TokenAdapter(
     private var expandedTokenId: String? = null
     private var transferringTokenId: String? = null
     private val transferProgress = mutableMapOf<String, Pair<Int, Int>>() // tokenId -> (current, total)
-    private val gson = Gson()
+    private val objectMapper = ObjectMapper()
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TokenViewHolder {
         val binding = ItemTokenBinding.inflate(
@@ -88,48 +90,60 @@ class TokenAdapter(
         }
     }
     
-    private fun extractAmountFromToken(tokenJson: Map<*, *>): Any? {
+    private fun extractAmountFromTokenNode(tokenNode: JsonNode): Any? {
         // Try different paths where amount might be stored
         
         // Check in genesis transaction
-        val genesis = tokenJson["genesis"] as? Map<*, *>
-        val genesisData = genesis?.get("data") as? Map<*, *>
+        val genesis = tokenNode.get("genesis")
+        val genesisData = genesis?.get("data")
         val mintData = genesisData?.get("data")
         
-        // If mintData is a Map (our new format)
-        if (mintData is Map<*, *>) {
+        if (mintData != null && !mintData.isNull) {
             // Direct amount field in our new format
-            mintData["amount"]?.let { return it }
+            mintData.get("amount")?.let { 
+                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
+            }
             
             // For TokenCoinData structure (coins field)
-            val coins = mintData["coins"] as? Map<*, *>
-            if (coins != null && coins.isNotEmpty()) {
+            val coins = mintData.get("coins")
+            if (coins != null && !coins.isNull && coins.isObject) {
                 // Sum all coin values
-                var totalAmount = 0.0
-                coins.values.forEach { value ->
+                var totalAmount = 0L
+                coins.fields().forEach { entry ->
                     try {
-                        totalAmount += value.toString().toDouble()
+                        val value = entry.value
+                        totalAmount += when {
+                            value.isNumber -> value.asLong()
+                            value.isTextual -> value.asText().toLong()
+                            else -> 0L
+                        }
                     } catch (e: Exception) {
                         // Ignore parsing errors
                     }
                 }
-                if (totalAmount > 0) return totalAmount.toLong()
+                if (totalAmount > 0) return totalAmount
             }
             
             // Other possible fields
-            mintData["value"]?.let { return it }
-        }
-        
-        // Check message field for custom data that might contain amount
-        val message = (mintData as? Map<*, *>)?.get("message") as? String
-        if (message != null) {
-            // Try to parse message as JSON
-            try {
-                val messageData = Gson().fromJson(message, Map::class.java)
-                messageData["amount"]?.let { return it }
-                messageData["value"]?.let { return it }
-            } catch (e: Exception) {
-                // Message is not JSON, ignore
+            mintData.get("value")?.let { 
+                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
+            }
+            
+            // Check message field for custom data that might contain amount
+            val message = mintData.get("message")
+            if (message != null && message.isTextual) {
+                // Try to parse message as JSON
+                try {
+                    val messageData = objectMapper.readTree(message.asText())
+                    messageData?.get("amount")?.let { 
+                        if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
+                    }
+                    messageData?.get("value")?.let { 
+                        if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
+                    }
+                } catch (e: Exception) {
+                    // Message is not JSON, ignore
+                }
             }
         }
         
@@ -152,18 +166,19 @@ class TokenAdapter(
             // Try to parse token data
             token.jsonData?.let { jsonData ->
                 try {
-                    val tokenJson = Gson().fromJson(jsonData, Map::class.java)
+                    // Use UnicityObjectMapper for SDK-generated JSON
+                    val tokenNode: JsonNode = UnicityObjectMapper.JSON.readTree(jsonData)
                     
                     // Debug logging
-                    android.util.Log.d("TokenAdapter", "Token JSON structure: ${Gson().toJson(tokenJson).take(500)}")
-                    val genesis = tokenJson["genesis"] as? Map<*, *>
-                    val genesisData = genesis?.get("data") as? Map<*, *>
+                    android.util.Log.d("TokenAdapter", "Token JSON structure: ${tokenNode.toString().take(500)}")
+                    val genesis = tokenNode.get("genesis")
+                    val genesisData = genesis?.get("data")
                     android.util.Log.d("TokenAdapter", "Genesis data: $genesisData")
                     val mintData = genesisData?.get("data")
                     android.util.Log.d("TokenAdapter", "Mint data type: ${mintData?.javaClass?.name}, value: $mintData")
                     
                     // Try to extract amount
-                    val amount = extractAmountFromToken(tokenJson)
+                    val amount = extractAmountFromTokenNode(tokenNode)
                     android.util.Log.d("TokenAdapter", "Extracted amount: $amount")
                     if (amount != null && tvAmount != null) {
                         tvAmount.visibility = View.VISIBLE
@@ -171,7 +186,7 @@ class TokenAdapter(
                     }
                     
                     // Try to extract data
-                    val data = extractDataFromToken(tokenJson)
+                    val data = extractDataFromTokenNode(tokenNode)
                     android.util.Log.d("TokenAdapter", "Extracted data: $data")
                     if (data != null && data.toString().isNotEmpty() && tvData != null) {
                         tvData.visibility = View.VISIBLE
@@ -188,25 +203,27 @@ class TokenAdapter(
         }
     }
     
-    private fun extractDataFromToken(tokenJson: Map<*, *>): Any? {
+    private fun extractDataFromTokenNode(tokenNode: JsonNode): Any? {
         // Try different paths where custom data might be stored
         
         // Check in genesis transaction
-        val genesis = tokenJson["genesis"] as? Map<*, *>
-        val genesisData = genesis?.get("data") as? Map<*, *>
+        val genesis = tokenNode.get("genesis")
+        val genesisData = genesis?.get("data")
         val mintData = genesisData?.get("data")
         
-        // If mintData is a Map (our new format), extract the data field
-        if (mintData is Map<*, *>) {
+        if (mintData != null && !mintData.isNull) {
             // Check for our structured data
-            mintData["data"]?.let { 
-                if (it.toString().isNotEmpty() && it.toString() != "null") return it 
+            mintData.get("data")?.let { node ->
+                if (!node.isNull) {
+                    val str = if (node.isTextual) node.asText() else node.toString()
+                    if (str.isNotEmpty() && str != "null") return str
+                }
             }
             
             // Check message field - this is where we store custom data
-            val message = mintData["message"]
-            if (message != null) {
-                val messageStr = message.toString()
+            val message = mintData.get("message")
+            if (message != null && message.isTextual) {
+                val messageStr = message.asText()
                 // Check if it's base64 encoded
                 try {
                     val decoded = android.util.Base64.decode(messageStr, android.util.Base64.DEFAULT)
@@ -219,11 +236,17 @@ class TokenAdapter(
             }
             
             // Other possible locations
-            mintData["customData"]?.let { 
-                if (it.toString().isNotEmpty() && it.toString() != "null") return it 
+            mintData.get("customData")?.let { node ->
+                if (!node.isNull) {
+                    val str = if (node.isTextual) node.asText() else node.toString()
+                    if (str.isNotEmpty() && str != "null") return str
+                }
             }
-            mintData["tokenData"]?.let { 
-                if (it.toString().isNotEmpty() && it.toString() != "null") return it 
+            mintData.get("tokenData")?.let { node ->
+                if (!node.isNull) {
+                    val str = if (node.isTextual) node.asText() else node.toString()
+                    if (str.isNotEmpty() && str != "null") return str
+                }
             }
         }
         

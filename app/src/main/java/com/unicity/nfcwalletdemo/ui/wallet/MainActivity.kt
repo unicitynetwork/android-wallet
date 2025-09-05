@@ -54,6 +54,8 @@ import com.unicity.nfcwalletdemo.nfc.SimpleNfcTransceiver
 import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.google.gson.Gson
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.unicity.sdk.serializer.UnicityObjectMapper
 import com.unicity.nfcwalletdemo.network.*
 import kotlinx.coroutines.delay
 import com.journeyapps.barcodescanner.ScanContract
@@ -852,12 +854,12 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "Token jsonData: ${token.jsonData}")
                 val senderIdentityJson = token.jsonData?.let { jsonData ->
                     try {
-                        val mintResult = Gson().fromJson(jsonData, Map::class.java)
-                        Log.d("MainActivity", "Mint result keys: ${mintResult.keys}")
-                        val identityData = mintResult["identity"] as? Map<*, *>
-                        if (identityData != null) {
-                            Log.d("MainActivity", "Found identity data: $identityData")
-                            Gson().toJson(identityData)
+                        val mintResultNode = UnicityObjectMapper.JSON.readTree(jsonData)
+                        Log.d("MainActivity", "Mint result has identity: ${mintResultNode.has("identity")}")
+                        val identityNode = mintResultNode.get("identity")
+                        if (identityNode != null && !identityNode.isNull) {
+                            Log.d("MainActivity", "Found identity data: $identityNode")
+                            identityNode.toString()
                         } else {
                             Log.d("MainActivity", "No identity found in mint result")
                             null

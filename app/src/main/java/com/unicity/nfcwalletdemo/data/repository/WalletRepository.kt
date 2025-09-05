@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
+import com.unicity.sdk.serializer.UnicityObjectMapper
 import com.google.gson.reflect.TypeToken
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
@@ -225,8 +226,8 @@ class WalletRepository(context: Context) {
         
         return if (token != null) {
             try {
-                // Convert token to JSON for storage
-                val tokenJson = com.google.gson.Gson().toJson(token)
+                // Convert token to JSON for storage using UnicityObjectMapper
+                val tokenJson = UnicityObjectMapper.JSON.writeValueAsString(token)
                 UnicityMintResult.success(tokenJson)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to serialize minted token", e)
