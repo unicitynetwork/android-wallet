@@ -33,7 +33,7 @@ android {
         minSdk = 31
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -85,7 +85,7 @@ android {
 
 dependencies {
     // Unicity Java SDK
-    implementation(files("libs/java-state-transition-sdk-1.0-SNAPSHOT-android.jar"))
+    implementation(files("libs/java-state-transition-sdk-1.1-SNAPSHOT-android.jar"))
     
     // Required dependencies for Unicity SDK
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.17.0")
