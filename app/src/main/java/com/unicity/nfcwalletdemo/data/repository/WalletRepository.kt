@@ -216,21 +216,26 @@ class WalletRepository(context: Context) {
     }
     
     private suspend fun mintToken(identity: UnicityIdentity, tokenData: UnicityTokenData): UnicityMintResult {
-        val result = unicitySdkService.mintToken(identity.toJson(), tokenData.toJson())
-        return result.fold(
-            onSuccess = { mintResultJson ->
-                try {
-                    UnicityMintResult.fromJson(mintResultJson)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to parse mint result", e)
-                    throw Exception("Failed to parse mint result: ${e.message}", e)
-                }
-            },
-            onFailure = { error ->
-                Log.e(TAG, "Failed to mint token", error)
-                throw error
-            }
+        val token = unicitySdkService.mintToken(
+            tokenData.amount,
+            tokenData.data,
+            identity.secret.toByteArray(),
+            identity.nonce.toByteArray()
         )
+        
+        return if (token != null) {
+            try {
+                // Convert token to JSON for storage
+                val tokenJson = com.google.gson.Gson().toJson(token)
+                UnicityMintResult.success(tokenJson)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to serialize minted token", e)
+                throw Exception("Failed to serialize minted token: ${e.message}", e)
+            }
+        } else {
+            Log.e(TAG, "Failed to mint token")
+            throw Exception("Failed to mint token")
+        }
     }
     
     fun getSdkService() = unicitySdkService

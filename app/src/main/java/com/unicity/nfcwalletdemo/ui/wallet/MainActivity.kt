@@ -2326,11 +2326,35 @@ class MainActivity : AppCompatActivity() {
     }
     
     private suspend fun completeOfflineTransfer(receiverIdentityJson: String, offlineTransactionJson: String): String {
-        val result = sdkService.completeOfflineTransfer(receiverIdentityJson, offlineTransactionJson)
-        return result.fold(
-            onSuccess = { it },
-            onFailure = { throw it }
+        // Parse receiver identity
+        val gson = com.google.gson.Gson()
+        val identityMap = gson.fromJson(receiverIdentityJson, Map::class.java)
+        val receiverSecret = (identityMap["secret"] as? String ?: "").toByteArray()
+        val receiverNonce = hexStringToByteArray(identityMap["nonce"] as? String ?: "")
+        
+        val receivedToken = sdkService.completeOfflineTransfer(
+            offlineTransactionJson,
+            receiverSecret,
+            receiverNonce
         )
+        
+        if (receivedToken != null) {
+            // Serialize token to JSON string
+            return sdkService.serializeToken(receivedToken) ?: throw Exception("Failed to serialize token")
+        } else {
+            throw Exception("Failed to complete offline transfer")
+        }
+    }
+    
+    private fun hexStringToByteArray(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
     }
     
     private fun shareToken(token: Token) {

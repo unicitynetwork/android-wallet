@@ -35,6 +35,18 @@ data class UnicityMintResult(
     
     companion object {
         fun fromJson(json: String): UnicityMintResult = Gson().fromJson(json, UnicityMintResult::class.java)
+        
+        fun success(tokenJson: String): UnicityMintResult {
+            // Parse token JSON to extract identity if possible
+            // For now, create a dummy identity since we need to refactor this
+            val dummyIdentity = UnicityIdentity("", "")
+            return UnicityMintResult(tokenJson, dummyIdentity, "success")
+        }
+        
+        fun error(message: String): UnicityMintResult {
+            val dummyIdentity = UnicityIdentity("", "")
+            return UnicityMintResult(message, dummyIdentity, "error")
+        }
     }
 }
 

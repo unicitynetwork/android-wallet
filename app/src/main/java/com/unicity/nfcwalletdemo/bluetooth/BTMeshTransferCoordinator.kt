@@ -754,7 +754,10 @@ object BTMeshTransferCoordinator {
         scope.launch {
             try {
                 // Get sender identity
-                val senderIdentity = getSenderIdentity()
+                val senderIdentityJson = getSenderIdentity()
+                val senderIdentity = com.google.gson.JsonParser.parseString(senderIdentityJson).asJsonObject
+                val senderSecret = senderIdentity.get("secret").asString.toByteArray()
+                val senderNonce = hexStringToByteArray(senderIdentity.get("nonce").asString)
                 
                 // Create offline transfer package
                 val tokenJsonData = transfer.tokenData?.jsonData
@@ -765,14 +768,15 @@ object BTMeshTransferCoordinator {
                 logd( "Creating offline package with address: ${payload.address}")
                 logd( "Token data size: ${tokenJsonData.length} bytes")
                 
-                val packageResult = sdkService.createOfflineTransferPackage(
-                    senderIdentity,
+                val offlinePackage = sdkService.createOfflineTransfer(
+                    tokenJsonData,
                     payload.address,
-                    tokenJsonData
+                    null, // Use full token amount
+                    senderSecret,
+                    senderNonce
                 )
                 
-                packageResult.fold(
-                    onSuccess = { offlinePackage ->
+                if (offlinePackage != null) {
                         val packageMessage = BTMeshMessage(
                             type = BTMeshMessageType.TRANSFER_PACKAGE,
                             transferId = message.transferId,
@@ -781,13 +785,11 @@ object BTMeshTransferCoordinator {
                             )
                         )
                         
-                        updateTransferState(message.transferId, TransferState.SENDING_PACKAGE)
-                        sendMessage(fromDevice, packageMessage)
-                    },
-                    onFailure = { error ->
-                        sendError(fromDevice, message.transferId, "Failed to create package: ${error.message}")
-                    }
-                )
+                    updateTransferState(message.transferId, TransferState.SENDING_PACKAGE)
+                    sendMessage(fromDevice, packageMessage)
+                } else {
+                    sendError(fromDevice, message.transferId, "Failed to create offline transfer package")
+                }
             } catch (e: Exception) {
                 sendError(fromDevice, message.transferId, "Error creating package: ${e.message}")
             }
@@ -803,22 +805,25 @@ object BTMeshTransferCoordinator {
         scope.launch {
             try {
                 // Get recipient identity
-                val recipientIdentity = getRecipientIdentity()
+                val recipientIdentityJson = getRecipientIdentity()
+                val recipientIdentity = com.google.gson.JsonParser.parseString(recipientIdentityJson).asJsonObject
+                val recipientSecret = recipientIdentity.get("secret").asString.toByteArray()
+                val recipientNonce = hexStringToByteArray(recipientIdentity.get("nonce").asString)
                 
                 // Complete the transfer
-                val result = sdkService.completeOfflineTransfer(
-                    recipientIdentity,
-                    payload.offlinePackage
+                val receivedToken = sdkService.completeOfflineTransfer(
+                    payload.offlinePackage,
+                    recipientSecret,
+                    recipientNonce
                 )
                 
-                result.fold(
-                    onSuccess = { receivedToken ->
+                if (receivedToken != null) {
                         val completeMessage = BTMeshMessage(
                             type = BTMeshMessageType.TRANSFER_COMPLETE,
                             transferId = message.transferId,
                             payload = TransferCompletePayload(
                                 success = true,
-                                tokenJson = receivedToken
+                                tokenJson = gson.toJson(receivedToken)
                             )
                         )
                         
@@ -826,16 +831,14 @@ object BTMeshTransferCoordinator {
                         updateTransferState(message.transferId, TransferState.COMPLETED)
                         
                         // Notify the app to update token list
-                        notifyTokenReceived(receivedToken)
+                        notifyTokenReceived(gson.toJson(receivedToken))
                         
                         // Cleanup after a delay
                         delay(5000)
                         cleanupTransfer(message.transferId)
-                    },
-                    onFailure = { error ->
-                        sendError(fromDevice, message.transferId, "Failed to complete transfer: ${error.message}")
-                    }
-                )
+                } else {
+                    sendError(fromDevice, message.transferId, "Failed to complete offline transfer")
+                }
             } catch (e: Exception) {
                 sendError(fromDevice, message.transferId, "Error completing transfer: ${e.message}")
             }
@@ -1046,16 +1049,7 @@ object BTMeshTransferCoordinator {
     private suspend fun generateAddressForToken(tokenType: String, tokenId: String): String {
         return withContext(Dispatchers.IO) {
             // Generate a new identity for the recipient to create a unique address
-            var recipientIdentity: String? = null
-            sdkService.generateIdentity { result ->
-                result.fold(
-                    onSuccess = { identity -> recipientIdentity = identity },
-                    onFailure = { error -> throw error }
-                )
-            }
-            
-            // Wait for identity generation
-            delay(1000)
+            val recipientIdentity = generateTestIdentity()
             
             if (recipientIdentity == null) {
                 throw Exception("Failed to generate recipient identity")
@@ -1064,22 +1058,22 @@ object BTMeshTransferCoordinator {
             // Parse identity to get address components
             val identityData = com.google.gson.JsonParser.parseString(recipientIdentity).asJsonObject
             val secret = identityData.get("secret").asString.toByteArray()
-            val nonce = identityData.get("nonce").asString.toByteArray()
+            val nonceHex = identityData.get("nonce").asString
+            val nonce = hexStringToByteArray(nonceHex)
             
             // Create signing service and predicate
-            val signingService = com.unicity.sdk.shared.signing.SigningService.createFromSecret(secret, nonce).get()
+            val signingService = com.unicity.sdk.signing.SigningService.createFromSecret(secret, nonce)
             val tokenIdBytes = hexStringToByteArray(tokenId)
             val tokenTypeBytes = hexStringToByteArray("01") // Default token type
             
             val predicate = com.unicity.sdk.predicate.MaskedPredicate.create(
-                com.unicity.sdk.token.TokenId.create(tokenIdBytes),
-                com.unicity.sdk.token.TokenType.create(tokenTypeBytes),
                 signingService,
-                com.unicity.sdk.shared.hash.HashAlgorithm.SHA256,
+                com.unicity.sdk.hash.HashAlgorithm.SHA256,
                 nonce
-            ).get()
+            )
             
-            com.unicity.sdk.address.DirectAddress.create(predicate.reference).get().toString()
+            val tokenType = com.unicity.sdk.token.TokenType(tokenTypeBytes)
+            predicate.getReference(tokenType).toAddress().toString()
         }
     }
 
@@ -1087,15 +1081,7 @@ object BTMeshTransferCoordinator {
         // In a real app, this would come from the IdentityManager
         // For now, generate a new one
         return withContext(Dispatchers.IO) {
-            var identity: String? = null
-            sdkService.generateIdentity { result ->
-                result.fold(
-                    onSuccess = { id -> identity = id },
-                    onFailure = { error -> throw error }
-                )
-            }
-            delay(1000)
-            identity ?: throw Exception("Failed to generate sender identity")
+            generateTestIdentity() ?: throw Exception("Failed to generate sender identity")
         }
     }
 
@@ -1103,16 +1089,25 @@ object BTMeshTransferCoordinator {
         // In a real app, this would come from the IdentityManager
         // For now, generate a new one
         return withContext(Dispatchers.IO) {
-            var identity: String? = null
-            sdkService.generateIdentity { result ->
-                result.fold(
-                    onSuccess = { id -> identity = id },
-                    onFailure = { error -> throw error }
-                )
-            }
-            delay(1000)
-            identity ?: throw Exception("Failed to generate recipient identity")
+            generateTestIdentity() ?: throw Exception("Failed to generate recipient identity")
         }
+    }
+    
+    private fun generateTestIdentity(): String? {
+        // Generate a test identity
+        val secret = "test-identity-${System.currentTimeMillis()}"
+        val nonce = ByteArray(32).apply {
+            java.security.SecureRandom().nextBytes(this)
+        }
+        val identity = mapOf(
+            "secret" to secret,
+            "nonce" to nonce.toHexString()
+        )
+        return com.google.gson.Gson().toJson(identity)
+    }
+    
+    private fun ByteArray.toHexString(): String {
+        return joinToString("") { "%02x".format(it) }
     }
 
     private fun getDeviceName(): String {

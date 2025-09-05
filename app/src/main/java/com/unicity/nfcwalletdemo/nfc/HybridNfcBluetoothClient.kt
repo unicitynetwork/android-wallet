@@ -30,6 +30,17 @@ class HybridNfcBluetoothClient(
     private val onProgress: ((current: Int, total: Int) -> Unit)? = null
 ) {
     
+    private fun hexStringToByteArray(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
+    }
+    
     companion object {
         private const val TAG = "HybridNfcBtClient"
         private const val NFC_HANDSHAKE_TIMEOUT_MS = 5000L
@@ -312,17 +323,24 @@ class HybridNfcBluetoothClient(
     private suspend fun prepareTokenData(token: Token, senderIdentity: String): ByteArray {
         return withContext(Dispatchers.IO) {
             try {
+                // Parse sender identity to get secret and nonce
+                val identityJson = JSONObject(senderIdentity)
+                val senderSecret = identityJson.getString("secret").toByteArray()
+                val senderNonce = hexStringToByteArray(identityJson.getString("nonce"))
+                
                 // Create offline transfer package using SDK
-                val result = sdkService.createOfflineTransferPackage(
-                    senderIdentity,
+                val transferPackage = sdkService.createOfflineTransfer(
+                    token.jsonData ?: "{}",
                     "offline-transfer", // Placeholder, will be updated by receiver
-                    token.jsonData ?: "{}"
+                    null, // Use full amount
+                    senderSecret,
+                    senderNonce
                 )
                 
-                if (result.isFailure) {
-                    Log.e(TAG, "Failed to create offline transfer package", result.exceptionOrNull())
+                if (transferPackage == null) {
+                    Log.e(TAG, "Failed to create offline transfer package")
                     // Fallback to simple JSON format for testing
-                    val transferPackage = JSONObject().apply {
+                    val fallbackPackage = JSONObject().apply {
                         put("tokenId", token.id)
                         put("tokenName", token.name)
                         put("tokenType", token.type)
@@ -331,12 +349,11 @@ class HybridNfcBluetoothClient(
                         put("timestamp", System.currentTimeMillis())
                         put("isTestTransfer", true)
                     }
-                    return@withContext transferPackage.toString().toByteArray()
+                    return@withContext fallbackPackage.toString().toByteArray()
                 }
                 
                 // Return the SDK-generated transfer package
-                val transferData = result.getOrNull() ?: throw Exception("Empty transfer package")
-                transferData.toByteArray()
+                transferPackage.toByteArray()
             } catch (e: Exception) {
                 Log.e(TAG, "Error preparing token data", e)
                 // Fallback for testing
@@ -369,16 +386,21 @@ class HybridNfcBluetoothClient(
                     return@withContext
                 }
                 
+                // Parse receiver identity to get secret and nonce
+                val identityJson = JSONObject(receiverIdentity)
+                val receiverSecret = identityJson.getString("secret").toByteArray()
+                val receiverNonce = hexStringToByteArray(identityJson.getString("nonce"))
+                
                 // Process real transfer with SDK
-                val result = sdkService.completeOfflineTransfer(
-                    receiverIdentity,
-                    String(tokenData)
+                val receivedToken = sdkService.completeOfflineTransfer(
+                    String(tokenData),
+                    receiverSecret,
+                    receiverNonce
                 )
                 
-                if (result.isFailure) {
-                    val error = result.exceptionOrNull()
-                    Log.e(TAG, "Failed to complete transfer", error)
-                    throw error ?: Exception("Failed to complete transfer")
+                if (receivedToken == null) {
+                    Log.e(TAG, "Failed to complete transfer")
+                    throw Exception("Failed to complete offline transfer")
                 }
                 
                 Log.d(TAG, "Successfully completed transfer with SDK")

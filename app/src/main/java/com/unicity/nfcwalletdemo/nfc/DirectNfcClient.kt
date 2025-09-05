@@ -623,27 +623,26 @@ class DirectNfcClient(
             
             // Create offline transfer package using SDK
             CoroutineScope(Dispatchers.IO).launch {
-                val result = sdkService.createOfflineTransferPackage(
-                    senderData.senderIdentity.toJson(),
+                val offlinePackage = sdkService.createOfflineTransfer(
+                    gson.toJson(tokenData),
                     receiverAddress,
-                    gson.toJson(tokenData)
+                    null, // Use full amount
+                    senderData.senderIdentity.secret.toByteArray(),
+                    senderData.senderIdentity.nonce.toByteArray()
                 )
                 
-                result.fold(
-                    onSuccess = { offlineTransactionJson ->
-                        continuation.resume(offlineTransactionJson)
-                    },
-                    onFailure = { error ->
-                        Log.e(TAG, "Failed to create offline transfer with SDK", error)
-                        // Return fallback offline transfer data
-                        val fallbackTransfer = mapOf(
-                            "error" to "sdk_offline_transfer_failed",
-                            "message" to error.message,
-                            "token" to gson.toJson(token)
-                        )
-                        continuation.resume(gson.toJson(fallbackTransfer))
-                    }
-                )
+                if (offlinePackage != null) {
+                    continuation.resume(offlinePackage)
+                } else {
+                    Log.e(TAG, "Failed to create offline transfer with SDK")
+                    // Return fallback offline transfer data
+                    val fallbackTransfer = mapOf(
+                        "error" to "sdk_offline_transfer_failed",
+                        "message" to "Failed to create offline transfer",
+                        "token" to gson.toJson(token)
+                    )
+                    continuation.resume(gson.toJson(fallbackTransfer))
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create offline transfer package", e)

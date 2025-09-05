@@ -90,6 +90,8 @@ dependencies {
     // Required dependencies for Unicity SDK
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.17.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.17.0")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.0")
     implementation("org.bouncycastle:bcprov-jdk15on:1.70")
     implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
     implementation("com.google.guava:guava:33.0.0-android")
