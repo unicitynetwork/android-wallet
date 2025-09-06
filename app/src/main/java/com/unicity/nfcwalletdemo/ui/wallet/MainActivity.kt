@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
     private var realNfcTransceiver: RealNfcTransceiver? = null
     private var currentTransferringToken: Token? = null
     private var currentTransferringCrypto: CryptoCurrency? = null
-    private var currentTab = 0 // 0 for Assets, 1 for NFTs
+    private var currentTab = 0 // 0 for Assets, 1 for Tokens
     private var selectedCurrency = "USD"
     
     companion object {
@@ -462,7 +462,7 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "No assets to transfer", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                // For NFTs/Tokens
+                // For Tokens
                 val tokens = viewModel.tokens.value
                 if (tokens.isNotEmpty()) {
                     Toast.makeText(this, "Select a token from the list to transfer", Toast.LENGTH_SHORT).show()
@@ -554,7 +554,7 @@ class MainActivity : AppCompatActivity() {
             cryptoAdapter.submitList(cryptos)
             binding.emptyStateContainer.visibility = if (cryptos.isEmpty()) View.VISIBLE else View.GONE
         } else {
-            // Show NFTs/Tokens
+            // Show Tokens
             binding.rvTokens.adapter = tokenAdapter
             val tokens = viewModel.tokens.value
             tokenAdapter.submitList(tokens)
@@ -601,7 +601,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 if (currentTab == 1) {
-                    Log.d("MainActivity", "Updating NFTs tab with ${tokens.size} tokens")
+                    Log.d("MainActivity", "Updating Tokens tab with ${tokens.size} tokens")
                     tokenAdapter.submitList(tokens)
                     binding.emptyStateContainer.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
                 } else {
@@ -641,7 +641,7 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(this@MainActivity, "Token minted! Ready to use locally.", Toast.LENGTH_SHORT).show()
                         }
                         
-                        // Switch to NFTs tab to show the new token
+                        // Switch to Tokens tab to show the new token
                         if (currentTab != 1) {
                             binding.tabLayout.getTabAt(1)?.select()
                         }
