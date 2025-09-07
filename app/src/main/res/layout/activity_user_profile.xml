@@ -37,7 +37,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Enter your unique identifier for receiving transfers"
+                    android:text="Enter your unique identifier for receiving transfers\n(The @unicity suffix is added for display only)"
                     android:textSize="14sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:layout_marginBottom="16dp" />
@@ -46,7 +46,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                    android:hint="Unicity tag (without @unicity)"
+                    android:hint="Nametag (e.g., john)"
                     app:suffixText="@unicity"
                     app:boxCornerRadiusBottomEnd="8dp"
                     app:boxCornerRadiusBottomStart="8dp"
@@ -100,6 +100,63 @@
                         android:layout_height="wrap_content"
                         android:text="Save" />
 
+                </LinearLayout>
+                
+                <!-- Nametag Status -->
+                <LinearLayout
+                    android:id="@+id/llNametagStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="12dp"
+                    android:padding="8dp"
+                    android:background="@drawable/rounded_bg"
+                    android:visibility="gone">
+                    
+                    <ImageView
+                        android:id="@+id/ivNametagStatus"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="8dp"
+                        android:src="@drawable/ic_check_circle"
+                        android:tint="@color/green" />
+                    
+                    <TextView
+                        android:id="@+id/tvNametagStatus"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Nametag minted successfully"
+                        android:textSize="14sp" />
+                    
+                </LinearLayout>
+                
+                <!-- Nametag Actions -->
+                <LinearLayout
+                    android:id="@+id/llNametagActions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone">
+                    
+                    <Button
+                        android:id="@+id/btnImportNametag"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="8dp"
+                        android:text="Import" />
+                    
+                    <Button
+                        android:id="@+id/btnExportNametag"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Export" />
+                    
                 </LinearLayout>
 
             </LinearLayout>

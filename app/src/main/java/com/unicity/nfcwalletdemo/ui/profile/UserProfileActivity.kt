@@ -13,6 +13,10 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
+import java.io.File
+import java.io.FileOutputStream
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -30,6 +34,14 @@ import com.google.android.gms.location.Priority
 import com.google.api.services.drive.DriveScopes
 import com.unicity.nfcwalletdemo.databinding.ActivityUserProfileBinding
 import com.unicity.nfcwalletdemo.network.AgentApiService
+import com.unicity.nfcwalletdemo.nametag.NametagService
+import com.unicity.nfcwalletdemo.identity.IdentityManager
+import com.unicity.sdk.address.DirectAddress
+import com.unicity.sdk.hash.HashAlgorithm
+import com.unicity.sdk.predicate.MaskedPredicate
+import com.unicity.sdk.signing.SigningService
+import com.unicity.sdk.token.TokenType
+import com.unicity.sdk.serializer.UnicityObjectMapper
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -40,6 +52,8 @@ class UserProfileActivity : AppCompatActivity() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private lateinit var agentApiService: AgentApiService
+    private lateinit var nametagService: NametagService
+    private lateinit var identityManager: IdentityManager
     private var isAgentMode = false
     private var p2pMessagingService: com.unicity.nfcwalletdemo.p2p.P2PMessagingService? = null
     
@@ -56,6 +70,21 @@ class UserProfileActivity : AppCompatActivity() {
             }
         }
     }
+    
+    private val exportNametagLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        uri?.let { exportNametagToFile(it) }
+    }
+    
+    private val importNametagLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { importNametagFromFile(it) }
+    }
+    
+    private var pendingNametagExport: String? = null
+    private var currentNametagString: String? = null
     
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -83,6 +112,8 @@ class UserProfileActivity : AppCompatActivity() {
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
+        nametagService = NametagService(this)
+        identityManager = IdentityManager(this)
         setupLocationCallback()
         
         setupViews()
@@ -162,7 +193,7 @@ class UserProfileActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             
-            // Remove @unicity if user accidentally included it
+            // Remove @unicity if user accidentally included it (it's just for display)
             val cleanTag = tag.removePrefix("@unicity").removePrefix("@")
             
             // Check if tag actually changed
@@ -172,7 +203,21 @@ class UserProfileActivity : AppCompatActivity() {
             // Save to SharedPreferences
             sharedPrefs.edit().putString("unicity_tag", cleanTag).apply()
             
-            Toast.makeText(this, "Unicity tag saved: $cleanTag@unicity", Toast.LENGTH_SHORT).show()
+            // Mint or check nametag (using the raw tag without suffix)
+            lifecycleScope.launch {
+                // Check if identity exists first
+                if (!identityManager.hasIdentity()) {
+                    Log.w("UserProfileActivity", "No wallet identity found - user needs to create/restore wallet first")
+                    binding.llNametagStatus.visibility = View.VISIBLE
+                    binding.tvNametagStatus.text = "Please create or restore your wallet first"
+                    binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+                } else {
+                    mintOrCheckNametag(cleanTag)
+                }
+            }
+            
+            // Show with @unicity suffix for display purposes only
+            Toast.makeText(this, "Unicity tag saved: $cleanTag (displays as $cleanTag@unicity)", Toast.LENGTH_SHORT).show()
             
             // If agent mode is on, update location and restart P2P if tag changed
             if (isAgentMode) {
@@ -327,16 +372,6 @@ class UserProfileActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
-    }
-    
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
     }
     
     private fun setupLocationCallback() {
@@ -496,5 +531,262 @@ class UserProfileActivity : AppCompatActivity() {
             stopLocationUpdates()
             stopP2PService()
         }
+    }
+    
+    private suspend fun mintOrCheckNametag(nametagString: String) {
+        try {
+            // Check if nametag exists
+            if (nametagService.hasNametag(nametagString)) {
+                // Nametag already exists
+                runOnUiThread {
+                    binding.llNametagStatus.visibility = View.VISIBLE
+                    binding.llNametagActions.visibility = View.VISIBLE
+                    binding.tvNametagStatus.text = "Nametag already minted"
+                    binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_info)
+                }
+            } else {
+                // Show minting progress
+                runOnUiThread {
+                    binding.llNametagStatus.visibility = View.VISIBLE
+                    binding.tvNametagStatus.text = "Minting nametag..."
+                    binding.ivNametagStatus.setImageResource(android.R.drawable.ic_popup_sync)
+                }
+                
+                // Get the wallet's address
+                val walletAddress = getWalletAddress()
+                
+                if (walletAddress != null) {
+                    // Mint the nametag
+                    val nametagToken = nametagService.mintNametag(nametagString, walletAddress)
+                    
+                    if (nametagToken != null) {
+                        runOnUiThread {
+                            binding.llNametagStatus.visibility = View.VISIBLE
+                            binding.llNametagActions.visibility = View.VISIBLE
+                            binding.tvNametagStatus.text = "Nametag minted successfully"
+                            binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_info)
+                            
+                            Toast.makeText(this, "Nametag minted successfully!", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        runOnUiThread {
+                            binding.llNametagStatus.visibility = View.VISIBLE
+                            binding.tvNametagStatus.text = "Failed to mint nametag"
+                            binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+                            
+                            Toast.makeText(this, "Failed to mint nametag. Try again later.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        binding.llNametagStatus.visibility = View.VISIBLE
+                        binding.tvNametagStatus.text = "Wallet not initialized"
+                        binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+                    }
+                }
+            }
+            
+            // Setup export/import buttons
+            setupNametagButtons(nametagString)
+            
+        } catch (e: Exception) {
+            Log.e("UserProfileActivity", "Error minting/checking nametag", e)
+            runOnUiThread {
+                binding.llNametagStatus.visibility = View.VISIBLE
+                binding.tvNametagStatus.text = "Error: ${e.message}"
+                binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+            }
+        }
+    }
+    
+    private suspend fun getWalletAddress(): DirectAddress? {
+        return try {
+            // Get the identity from IdentityManager
+            val identity = identityManager.getCurrentIdentity()
+            if (identity == null) {
+                Log.e("UserProfileActivity", "No identity found")
+                return null
+            }
+            
+            // Convert hex strings to byte arrays
+            val secret = hexToBytes(identity.secret)
+            val nonce = hexToBytes(identity.nonce)
+            
+            // Create signing service and predicate
+            val signingService = SigningService.createFromSecret(secret, nonce)
+            val predicate = MaskedPredicate.create(
+                signingService,
+                HashAlgorithm.SHA256,
+                nonce
+            )
+            
+            // Generate a token type for the address
+            val tokenType = TokenType(ByteArray(32).apply {
+                java.security.SecureRandom().nextBytes(this)
+            })
+            
+            // Return the address
+            predicate.getReference(tokenType).toAddress()
+        } catch (e: Exception) {
+            Log.e("UserProfileActivity", "Error getting wallet address", e)
+            null
+        }
+    }
+    
+    private fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        for (i in 0 until len step 2) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+        }
+        return data
+    }
+    
+    private fun setupNametagButtons(nametagString: String) {
+        currentNametagString = nametagString
+        
+        binding.btnExportNametag.setOnClickListener {
+            lifecycleScope.launch {
+                val exportData = nametagService.exportNametag(nametagString)
+                if (exportData != null) {
+                    pendingNametagExport = exportData
+                    // Launch file picker to save as .txf file
+                    val fileName = "nametag_${nametagString}.txf"
+                    exportNametagLauncher.launch(fileName)
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this@UserProfileActivity, "No nametag found to export", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        
+        binding.btnImportNametag.setOnClickListener {
+            // Launch file picker to select .txf file
+            importNametagLauncher.launch("*/*") // Accept any file type, we'll validate extension
+        }
+    }
+    
+    private fun exportNametagToFile(uri: Uri) {
+        try {
+            pendingNametagExport?.let { data ->
+                contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(data.toByteArray())
+                    outputStream.flush()
+                    Toast.makeText(this, "Nametag exported successfully", Toast.LENGTH_LONG).show()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("UserProfileActivity", "Failed to export nametag", e)
+            Toast.makeText(this, "Failed to export nametag: ${e.message}", Toast.LENGTH_LONG).show()
+        } finally {
+            pendingNametagExport = null
+        }
+    }
+    
+    private fun importNametagFromFile(uri: Uri) {
+        try {
+            // Check if file has .txf extension
+            val fileName = getFileName(uri)
+            if (!fileName.endsWith(".txf", ignoreCase = true)) {
+                Toast.makeText(this, "Please select a .txf file", Toast.LENGTH_SHORT).show()
+                return
+            }
+            
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                val jsonData = inputStream.bufferedReader().use { it.readText() }
+                
+                lifecycleScope.launch {
+                    try {
+                        // Parse the JSON to extract nametag data and nonce
+                        val nametagData = UnicityObjectMapper.JSON.readTree(jsonData)
+                        val nametag = nametagData.get("nametag")?.asText()
+                        val nonceBase64 = nametagData.get("nonce")?.asText()
+                        
+                        if (nametag != null && nonceBase64 != null) {
+                            val nonce = android.util.Base64.decode(nonceBase64, android.util.Base64.NO_WRAP)
+                            val token = nametagService.importNametag(nametag, jsonData, nonce)
+                            
+                            if (token != null) {
+                                runOnUiThread {
+                                    Toast.makeText(this@UserProfileActivity, "Nametag imported successfully", Toast.LENGTH_LONG).show()
+                                    // Update UI to show imported nametag
+                                    binding.etUnicityTag.setText(nametag)
+                                }
+                                // Check the imported nametag status
+                                mintOrCheckNametag(nametag)
+                            } else {
+                                runOnUiThread {
+                                    Toast.makeText(this@UserProfileActivity, "Failed to import nametag", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        } else {
+                            runOnUiThread {
+                                Toast.makeText(this@UserProfileActivity, "Invalid nametag file format", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("UserProfileActivity", "Failed to import nametag", e)
+                        Toast.makeText(this@UserProfileActivity, "Failed to import: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("UserProfileActivity", "Failed to read nametag file", e)
+            Toast.makeText(this, "Failed to read file: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun getFileName(uri: Uri): String {
+        var result: String? = null
+        if (uri.scheme == "content") {
+            val cursor = contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val columnIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (columnIndex != -1) {
+                        result = it.getString(columnIndex)
+                    }
+                }
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/') ?: -1
+            if (cut != -1) {
+                result = result?.substring(cut + 1)
+            }
+        }
+        return result ?: "unknown.txf"
+    }
+    
+    
+    override fun onResume() {
+        super.onResume()
+        
+        // Check nametag status when activity resumes
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val savedTag = sharedPrefs.getString("unicity_tag", "")
+        if (!savedTag.isNullOrEmpty()) {
+            lifecycleScope.launch {
+                // Check if identity exists first
+                if (!identityManager.hasIdentity()) {
+                    Log.w("UserProfileActivity", "No wallet identity found - user needs to create/restore wallet first")
+                    binding.llNametagStatus.visibility = View.VISIBLE
+                    binding.tvNametagStatus.text = "Please create or restore your wallet first"
+                    binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+                } else {
+                    mintOrCheckNametag(savedTag)
+                }
+            }
+        }
+    }
+    
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            onBackPressed()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 }

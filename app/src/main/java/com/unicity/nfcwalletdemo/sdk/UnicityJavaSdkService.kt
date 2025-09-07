@@ -29,6 +29,7 @@ import com.unicity.sdk.transaction.Transaction
 import com.unicity.sdk.transaction.TransferTransactionData
 import com.unicity.sdk.util.InclusionProofUtils
 import com.unicity.sdk.serializer.UnicityObjectMapper
+import com.unicity.nfcwalletdemo.utils.WalletConstants
 import kotlinx.coroutines.future.await
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
@@ -43,9 +44,6 @@ class UnicityJavaSdkService {
     companion object {
         private const val TAG = "UnicityJavaSdkService"
         
-        // Test network configuration
-        private const val AGGREGATOR_URL = "https://goggregator-test.unicity.network"
-        
         @Volatile
         private var instance: UnicityJavaSdkService? = null
         
@@ -57,7 +55,7 @@ class UnicityJavaSdkService {
     }
     
     private val client: StateTransitionClient by lazy {
-        val aggregatorClient = AggregatorClient(AGGREGATOR_URL)
+        val aggregatorClient = AggregatorClient(WalletConstants.UNICITY_AGGREGATOR_URL)
         StateTransitionClient(aggregatorClient)
     }
     
