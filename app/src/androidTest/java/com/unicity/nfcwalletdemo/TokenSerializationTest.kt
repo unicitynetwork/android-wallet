@@ -3,7 +3,7 @@ package com.unicity.nfcwalletdemo
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -15,6 +15,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.security.SecureRandom
+import com.fasterxml.jackson.databind.ObjectMapper
 
 /**
  * Instrumented test for token serialization/deserialization functionality.
@@ -27,8 +29,9 @@ class TokenSerializationTest {
         private const val TAG = "TokenSerializationTest"
     }
     
-    private lateinit var sdkService: UnicitySdkService
+    private lateinit var sdkService: UnicityJavaSdkService
     private lateinit var context: android.content.Context
+    private val objectMapper = ObjectMapper()
     
     @Before
     fun setup() = runTest {
@@ -36,7 +39,7 @@ class TokenSerializationTest {
         
         // Initialize SDK on main thread
         withContext(Dispatchers.Main) {
-            sdkService = UnicitySdkService(context)
+            sdkService = UnicityJavaSdkService.getInstance()
         }
         
         // Wait for SDK to initialize
@@ -47,27 +50,30 @@ class TokenSerializationTest {
     fun testTokenSerializationAndDeserialization() = runTest {
         // Step 1: Generate identity and mint a token
         Log.d(TAG, "Generating identity...")
-        val identityResult = suspendCoroutine<Result<String>> { cont ->
-            sdkService.generateIdentity { result ->
-                cont.resume(result)
-            }
-        }
+        val random = SecureRandom()
+        val secret = ByteArray(32)
+        val nonce = ByteArray(32)
+        random.nextBytes(secret)
+        random.nextBytes(nonce)
         
-        assertTrue("Identity generation should succeed", identityResult.isSuccess)
-        val identityResponseStr = identityResult.getOrThrow()
-        Log.d(TAG, "Identity response: $identityResponseStr")
-        
-        // The response might already be the identity JSON directly
-        val identity = identityResponseStr
+        Log.d(TAG, "Identity generated with secret and nonce")
         
         // Step 2: Mint a token with specific data
         Log.d(TAG, "Minting token...")
-        val tokenData = """{"amount":42,"data":"Test serialization token","stateData":"Serialization test state"}"""
+        val tokenAmount = 42L
+        val tokenData = "Test serialization token"
         
-        val mintResult = suspendCoroutine<Result<String>> { cont ->
-            sdkService.mintToken(identity, tokenData) { result ->
-                cont.resume(result)
+        val mintResult = try {
+            val token = sdkService.mintToken(tokenAmount, tokenData, secret, nonce)
+            if (token != null) {
+                val tokenJson = JSONObject()
+                tokenJson.put("token", JSONObject(objectMapper.writeValueAsString(token)))
+                Result.success(tokenJson.toString())
+            } else {
+                Result.failure<String>(Exception("Token minting failed"))
             }
+        } catch (e: Exception) {
+            Result.failure<String>(e)
         }
         
         assertTrue("Token minting should succeed", mintResult.isSuccess)
@@ -99,11 +105,17 @@ class TokenSerializationTest {
             
             // Step 5: Deserialize the token using SDK
             Log.d(TAG, "Deserializing token from file...")
+            // TODO: Rewrite for Java SDK
+            val deserializeResult = Result.failure<String>(NotImplementedError("deserializeToken not available in Java SDK"))
+            /*
             val deserializeResult = suspendCoroutine<Result<String>> { cont ->
-                sdkService.deserializeToken(tokenStringFromFile) { result ->
+                // TODO: deserializeToken not available in Java SDK
+                // Need to use UnicityObjectMapper.JSON.readValue() instead
+                // sdkService.deserializeToken(tokenStringFromFile) { result ->
                     cont.resume(result)
                 }
             }
+            */
             
             if (!deserializeResult.isSuccess) {
                 Log.e(TAG, "Deserialization failed: ${deserializeResult.exceptionOrNull()?.message}")
@@ -171,21 +183,28 @@ class TokenSerializationTest {
     @Test
     fun testMultipleTokenSerializationCycle() = runTest {
         // Test serializing and deserializing multiple times to ensure consistency
-        val identityResult = suspendCoroutine<Result<String>> { cont ->
-            sdkService.generateIdentity { result ->
-                cont.resume(result)
-            }
-        }
+        val random = SecureRandom()
+        val secret = ByteArray(32)
+        val nonce = ByteArray(32)
+        random.nextBytes(secret)
+        random.nextBytes(nonce)
         
-        val identity = identityResult.getOrThrow()
-        Log.d(TAG, "Identity (cycle test): $identity")
+        Log.d(TAG, "Identity (cycle test) generated")
         
         // Mint a token
-        val tokenData = """{"amount":100,"data":"Multi-cycle test","stateData":"Cycle test state"}"""
-        val mintResult = suspendCoroutine<Result<String>> { cont ->
-            sdkService.mintToken(identity, tokenData) { result ->
-                cont.resume(result)
+        val tokenAmount = 100L
+        val tokenData = "Multi-cycle test"
+        val mintResult = try {
+            val token = sdkService.mintToken(tokenAmount, tokenData, secret, nonce)
+            if (token != null) {
+                val tokenJson = JSONObject()
+                tokenJson.put("token", JSONObject(objectMapper.writeValueAsString(token)))
+                Result.success(tokenJson.toString())
+            } else {
+                Result.failure<String>(Exception("Token minting failed"))
             }
+        } catch (e: Exception) {
+            Result.failure<String>(e)
         }
         
         val mintResultStr = mintResult.getOrThrow()
@@ -206,11 +225,9 @@ class TokenSerializationTest {
                 val fromFile = txfFile.readText()
                 
                 // Deserialize
-                val deserializeResult = suspendCoroutine<Result<String>> { cont ->
-                    sdkService.deserializeToken(fromFile) { result ->
-                        cont.resume(result)
-                    }
-                }
+                // TODO: deserializeToken not available in Java SDK
+                // Need to use UnicityObjectMapper.JSON.readValue() instead
+                val deserializeResult = Result.failure<String>(NotImplementedError("deserializeToken not available in Java SDK"))
                 
                 if (!deserializeResult.isSuccess) {
                     Log.e(TAG, "Deserialization failed in cycle ${cycle + 1}: ${deserializeResult.exceptionOrNull()?.message}")

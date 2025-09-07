@@ -162,8 +162,22 @@ class NametagService(private val context: Context) {
         try {
             Log.d(TAG, "Importing nametag: $nametagString")
             
-            // Parse the token from JSON
-            val token = UnicityObjectMapper.JSON.readValue(jsonData, Token::class.java)
+            // Check if jsonData is the wrapper format or direct token
+            val token = try {
+                // First try to parse as wrapper format (from export)
+                val wrapper = UnicityObjectMapper.JSON.readTree(jsonData)
+                if (wrapper.has("token")) {
+                    // It's a wrapper, extract the token
+                    val tokenJson = wrapper.get("token").asText()
+                    UnicityObjectMapper.JSON.readValue(tokenJson, Token::class.java)
+                } else {
+                    // It's a direct token JSON
+                    UnicityObjectMapper.JSON.readValue(jsonData, Token::class.java)
+                }
+            } catch (e: Exception) {
+                // If all else fails, try direct parse
+                UnicityObjectMapper.JSON.readValue(jsonData, Token::class.java)
+            }
             
             // Save the imported nametag
             saveNametag(nametagString, token, nonce)
@@ -192,8 +206,8 @@ class NametagService(private val context: Context) {
             val jsonData = file.readText()
             val nametagData = UnicityObjectMapper.JSON.readTree(jsonData)
             
-            // Extract token data
-            val tokenJson = nametagData.get("token").toString()
+            // Extract token data - it's stored as a string, not an object
+            val tokenJson = nametagData.get("token").asText()
             val token = UnicityObjectMapper.JSON.readValue(tokenJson, Token::class.java)
             
             Log.d(TAG, "Nametag loaded from storage: $nametagString")
