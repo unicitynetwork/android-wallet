@@ -84,7 +84,7 @@ android {
 }
 
 dependencies {
-    // Unicity Java SDK
+    // Unicity Java SDK: https://jitpack.io/#unicitynetwork/java-state-transition-sdk
     implementation("com.github.unicitynetwork:java-state-transition-sdk:1.1.5")
 
     // Required dependencies for Unicity SDK
