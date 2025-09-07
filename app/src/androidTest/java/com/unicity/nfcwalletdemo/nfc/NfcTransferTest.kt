@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.unicity.nfcwalletdemo.data.model.Token
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,7 +22,7 @@ import android.os.Looper
 class NfcTransferTest {
 
     private lateinit var appContext: Context
-    private lateinit var unicitySdkService: UnicitySdkService
+    private lateinit var unicitySdkService: UnicityJavaSdkService
     private lateinit var hceLogic: HostCardEmulatorLogic
     private lateinit var nfcTestChannel: NfcTestChannel
     private lateinit var directNfcClient: DirectNfcClient
@@ -43,8 +43,8 @@ class NfcTransferTest {
         
         Handler(Looper.getMainLooper()).post {
             try {
-                // Initialize real UnicitySdkService
-                unicitySdkService = UnicitySdkService(appContext)
+                // Initialize real UnicityJavaSdkService
+                unicitySdkService = UnicityJavaSdkService.getInstance()
                 
                 // Wait a bit for WebView to initialize
                 Thread.sleep(2000)

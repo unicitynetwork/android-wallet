@@ -6,9 +6,9 @@ import android.nfc.NfcAdapter
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshTransferService
-import com.unicity.nfcwalletdemo.model.Token
+import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.nfc.*
-import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -27,19 +27,19 @@ class HybridTransferTest {
     
     private lateinit var context: Context
     private lateinit var bluetoothService: BluetoothMeshTransferService
-    private lateinit var sdkService: UnicitySdkService
+    private lateinit var sdkService: UnicityJavaSdkService
     
     @Before
     fun setup() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         bluetoothService = BluetoothMeshTransferService(context)
-        sdkService = UnicitySdkService(context)
+        sdkService = UnicityJavaSdkService.getInstance()
     }
     
     @After
     fun tearDown() {
         bluetoothService.cleanup()
-        sdkService.destroy()
+        // SDK service cleanup not needed for singleton
     }
     
     @Test
@@ -95,8 +95,8 @@ class HybridTransferTest {
             onProgress = null
         )
         
-        // Set test mode to bypass actual SDK calls
-        hybridClient.setTestMode(true)
+        // Test mode removed - not available in current implementation
+        // hybridClient.setTestMode(true)
         
         // Initial state should be Idle
         assertEquals(HybridNfcBluetoothClient.TransferState.Idle, hybridClient.state.value)
@@ -151,7 +151,7 @@ class HybridTransferTest {
      * Mock APDU transceiver for testing
      */
     private class MockApduTransceiver : ApduTransceiver {
-        override fun transceive(data: ByteArray): ByteArray {
+        override suspend fun transceive(commandApdu: ByteArray): ByteArray {
             // Simulate successful APDU response
             val mockResponse = BluetoothHandshakeResponse(
                 receiverId = "mock-receiver",
@@ -164,7 +164,7 @@ class HybridTransferTest {
             return responseData + byteArrayOf(0x90.toByte(), 0x00.toByte())
         }
         
-        override fun close() {
+        fun close() {
             // No-op for mock
         }
     }
@@ -189,7 +189,7 @@ class ManualHybridTransferTest {
                     println("=== Starting Hybrid Transfer Test (SENDER) ===")
                     
                     val bluetoothService = BluetoothMeshTransferService(context)
-                    val sdkService = UnicitySdkService(context)
+                    val sdkService = UnicityJavaSdkService.getInstance()
                     
                     // Create test token
                     val testToken = Token(
@@ -206,7 +206,7 @@ class ManualHybridTransferTest {
                     // In real app, this would be triggered by NFC tap
                     
                     bluetoothService.cleanup()
-                    sdkService.destroy()
+                    // SDK service cleanup not needed for singleton
                     
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -226,7 +226,7 @@ class ManualHybridTransferTest {
                     println("=== Starting Hybrid Transfer Test (RECEIVER) ===")
                     
                     val bluetoothService = BluetoothMeshTransferService(context)
-                    val sdkService = UnicitySdkService(context)
+                    val sdkService = UnicityJavaSdkService.getInstance()
                     
                     println("Bluetooth MAC: ${bluetoothService.getBluetoothMAC()}")
                     println("Waiting for sender to tap...")
@@ -235,7 +235,7 @@ class ManualHybridTransferTest {
                     // In real app, this would be triggered by NFC tap
                     
                     bluetoothService.cleanup()
-                    sdkService.destroy()
+                    // SDK service cleanup not needed for singleton
                     
                 } catch (e: Exception) {
                     e.printStackTrace()
