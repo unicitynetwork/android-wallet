@@ -85,15 +85,15 @@ android {
 
 dependencies {
     // Unicity Java SDK
-    implementation(files("libs/java-state-transition-sdk-1.1-SNAPSHOT-android.jar"))
-    
+    implementation("com.github.unicitynetwork:java-state-transition-sdk:1.1.5")
+
     // Required dependencies for Unicity SDK
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.17.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.17.0")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.0")
-    implementation("org.bouncycastle:bcprov-jdk15on:1.70")
-    implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.81")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.81")
     implementation("com.google.guava:guava:33.0.0-android")
     
     // SLF4J dependencies for Android (required by Unicity SDK)
