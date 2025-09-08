@@ -4,7 +4,6 @@ import android.util.Log
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.JsonNode
 import com.unicity.sdk.StateTransitionClient
-import com.unicity.sdk.api.AggregatorClient
 import com.unicity.sdk.api.SubmitCommitmentStatus
 import com.unicity.sdk.address.Address
 import com.unicity.sdk.address.DirectAddress
@@ -29,7 +28,7 @@ import com.unicity.sdk.transaction.Transaction
 import com.unicity.sdk.transaction.TransferTransactionData
 import com.unicity.sdk.util.InclusionProofUtils
 import com.unicity.sdk.serializer.UnicityObjectMapper
-import com.unicity.nfcwalletdemo.utils.WalletConstants
+import com.unicity.nfcwalletdemo.di.ServiceProvider
 import kotlinx.coroutines.future.await
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
@@ -40,7 +39,9 @@ import java.util.Base64
  * Service for interacting with the Unicity Java SDK 1.1.
  * This service provides coroutine-based wrappers around the Java SDK's CompletableFuture APIs.
  */
-class UnicityJavaSdkService {
+class UnicityJavaSdkService(
+    private val stateTransitionClient: StateTransitionClient = ServiceProvider.stateTransitionClient
+) {
     companion object {
         private const val TAG = "UnicityJavaSdkService"
         
@@ -52,12 +53,18 @@ class UnicityJavaSdkService {
                 instance ?: UnicityJavaSdkService().also { instance = it }
             }
         }
+        
+        /**
+         * Creates a new instance with a custom StateTransitionClient.
+         * Useful for testing or different environments.
+         */
+        fun createInstance(stateTransitionClient: StateTransitionClient): UnicityJavaSdkService {
+            return UnicityJavaSdkService(stateTransitionClient)
+        }
     }
     
-    private val client: StateTransitionClient by lazy {
-        val aggregatorClient = AggregatorClient(WalletConstants.UNICITY_AGGREGATOR_URL)
-        StateTransitionClient(aggregatorClient)
-    }
+    private val client: StateTransitionClient
+        get() = stateTransitionClient
     
     private val objectMapper = ObjectMapper()
     

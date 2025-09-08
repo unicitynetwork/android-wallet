@@ -3,12 +3,11 @@ package com.unicity.nfcwalletdemo.nametag
 import android.content.Context
 import android.util.Log
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.unicity.nfcwalletdemo.utils.WalletConstants
+import com.unicity.nfcwalletdemo.di.ServiceProvider
 import com.unicity.nfcwalletdemo.identity.IdentityManager
 import com.unicity.sdk.StateTransitionClient
 import com.unicity.sdk.address.DirectAddress
 import com.unicity.sdk.address.ProxyAddress
-import com.unicity.sdk.api.AggregatorClient
 import com.unicity.sdk.transaction.MintCommitment
 import com.unicity.sdk.api.SubmitCommitmentStatus
 import com.unicity.sdk.hash.HashAlgorithm
@@ -29,7 +28,10 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 
-class NametagService(private val context: Context) {
+class NametagService(
+    private val context: Context,
+    private val stateTransitionClient: StateTransitionClient = ServiceProvider.stateTransitionClient
+) {
     
     private val identityManager = IdentityManager(context)
     
@@ -39,8 +41,6 @@ class NametagService(private val context: Context) {
         private const val NAMETAG_FILE_SUFFIX = ".json"
     }
     
-    private val aggregatorClient = AggregatorClient(WalletConstants.UNICITY_AGGREGATOR_URL)
-    private val stateTransitionClient = StateTransitionClient(aggregatorClient)
     
     /**
      * Mints a nametag for the given string if not already minted
