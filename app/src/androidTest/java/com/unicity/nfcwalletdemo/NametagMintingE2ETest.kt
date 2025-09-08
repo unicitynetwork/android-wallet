@@ -19,9 +19,17 @@ import org.junit.runner.RunWith
 import java.security.SecureRandom
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import org.junit.Assume
 
 /**
  * End-to-end test for nametag minting against the real Unicity test aggregator.
+ * 
+ * REQUIREMENTS:
+ * - Internet connection to reach goggregator-test.unicity.network
+ * - If running on emulator, ensure it has internet access
+ * - If tests fail with "Unable to resolve host", restart emulator or check network settings
  * 
  * This test will:
  * 1. Generate a random nametag string to avoid conflicts
@@ -41,6 +49,20 @@ class NametagMintingE2ETest {
     @Before
     fun setup() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
+        
+        // Check for internet connectivity
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork
+        val capabilities = connectivityManager.getNetworkCapabilities(network)
+        val hasInternet = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                          capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        
+        Assume.assumeTrue(
+            "Test requires internet connection to reach goggregator-test.unicity.network. " +
+            "If running on emulator, ensure it has internet access in AVD settings.",
+            hasInternet
+        )
+        
         identityManager = IdentityManager(context)
         nametagService = NametagService(context)
     }
