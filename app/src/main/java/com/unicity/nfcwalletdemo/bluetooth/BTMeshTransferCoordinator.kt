@@ -1062,17 +1062,17 @@ object BTMeshTransferCoordinator {
             val nonce = hexStringToByteArray(nonceHex)
             
             // Create signing service and predicate
-            val signingService = com.unicity.sdk.signing.SigningService.createFromSecret(secret, nonce)
+            val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret, nonce)
             val tokenIdBytes = hexStringToByteArray(tokenId)
             val tokenTypeBytes = hexStringToByteArray("01") // Default token type
             
-            val predicate = com.unicity.sdk.predicate.MaskedPredicate.create(
+            val predicate = org.unicitylabs.sdk.predicate.MaskedPredicate.create(
                 signingService,
-                com.unicity.sdk.hash.HashAlgorithm.SHA256,
+                org.unicitylabs.sdk.hash.HashAlgorithm.SHA256,
                 nonce
             )
             
-            val tokenType = com.unicity.sdk.token.TokenType(tokenTypeBytes)
+            val tokenType = org.unicitylabs.sdk.token.TokenType(tokenTypeBytes)
             predicate.getReference(tokenType).toAddress().toString()
         }
     }

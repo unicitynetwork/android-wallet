@@ -1,8 +1,8 @@
 package com.unicity.nfcwalletdemo.di
 
 import com.unicity.nfcwalletdemo.utils.WalletConstants
-import com.unicity.sdk.api.AggregatorClient
-import com.unicity.sdk.StateTransitionClient
+import org.unicitylabs.sdk.api.AggregatorClient
+import org.unicitylabs.sdk.StateTransitionClient
 
 /**
  * Simple dependency injection provider for SDK services.

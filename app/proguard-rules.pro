@@ -41,8 +41,8 @@
 -keepnames class okio.** { *; }
 
 # Unicity SDK
--keep class com.unicity.sdk.** { *; }
--keepclassmembers class com.unicity.sdk.** {
+-keep class org.unicitylabs.sdk.** { *; }
+-keepclassmembers class org.unicitylabs.sdk.** {
     public <methods>;
     public <fields>;
 }

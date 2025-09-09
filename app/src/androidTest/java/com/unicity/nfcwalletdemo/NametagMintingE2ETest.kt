@@ -5,11 +5,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.unicity.nfcwalletdemo.identity.IdentityManager
 import com.unicity.nfcwalletdemo.nametag.NametagService
-import com.unicity.sdk.address.DirectAddress
-import com.unicity.sdk.hash.HashAlgorithm
-import com.unicity.sdk.predicate.MaskedPredicate
-import com.unicity.sdk.signing.SigningService
-import com.unicity.sdk.token.TokenType
+import org.unicitylabs.sdk.address.DirectAddress
+import org.unicitylabs.sdk.hash.HashAlgorithm
+import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.sdk.token.TokenType
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -263,7 +263,7 @@ class NametagMintingE2ETest {
         )
         
         // Parse the exported data to get the nonce
-        val objectMapper = com.unicity.sdk.serializer.UnicityObjectMapper.JSON
+        val objectMapper = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON
         val exportedJson = objectMapper.readTree(exportedData)
         val nonceBase64 = exportedJson.get("nonce").asText()
         val nonce = android.util.Base64.decode(nonceBase64, android.util.Base64.NO_WRAP)
