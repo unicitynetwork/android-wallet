@@ -55,7 +55,7 @@ import com.unicity.nfcwalletdemo.utils.PermissionUtils
 import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.google.gson.Gson
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.unicity.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import com.unicity.nfcwalletdemo.network.*
 import kotlinx.coroutines.delay
 import com.journeyapps.barcodescanner.ScanContract

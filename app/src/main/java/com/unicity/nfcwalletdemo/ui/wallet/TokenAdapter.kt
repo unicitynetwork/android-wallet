@@ -10,7 +10,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.unicity.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus

@@ -410,12 +410,12 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             val tokenTypeHex = genesisData?.get("tokenType")?.asText() ?: ""
             
             // Create recipient's predicate to get correct address
-            val recipientSigningService = com.unicity.sdk.signing.SigningService.createFromSecret(recipientSecret, recipientNonce)
-            val tokenType = com.unicity.sdk.token.TokenType(hexStringToByteArray(tokenTypeHex))
+            val recipientSigningService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(recipientSecret, recipientNonce)
+            val tokenType = org.unicitylabs.sdk.token.TokenType(hexStringToByteArray(tokenTypeHex))
             
-            val recipientPredicate = com.unicity.sdk.predicate.MaskedPredicate.create(
+            val recipientPredicate = org.unicitylabs.sdk.predicate.MaskedPredicate.create(
                 recipientSigningService,
-                com.unicity.sdk.hash.HashAlgorithm.SHA256,
+                org.unicitylabs.sdk.hash.HashAlgorithm.SHA256,
                 recipientNonce
             )
             

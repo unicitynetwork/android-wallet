@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
-import com.unicity.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import com.google.gson.reflect.TypeToken
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus

@@ -12,5 +12,5 @@
     </root>
     
     <!-- Set Unicity SDK logging to DEBUG for troubleshooting -->
-    <logger name="com.unicity.sdk" level="DEBUG" />
+    <logger name="org.unicitylabs.sdk" level="DEBUG" />
 </configuration>

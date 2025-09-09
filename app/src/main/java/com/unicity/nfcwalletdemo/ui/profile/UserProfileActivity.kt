@@ -36,12 +36,12 @@ import com.unicity.nfcwalletdemo.databinding.ActivityUserProfileBinding
 import com.unicity.nfcwalletdemo.network.AgentApiService
 import com.unicity.nfcwalletdemo.nametag.NametagService
 import com.unicity.nfcwalletdemo.identity.IdentityManager
-import com.unicity.sdk.address.DirectAddress
-import com.unicity.sdk.hash.HashAlgorithm
-import com.unicity.sdk.predicate.MaskedPredicate
-import com.unicity.sdk.signing.SigningService
-import com.unicity.sdk.token.TokenType
-import com.unicity.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.sdk.address.DirectAddress
+import org.unicitylabs.sdk.hash.HashAlgorithm
+import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.sdk.token.TokenType
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
