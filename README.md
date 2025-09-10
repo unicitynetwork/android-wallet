@@ -6,24 +6,39 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
 
 **Token Type**: Real Unicity Protocol tokens with cryptographic signatures  
 **Transfer Method**: Hybrid NFC + Bluetooth LE mesh for unlimited token sizes  
-**SDK Integration**: Unicity Java SDK v1.0-SNAPSHOT (Native Android integration)  
+**SDK Integration**: Unicity Java SDK v1.1.6 (Native Android integration via JitPack)  
 **Transfer Protocol**: NFC handshake for secure discovery, Bluetooth for data transfer  
 **Transfer Speed**: 1-2 seconds NFC handshake + ~50-100 KB/s Bluetooth transfer  
 **User Experience**: Quick NFC tap to initiate, automatic Bluetooth transfer
 
 ## ✨ Features
 
+### Core Functionality
 - **Real Unicity Tokens**: Mint genuine cryptographic tokens on the Unicity Protocol
 - **Direct NFC Transfer**: Tap-to-send tokens between Android devices
 - **Blockchain Integration**: Tokens are committed to the Unicity test network
-- **Modern UI**: Material Design with Unicity branding
+- **Hybrid Transfer Protocol**: NFC + Bluetooth for unlimited token sizes
+- **Offline Capability**: Complete transfers without internet (sync later)
+
+### Wallet Features
+- **BIP-39 Seed Phrases**: Industry-standard 12-word recovery phrases
+- **Identity Management**: Persistent wallet identity with secure storage
+- **Nametag System**: Human-readable addresses (e.g., @alice) for easy transfers
+- **Token Import/Export**: .txf file format for backup and sharing
+- **Google Drive Backup**: Optional cloud backup for wallet recovery
+
+### User Experience
+- **Modern UI**: Material Design 3 with Unicity branding
 - **Real-time Progress**: Transfer progress indicators on both devices
 - **Token Management**: Expandable cards with detailed token information
 - **Custom Token Minting**: Create tokens with custom names, amounts, and data
+- **QR Code Support**: Share addresses and tokens via QR codes
+- **P2P Messaging**: Built-in chat for transaction coordination
 
 ## 📱 Requirements
 
-- **Android 7.0+** (API level 24+)
+- **Android 12+** (API level 31+, minSdk 31)
+- **Target SDK**: Android 14 (API level 34)
 - **NFC-enabled device**
 - **Host Card Emulation support** (most modern Android devices)
 - **Internet connection** (for blockchain commitments)
@@ -38,17 +53,17 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
    cd nfc-wallet-demo
    ```
 
-2. **Install Java 11** (required for Unicity Java SDK)
+2. **Install Java 17** (required for current build configuration)
    ```bash
-   brew install openjdk@11  # macOS
+   brew install openjdk@17  # macOS
    # or use your system's package manager
-   export JAVA_HOME=$(/usr/libexec/java_home -v 11)
+   export JAVA_HOME=$(/usr/libexec/java_home -v 17)
    ```
 
 3. **Open in Android Studio**
    - Import the project
    - Sync Gradle dependencies
-   - Ensure Java 11 is selected in project structure
+   - Ensure Java 17 is selected in project structure (File → Project Structure → SDK Location)
 
 4. **Build and install**
    ```bash
@@ -142,6 +157,33 @@ The previous NFC-only implementation is still available but limited to tokens un
   - 30 seconds for address generation
   - Connection stabilization delays between operations
 - **Persistence**: Transfers saved to SharedPreferences to survive app restarts
+
+## 📦 SDK Integration & Dependencies
+
+### Unicity Java SDK
+The app uses the Unicity Java SDK for all blockchain operations:
+- **Version**: 1.1.6
+- **Repository**: [github.com/unicitynetwork/java-state-transition-sdk](https://github.com/unicitynetwork/java-state-transition-sdk)
+- **Distribution**: JitPack (`com.github.unicitynetwork:java-state-transition-sdk:1.1.6`)
+- **Aggregator**: goggregator-test.unicity.network (test network)
+
+### Key Dependencies
+- **Jackson**: 2.17.0 (JSON/CBOR serialization)
+- **Bouncy Castle**: 1.81 (cryptography)
+- **Kotlin Coroutines**: 1.8.0 (async operations)
+- **AndroidX**: Latest stable versions
+- **Material Design**: 1.12.0
+- **Room Database**: 2.6.1 (local storage)
+- **BIP-39**: 1.0.7 (seed phrase generation)
+
+### Build Configuration
+- **Gradle**: 8.13
+- **Android Gradle Plugin**: 8.11.0
+- **Kotlin**: 1.9.24
+- **Java**: 17 (compileOptions & kotlinOptions)
+- **Compile SDK**: 34 (Android 14)
+- **Min SDK**: 31 (Android 12)
+- **Target SDK**: 34 (Android 14)
 
 ## 🧪 Testing
 
