@@ -1,7 +1,6 @@
 package com.unicity.nfcwalletdemo.nfc
 
 import com.google.gson.Gson
-import java.util.UUID
 
 /**
  * Data class for NFC handshake that exchanges Bluetooth connection info

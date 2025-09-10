@@ -3,19 +3,17 @@ package com.unicity.nfcwalletdemo
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import org.junit.Assert.*
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.security.SecureRandom
-import com.fasterxml.jackson.databind.ObjectMapper
 
 /**
  * Test to analyze the exact format of tokens created by the SDK

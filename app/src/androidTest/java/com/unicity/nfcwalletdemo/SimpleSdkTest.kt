@@ -7,7 +7,7 @@ import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
-import org.junit.Assert.*
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.coroutines.resume

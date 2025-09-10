@@ -1,9 +1,9 @@
 package com.unicity.nfcwalletdemo.data.chat
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 import androidx.room.ForeignKey
 import androidx.room.Index
+import androidx.room.PrimaryKey
 
 @Entity(tableName = "conversations")
 data class ChatConversation(

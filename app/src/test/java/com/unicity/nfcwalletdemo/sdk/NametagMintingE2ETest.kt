@@ -1,6 +1,14 @@
 package com.unicity.nfcwalletdemo.sdk
 
 import com.unicity.nfcwalletdemo.di.ServiceProvider
+import kotlinx.coroutines.future.await
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.fail
+import org.junit.Assume
+import org.junit.Before
+import org.junit.Test
 import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
@@ -14,13 +22,6 @@ import org.unicitylabs.sdk.transaction.MintCommitment
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.transaction.NametagMintTransactionData
 import org.unicitylabs.sdk.util.InclusionProofUtils
-import kotlinx.coroutines.future.await
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import org.junit.Assert.*
-import org.junit.Assume
-import org.junit.Before
-import org.junit.Test
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom

@@ -13,7 +13,8 @@ import com.unicity.nfcwalletdemo.data.chat.MessageType
 import com.unicity.nfcwalletdemo.databinding.ItemChatMessageReceivedBinding
 import com.unicity.nfcwalletdemo.databinding.ItemChatMessageSentBinding
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 class ChatAdapter(private val currentUserTag: String) : 
     ListAdapter<ChatMessage, RecyclerView.ViewHolder>(ChatMessageDiffCallback()) {

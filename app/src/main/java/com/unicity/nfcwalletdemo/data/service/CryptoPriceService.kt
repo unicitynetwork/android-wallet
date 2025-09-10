@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.api.CryptoPriceApi
-import com.unicity.nfcwalletdemo.data.api.CryptoPrice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit

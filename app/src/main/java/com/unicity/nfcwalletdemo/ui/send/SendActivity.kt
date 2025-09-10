@@ -5,7 +5,6 @@ import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivitySendBinding
 import com.unicity.nfcwalletdemo.viewmodel.WalletViewModel
 

@@ -8,7 +8,11 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.unicity.nfcwalletdemo.data.chat.*
+import com.unicity.nfcwalletdemo.data.chat.ChatConversation
+import com.unicity.nfcwalletdemo.data.chat.ChatDatabase
+import com.unicity.nfcwalletdemo.data.chat.ConversationDao
+import com.unicity.nfcwalletdemo.data.chat.MessageDao
+import com.unicity.nfcwalletdemo.data.chat.MessageType
 import com.unicity.nfcwalletdemo.databinding.ActivityChatBinding
 import com.unicity.nfcwalletdemo.p2p.P2PMessagingService
 import com.unicity.nfcwalletdemo.p2p.P2PServiceFactory

@@ -1,17 +1,17 @@
 package com.unicity.nfcwalletdemo.sdk
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.unicitylabs.sdk.address.DirectAddress
-import org.unicitylabs.sdk.predicate.MaskedPredicate
-import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.signing.SigningService
-import org.unicitylabs.sdk.token.TokenId
-import org.unicitylabs.sdk.token.TokenType
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.nio.charset.StandardCharsets
+import org.unicitylabs.sdk.hash.HashAlgorithm
+import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.sdk.token.TokenType
 import java.security.SecureRandom
 
 /**

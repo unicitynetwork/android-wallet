@@ -1,8 +1,10 @@
 package com.unicity.nfcwalletdemo
 
 import com.unicity.nfcwalletdemo.data.model.Token
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.*
 
 class TokenTest {
     

@@ -3,12 +3,12 @@ package com.unicity.nfcwalletdemo.ui.bluetooth
 import android.app.Dialog
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.util.Log
 import android.view.LayoutInflater
 import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
-import android.util.Log
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.bluetooth.TransferApprovalRequest

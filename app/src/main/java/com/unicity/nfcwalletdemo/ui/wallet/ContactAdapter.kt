@@ -7,8 +7,8 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.unicity.nfcwalletdemo.data.model.Contact
 import com.unicity.nfcwalletdemo.R
+import com.unicity.nfcwalletdemo.data.model.Contact
 import com.unicity.nfcwalletdemo.databinding.ItemContactBinding
 import kotlin.random.Random
 

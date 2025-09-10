@@ -1,22 +1,20 @@
 package com.unicity.nfcwalletdemo.nfc
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
-import com.google.gson.Gson
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import androidx.test.core.app.ApplicationProvider
-import android.os.Handler
-import android.os.Looper
 
 @RunWith(AndroidJUnit4::class)
 class NfcTransferTest {

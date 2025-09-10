@@ -16,21 +16,18 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.R
-import com.unicity.nfcwalletdemo.databinding.ActivityReceiveBinding
-import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
-import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
+import com.unicity.nfcwalletdemo.databinding.ActivityReceiveBinding
 import com.unicity.nfcwalletdemo.nfc.HostCardEmulatorLogic
-import com.unicity.nfcwalletdemo.ui.wallet.MainActivity
 import com.unicity.nfcwalletdemo.sdk.UnicitySdkService
-import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
-import com.unicity.nfcwalletdemo.sdk.UnicityToken
-import com.google.gson.Gson
+import com.unicity.nfcwalletdemo.ui.wallet.MainActivity
+import com.unicity.nfcwalletdemo.viewmodel.ReceiveState
+import com.unicity.nfcwalletdemo.viewmodel.ReceiveViewModel
 import kotlinx.coroutines.launch
 
 class ReceiveActivity : AppCompatActivity() {

@@ -1,6 +1,7 @@
 package com.unicity.nfcwalletdemo.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.unicity.nfcwalletdemo.R
@@ -8,16 +9,15 @@ import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.repository.WalletRepository
 import com.unicity.nfcwalletdemo.data.service.CryptoPriceService
 import com.unicity.nfcwalletdemo.model.CryptoCurrency
-import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class WalletViewModel(application: Application) : AndroidViewModel(application) {
