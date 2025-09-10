@@ -8,17 +8,9 @@ import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.ui.receive.ReceiveActivity
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
-import com.unicity.nfcwalletdemo.nfc.TokenTransferRequest
-import com.unicity.nfcwalletdemo.nfc.ReceiverAddressResponse
-import com.unicity.nfcwalletdemo.nfc.OfflineTransactionPackage
-import com.unicity.nfcwalletdemo.nfc.TestPingMessage
-import com.unicity.nfcwalletdemo.nfc.TestPongResponse
-import com.unicity.nfcwalletdemo.nfc.BluetoothHandshake
-import com.unicity.nfcwalletdemo.nfc.BluetoothHandshakeResponse
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 
 class HostCardEmulatorLogic(
     private val context: Context,

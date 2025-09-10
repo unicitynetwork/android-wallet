@@ -2,8 +2,10 @@ package com.unicity.nfcwalletdemo
 
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.*
 
 /**
  * Unit test to verify that tokens are stored in the correct .txf format

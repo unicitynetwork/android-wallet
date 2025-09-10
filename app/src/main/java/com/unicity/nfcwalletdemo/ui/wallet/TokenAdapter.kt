@@ -10,13 +10,14 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.databinding.ItemTokenBinding
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 class TokenAdapter(
     private val onSendClick: (Token) -> Unit,

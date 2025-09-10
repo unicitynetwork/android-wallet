@@ -5,9 +5,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.webkit.JavascriptInterface
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebSettings
 import com.google.gson.Gson
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap

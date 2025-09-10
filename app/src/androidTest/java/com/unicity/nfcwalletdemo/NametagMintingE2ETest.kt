@@ -1,27 +1,29 @@
 package com.unicity.nfcwalletdemo
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.unicity.nfcwalletdemo.identity.IdentityManager
 import com.unicity.nfcwalletdemo.nametag.NametagService
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Assume
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.MaskedPredicate
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenType
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import org.junit.Assert.*
-import org.junit.Before
-import org.junit.Test
-import org.junit.runner.RunWith
 import java.security.SecureRandom
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import org.junit.Assume
 
 /**
  * End-to-end test for nametag minting against the real Unicity test aggregator.

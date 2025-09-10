@@ -1,7 +1,6 @@
 package com.unicity.nfcwalletdemo.utils
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.location.Location
 import android.location.LocationManager
 import kotlin.random.Random

@@ -1,16 +1,35 @@
 package com.unicity.nfcwalletdemo.p2p
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.gson.Gson
-import com.unicity.nfcwalletdemo.data.chat.*
-import kotlinx.coroutines.*
+import com.unicity.nfcwalletdemo.R
+import com.unicity.nfcwalletdemo.data.chat.ChatConversation
+import com.unicity.nfcwalletdemo.data.chat.ChatDatabase
+import com.unicity.nfcwalletdemo.data.chat.ChatMessage
+import com.unicity.nfcwalletdemo.data.chat.MessageStatus
+import com.unicity.nfcwalletdemo.data.chat.MessageType
+import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.java_websocket.WebSocket
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ClientHandshake
@@ -19,18 +38,8 @@ import org.java_websocket.server.WebSocketServer
 import java.net.InetSocketAddress
 import java.net.URI
 import java.security.MessageDigest
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import com.unicity.nfcwalletdemo.R
-import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 class P2PMessagingService private constructor(
     private val context: Context,

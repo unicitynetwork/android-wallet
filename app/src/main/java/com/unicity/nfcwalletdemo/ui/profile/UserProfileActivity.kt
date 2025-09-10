@@ -7,16 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
-import java.io.File
-import java.io.FileOutputStream
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -26,23 +23,23 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.api.services.drive.DriveScopes
 import com.unicity.nfcwalletdemo.databinding.ActivityUserProfileBinding
-import com.unicity.nfcwalletdemo.network.AgentApiService
-import com.unicity.nfcwalletdemo.nametag.NametagService
 import com.unicity.nfcwalletdemo.identity.IdentityManager
+import com.unicity.nfcwalletdemo.nametag.NametagService
+import com.unicity.nfcwalletdemo.network.AgentApiService
+import kotlinx.coroutines.launch
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenType
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
-import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 class UserProfileActivity : AppCompatActivity() {

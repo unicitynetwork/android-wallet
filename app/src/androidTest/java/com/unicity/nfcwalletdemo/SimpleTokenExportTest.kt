@@ -6,7 +6,10 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import org.json.JSONObject
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File

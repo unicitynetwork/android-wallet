@@ -4,23 +4,20 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
-import com.google.gson.reflect.TypeToken
 import com.unicity.nfcwalletdemo.data.model.Token
 import com.unicity.nfcwalletdemo.data.model.TokenStatus
 import com.unicity.nfcwalletdemo.data.model.Wallet
-import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
-import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
-import com.unicity.nfcwalletdemo.sdk.UnicityTokenData
-import com.unicity.nfcwalletdemo.sdk.UnicityMintResult
 import com.unicity.nfcwalletdemo.identity.IdentityManager
+import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
+import com.unicity.nfcwalletdemo.sdk.UnicityMintResult
+import com.unicity.nfcwalletdemo.sdk.UnicityTokenData
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.suspendCancellableCoroutine
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import java.util.UUID
-import kotlin.coroutines.resume
 
 class WalletRepository(context: Context) {
     private val sharedPreferences: SharedPreferences = 

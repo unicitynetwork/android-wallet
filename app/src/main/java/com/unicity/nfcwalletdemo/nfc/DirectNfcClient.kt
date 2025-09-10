@@ -4,21 +4,16 @@ import android.nfc.TagLostException
 import android.util.Log
 import com.google.gson.Gson
 import com.unicity.nfcwalletdemo.data.model.Token
-import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.sdk.UnicityIdentity
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.resume
-import com.unicity.nfcwalletdemo.nfc.ApduTransceiver
-import com.unicity.nfcwalletdemo.nfc.TokenTransferRequest
-import com.unicity.nfcwalletdemo.nfc.ReceiverAddressResponse
-import com.unicity.nfcwalletdemo.nfc.OfflineTransactionPackage
-import com.unicity.nfcwalletdemo.nfc.TestPingMessage
 
 class DirectNfcClient(
     private val sdkService: UnicityJavaSdkService,

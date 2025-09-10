@@ -5,8 +5,8 @@ import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicBoolean
 

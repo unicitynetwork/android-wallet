@@ -1,16 +1,22 @@
 package com.unicity.nfcwalletdemo.nfc
 
 import android.content.Context
-import android.nfc.NfcAdapter
 import android.util.Log
 import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshTransferService
-import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
 import com.unicity.nfcwalletdemo.data.model.Token
-import kotlinx.coroutines.*
+import com.unicity.nfcwalletdemo.sdk.UnicityJavaSdkService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import org.json.JSONObject
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONException
+import org.json.JSONObject
 import java.util.UUID
 
 /**

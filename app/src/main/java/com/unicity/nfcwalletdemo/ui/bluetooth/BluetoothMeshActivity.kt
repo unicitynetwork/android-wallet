@@ -16,27 +16,17 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshManager
 import com.unicity.nfcwalletdemo.databinding.ActivityBluetoothMeshBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import androidx.lifecycle.lifecycleScope
-import android.os.ParcelUuid
-import java.util.UUID
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattServer
-import android.bluetooth.BluetoothGattServerCallback
-import android.bluetooth.BluetoothGattService
-import android.bluetooth.BluetoothProfile
-import java.nio.charset.StandardCharsets
-import android.view.View
-import com.unicity.nfcwalletdemo.bluetooth.BluetoothMeshManager
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 class BluetoothMeshActivity : AppCompatActivity() {
     

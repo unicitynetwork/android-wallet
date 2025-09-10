@@ -1,12 +1,18 @@
 package com.unicity.nfcwalletdemo.ui.agent
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.location.Location
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
 import android.view.View
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
@@ -18,31 +24,29 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.view.MotionEvent
-import android.widget.TextView
-import android.content.Intent
-import android.util.Log
-import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
-import kotlin.math.*
-import java.text.SimpleDateFormat
-import java.util.*
+import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.unicity.nfcwalletdemo.R
 import com.unicity.nfcwalletdemo.databinding.ActivityAgentMapBinding
 import com.unicity.nfcwalletdemo.network.Agent
 import com.unicity.nfcwalletdemo.network.AgentApiService
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collectLatest
+import com.unicity.nfcwalletdemo.ui.chat.ChatActivity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.appcompat.app.AlertDialog
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
     

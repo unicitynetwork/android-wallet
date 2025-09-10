@@ -8,7 +8,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.unicity.nfcwalletdemo.databinding.ItemAgentBinding
 import com.unicity.nfcwalletdemo.network.Agent
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 class AgentAdapter(
