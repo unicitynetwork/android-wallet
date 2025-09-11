@@ -1,4 +1,4 @@
-# Unicity NFC Wallet Demo
+# Unicity Android Wallet
 
 A fully functional Android wallet app for the Unicity Protocol, demonstrating real cryptographic token transfers via NFC using Android Host Card Emulation (HCE). Users can mint, store, and transfer genuine Unicity tokens between devices with a simple tap.
 
@@ -194,7 +194,7 @@ emulator -avd <your-avd-name>
 
 # Install and run
 ./gradlew installDebug
-adb shell am start -n com.unicity.nfcwalletdemo/.ui.wallet.MainActivity
+adb shell am start -n org.unicitylabs.wallet/.ui.wallet.MainActivity
 ```
 
 **Note**: NFC transfers cannot be tested in emulator - UI functionality only.
@@ -293,7 +293,7 @@ For migration details, see [JAVA_SDK_MIGRATION.md](JAVA_SDK_MIGRATION.md).
 ### Project Structure
 ```
 app/src/main/
-├── java/com/unicity/nfcwalletdemo/
+├── java/org/unicitylabs/wallet/
 │   ├── data/                    # Data layer
 │   │   ├── api/                 # API interfaces
 │   │   │   └── CryptoPriceApi.kt
