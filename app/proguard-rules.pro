@@ -22,7 +22,7 @@
 
 # Keep Gson classes
 -keep class com.google.gson.** { *; }
--keep class com.unicity.nfcwalletdemo.data.model.** { *; }
+-keep class org.unicitylabs.wallet.data.model.** { *; }
 
 # Jackson
 -keep class com.fasterxml.jackson.** { *; }
