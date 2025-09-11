@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NFCWalletDemo"
+rootProject.name = "UnicityAndroidWallet"
 include(":app")

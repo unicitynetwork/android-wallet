@@ -17,7 +17,7 @@ if (localPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.unicity.nfcwalletdemo"
+    namespace = "org.unicitylabs.wallet"
     compileSdk = 34
     
     testOptions {
@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.unicity.nfcwalletdemo"
+        applicationId = "org.unicitylabs.wallet"
         minSdk = 31
         targetSdk = 34
         versionCode = 1
