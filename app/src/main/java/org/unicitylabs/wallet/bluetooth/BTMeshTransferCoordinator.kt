@@ -6,6 +6,7 @@ import android.util.Log
 import com.google.gson.Gson
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
+import org.unicitylabs.wallet.utils.WalletConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1072,7 +1073,7 @@ object BTMeshTransferCoordinator {
             // Create signing service and predicate
             val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret, nonce)
             val tokenIdBytes = hexStringToByteArray(tokenId)
-            val tokenTypeBytes = hexStringToByteArray("01") // Default token type
+            val tokenTypeBytes = hexStringToByteArray(WalletConstants.UNICITY_TOKEN_TYPE)
             
             val predicate = org.unicitylabs.sdk.predicate.MaskedPredicate.create(
                 signingService,

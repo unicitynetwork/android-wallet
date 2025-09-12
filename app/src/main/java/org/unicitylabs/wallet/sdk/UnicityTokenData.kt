@@ -4,7 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 
 data class UnicityIdentity(
-    val secret: String,
+    val privateKey: String,
     val nonce: String
 ) {
     fun toJson(): String = Gson().toJson(this)

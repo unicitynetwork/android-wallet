@@ -67,7 +67,7 @@ class UnicitySdkService(context: Context) {
         // For now, generate a simple identity locally
         // In the future, this could use the BIP-39 identity from IdentityManager
         val identity = UnicityIdentity(
-            secret = UUID.randomUUID().toString().replace("-", ""),
+            privateKey = UUID.randomUUID().toString().replace("-", ""),
             nonce = UUID.randomUUID().toString().replace("-", "")
         )
         callback(Result.success(identity.toJson()))
@@ -116,7 +116,7 @@ class UnicitySdkService(context: Context) {
     ) {
         // Extract receiver address from receiver identity
         val receiverIdentity = UnicityIdentity.fromJson(receiverIdentityJson)
-        val recipientAddress = "oddity_${receiverIdentity.secret.take(16)}" // Simplified address generation
+        val recipientAddress = "oddity_${receiverIdentity.privateKey.take(16)}" // Simplified address generation
         
         val params = mapOf(
             "senderIdentityJson" to senderIdentityJson,
