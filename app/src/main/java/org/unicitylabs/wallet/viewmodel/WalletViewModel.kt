@@ -430,7 +430,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 testToken.jsonData ?: "{}",
                 recipientAddress,
                 null, // Use full amount
-                senderIdentity.secret.toByteArray(),
+                senderIdentity.privateKey.toByteArray(),
                 senderIdentity.nonce.toByteArray()
             )
             

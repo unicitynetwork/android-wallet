@@ -576,7 +576,7 @@ class DirectNfcClient(
             val identityData = mintResult["identity"] as? Map<*, *>
             val senderIdentity = if (identityData != null) {
                 UnicityIdentity(
-                    secret = identityData["secret"] as? String ?: "fallback_secret",
+                    privateKey = identityData["secret"] as? String ?: "fallback_secret",
                     nonce = identityData["nonce"] as? String ?: "fallback_nonce"
                 )
             } else {
@@ -622,7 +622,7 @@ class DirectNfcClient(
                     gson.toJson(tokenData),
                     receiverAddress,
                     null, // Use full amount
-                    senderData.senderIdentity.secret.toByteArray(),
+                    senderData.senderIdentity.privateKey.toByteArray(),
                     senderData.senderIdentity.nonce.toByteArray()
                 )
                 

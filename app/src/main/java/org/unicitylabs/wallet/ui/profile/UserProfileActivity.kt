@@ -33,6 +33,7 @@ import org.unicitylabs.wallet.databinding.ActivityUserProfileBinding
 import org.unicitylabs.wallet.identity.IdentityManager
 import org.unicitylabs.wallet.nametag.NametagService
 import org.unicitylabs.wallet.network.AgentApiService
+import org.unicitylabs.wallet.utils.WalletConstants
 import kotlinx.coroutines.launch
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
@@ -606,7 +607,7 @@ class UserProfileActivity : AppCompatActivity() {
             }
             
             // Convert hex strings to byte arrays
-            val secret = hexToBytes(identity.secret)
+            val secret = hexToBytes(identity.privateKey)
             val nonce = hexToBytes(identity.nonce)
             
             // Create signing service and predicate
@@ -617,10 +618,8 @@ class UserProfileActivity : AppCompatActivity() {
                 nonce
             )
             
-            // Generate a token type for the address
-            val tokenType = TokenType(ByteArray(32).apply {
-                java.security.SecureRandom().nextBytes(this)
-            })
+            // Use the chain's token type for the address
+            val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
             
             // Return the address
             predicate.getReference(tokenType).toAddress()

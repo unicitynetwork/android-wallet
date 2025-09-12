@@ -73,7 +73,7 @@ class NametagService(
                 ?: throw IllegalStateException("No wallet identity found")
             
             // Convert hex strings to byte arrays
-            val secret = hexToBytes(identity.secret)
+            val secret = hexToBytes(identity.privateKey)
             val identityNonce = hexToBytes(identity.nonce)
             
             // Create signing service with identity credentials

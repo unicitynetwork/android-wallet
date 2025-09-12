@@ -149,7 +149,7 @@ class WalletRepository(context: Context) {
             // Generate identity for the token
             Log.d(TAG, "Generating identity...")
             val identity = generateIdentity()
-            Log.d(TAG, "Identity generated: ${identity.secret.take(8)}...")
+            Log.d(TAG, "Identity generated: ${identity.privateKey.take(8)}...")
             
             // Create token data
             val tokenData = UnicityTokenData(data, amount)
@@ -179,7 +179,7 @@ class WalletRepository(context: Context) {
             val token = Token(
                 name = name,
                 type = "Unicity Token",
-                unicityAddress = identity.secret.take(16), // Use part of secret as address
+                unicityAddress = identity.privateKey.take(16), // Use part of private key as address
                 jsonData = tokenJson, // Store the complete token in .txf format
                 sizeBytes = tokenJson.length,
                 status = status
@@ -205,19 +205,19 @@ class WalletRepository(context: Context) {
         val existingIdentity = identityManager.getCurrentIdentity()
         if (existingIdentity != null) {
             // Return the existing BIP-39 derived identity
-            return UnicityIdentity(existingIdentity.secret, existingIdentity.nonce)
+            return UnicityIdentity(existingIdentity.privateKey, existingIdentity.nonce)
         }
         
         // Generate a new BIP-39 identity if none exists
         val (identity, _) = identityManager.generateNewIdentity()
-        return UnicityIdentity(identity.secret, identity.nonce)
+        return UnicityIdentity(identity.privateKey, identity.nonce)
     }
     
     private suspend fun mintToken(identity: UnicityIdentity, tokenData: UnicityTokenData): UnicityMintResult {
         val token = unicitySdkService.mintToken(
             tokenData.amount,
             tokenData.data,
-            identity.secret.toByteArray(),
+            identity.privateKey.toByteArray(),
             identity.nonce.toByteArray()
         )
         

@@ -169,7 +169,7 @@ class NametagMintingE2ETest {
         identity: org.unicitylabs.wallet.data.model.UserIdentity
     ): DirectAddress {
         // Convert hex strings to byte arrays
-        val secret = hexToBytes(identity.secret)
+        val secret = hexToBytes(identity.privateKey)
         val nonce = hexToBytes(identity.nonce)
         
         // Create signing service and predicate
