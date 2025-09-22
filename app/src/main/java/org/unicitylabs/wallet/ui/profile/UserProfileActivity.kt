@@ -35,12 +35,17 @@ import org.unicitylabs.wallet.nametag.NametagService
 import org.unicitylabs.wallet.network.AgentApiService
 import org.unicitylabs.wallet.utils.WalletConstants
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.sdk.token.Token
 import org.unicitylabs.sdk.token.TokenType
+import org.unicitylabs.sdk.transaction.InclusionProofVerificationStatus
+import org.unicitylabs.wallet.di.ServiceProvider
 import java.util.concurrent.TimeUnit
 
 class UserProfileActivity : AppCompatActivity() {
@@ -128,6 +133,16 @@ class UserProfileActivity : AppCompatActivity() {
         binding.etUnicityTag.setText(savedTag)
         binding.switchAgent.isChecked = savedAgentStatus
         isAgentMode = savedAgentStatus
+        
+        // Validate existing nametag if present
+        if (!savedTag.isNullOrEmpty()) {
+            val nametagString = savedTag.replace("@unicity", "").trim()
+            if (nametagString.isNotEmpty()) {
+                lifecycleScope.launch {
+                    validateNametagToken(nametagString)
+                }
+            }
+        }
         
         // Show/hide availability switch based on agent mode
         binding.switchAvailability.visibility = if (savedAgentStatus) View.VISIBLE else View.GONE
@@ -772,6 +787,12 @@ class UserProfileActivity : AppCompatActivity() {
                     binding.tvNametagStatus.text = "Please create or restore your wallet first"
                     binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
                 } else {
+                    // First validate the nametag token if it exists
+                    val nametagString = savedTag.replace("@unicity", "").trim()
+                    if (nametagService.hasNametag(nametagString)) {
+                        validateNametagToken(nametagString)
+                    }
+                    // Then proceed with minting or checking
                     mintOrCheckNametag(savedTag)
                 }
             }
@@ -784,5 +805,90 @@ class UserProfileActivity : AppCompatActivity() {
             return true
         }
         return super.onOptionsItemSelected(item)
+    }
+    
+    /**
+     * Validates the nametag token status using StateTransitionClient
+     * Ensures the inclusion proof verification status is OK
+     */
+    private suspend fun validateNametagToken(nametagString: String) {
+        try {
+            // Load the nametag token from storage
+            val nametagToken = nametagService.loadNametag(nametagString)
+            
+            if (nametagToken == null) {
+                Log.w("UserProfileActivity", "Nametag token not found in storage: $nametagString")
+                return
+            }
+            
+            // Get the identity to retrieve the public key
+            val identity = identityManager.getCurrentIdentity()
+            if (identity == null) {
+                Log.e("UserProfileActivity", "No wallet identity found for validation")
+                return
+            }
+            
+            // Convert public key from hex to bytes
+            val publicKeyBytes = hexToBytes(identity.publicKey)
+            
+            // Get the state transition client
+            val stateTransitionClient = ServiceProvider.stateTransitionClient
+            
+            // Check token status
+            Log.d("UserProfileActivity", "Validating nametag token status for: $nametagString")
+            
+            // Use withContext to run the blocking operation in IO dispatcher
+            val status = withContext(Dispatchers.IO) {
+                val statusFuture = stateTransitionClient.getTokenStatus(nametagToken, publicKeyBytes)
+                statusFuture.get(30, TimeUnit.SECONDS) // Wait up to 30 seconds for the result
+            }
+            
+            Log.d("UserProfileActivity", "Nametag token status: $status")
+            
+            // Update UI based on validation status
+            runOnUiThread {
+                when (status) {
+                    InclusionProofVerificationStatus.OK -> {
+                        binding.llNametagStatus.visibility = View.VISIBLE
+                        binding.llNametagActions.visibility = View.VISIBLE
+                        binding.tvNametagStatus.text = "Nametag verified ✓"
+                        binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_info)
+                        Log.i("UserProfileActivity", "Nametag token is valid: $nametagString")
+                    }
+                    InclusionProofVerificationStatus.NOT_AUTHENTICATED -> {
+                        binding.llNametagStatus.visibility = View.VISIBLE
+                        binding.tvNametagStatus.text = "Nametag not authenticated ⚠️"
+                        binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+                        Log.w("UserProfileActivity", "Nametag token not authenticated: $nametagString")
+                    }
+                    InclusionProofVerificationStatus.PATH_NOT_INCLUDED -> {
+                        binding.llNametagStatus.visibility = View.VISIBLE
+                        binding.tvNametagStatus.text = "Nametag not included in chain ⚠️"
+                        binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+                        Log.w("UserProfileActivity", "Nametag token path not included: $nametagString")
+                    }
+                    InclusionProofVerificationStatus.PATH_INVALID -> {
+                        binding.llNametagStatus.visibility = View.VISIBLE
+                        binding.tvNametagStatus.text = "Invalid nametag path ❌"
+                        binding.ivNametagStatus.setImageResource(android.R.drawable.ic_delete)
+                        Log.e("UserProfileActivity", "Nametag token path invalid: $nametagString")
+                    }
+                    else -> {
+                        binding.llNametagStatus.visibility = View.VISIBLE
+                        binding.tvNametagStatus.text = "Unknown nametag status"
+                        binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+                        Log.e("UserProfileActivity", "Unknown nametag token status: $status")
+                    }
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e("UserProfileActivity", "Error validating nametag token", e)
+            runOnUiThread {
+                binding.llNametagStatus.visibility = View.VISIBLE
+                binding.tvNametagStatus.text = "Error validating nametag: ${e.message}"
+                binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
+            }
+        }
     }
 }

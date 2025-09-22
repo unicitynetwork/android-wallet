@@ -20,7 +20,7 @@ Run the instrumented tests from Android Studio or command line:
 
 Or run specific test:
 ```bash
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.unicity.nfcwalletdemo.TokenMintInstrumentedTest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.unicitylabs.nfcwalletdemo.TokenMintInstrumentedTest
 ```
 
 ## Test Coverage
