@@ -1,10 +1,14 @@
 package org.unicitylabs.wallet.nametag
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import org.unicitylabs.wallet.di.ServiceProvider
 import org.unicitylabs.wallet.identity.IdentityManager
+import org.unicitylabs.wallet.utils.WalletConstants
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.withContext
 import org.unicitylabs.sdk.StateTransitionClient
@@ -24,6 +28,7 @@ import org.unicitylabs.sdk.transaction.NametagMintTransactionData
 import org.unicitylabs.sdk.util.InclusionProofUtils
 import java.io.File
 import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
 
 class NametagService(
     private val context: Context,
@@ -31,13 +36,25 @@ class NametagService(
 ) {
     
     private val identityManager = IdentityManager(context)
+    private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     
     companion object {
         private const val TAG = "NametagService"
         private const val NAMETAG_FILE_PREFIX = "nametag_"
         private const val NAMETAG_FILE_SUFFIX = ".json"
+        private const val MAX_RETRY_ATTEMPTS = 3
+        private const val RETRY_DELAY_MS = 1000L
     }
     
+    /**
+     * Checks if the device has an active network connection
+     */
+    private fun isNetworkAvailable(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+               capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
     
     /**
      * Mints a nametag for the given string if not already minted
@@ -52,6 +69,13 @@ class NametagService(
     ): Token<*>? = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Minting nametag: $nametagString (raw, without @unicity)")
+            
+            // Check network connectivity first
+            if (!isNetworkAvailable()) {
+                Log.e(TAG, "No network connection available")
+                throw IllegalStateException("No network connection. Please check your internet connection.")
+            }
+            
             
             // Check if nametag already exists locally
             val existingNametag = loadNametag(nametagString)
@@ -74,7 +98,6 @@ class NametagService(
             
             // Convert hex strings to byte arrays
             val secret = hexToBytes(identity.privateKey)
-            val identityNonce = hexToBytes(identity.nonce)
             
             // Create signing service with identity credentials
             val signingService = SigningService.createFromSecret(secret, nonce)
@@ -107,21 +130,62 @@ class NametagService(
             
             val mintCommitment: MintCommitment<NametagMintTransactionData<MintTransactionReason>> = MintCommitment.create(mintTransactionData)
             
-            // Submit the mint commitment
-            val submitResponse = stateTransitionClient.submitCommitment(mintCommitment).await()
+            // Submit the mint commitment with retry logic
+            var submitResponse: org.unicitylabs.sdk.api.SubmitCommitmentResponse? = null
+            var lastException: Exception? = null
             
-            if (submitResponse.status != SubmitCommitmentStatus.SUCCESS) {
-                Log.e(TAG, "Failed to submit nametag mint commitment: ${submitResponse.status}")
-                return@withContext null
+            for (attempt in 1..MAX_RETRY_ATTEMPTS) {
+                try {
+                    Log.d(TAG, "Submitting mint commitment (attempt $attempt/$MAX_RETRY_ATTEMPTS)")
+                    submitResponse = stateTransitionClient.submitCommitment(mintCommitment).await()
+                    
+                    if (submitResponse.status == SubmitCommitmentStatus.SUCCESS) {
+                        Log.d(TAG, "Mint commitment submitted successfully on attempt $attempt")
+                        break
+                    } else {
+                        Log.w(TAG, "Mint commitment failed with status: ${submitResponse.status} (attempt $attempt)")
+                        if (attempt < MAX_RETRY_ATTEMPTS) {
+                            delay(RETRY_DELAY_MS * attempt) // Exponential backoff
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error submitting mint commitment (attempt $attempt): ${e.message}", e)
+                    lastException = e
+                    
+                    // Check if it's a network error and retry
+                    if (attempt < MAX_RETRY_ATTEMPTS) {
+                        Log.d(TAG, "Retrying after ${RETRY_DELAY_MS * attempt}ms...")
+                        delay(RETRY_DELAY_MS * attempt) // Exponential backoff
+                        
+                        // Re-test network and DNS before retry
+                        if (!isNetworkAvailable()) {
+                            Log.e(TAG, "Network lost during retry")
+                            throw IllegalStateException("Network connection lost. Please check your internet connection.")
+                        }
+                    }
+                }
+            }
+            
+            if (submitResponse?.status != SubmitCommitmentStatus.SUCCESS) {
+                val errorMsg = lastException?.message ?: "Unknown error"
+                Log.e(TAG, "Failed to submit nametag mint commitment after $MAX_RETRY_ATTEMPTS attempts: $errorMsg")
+                throw lastException ?: IllegalStateException("Failed to mint nametag after $MAX_RETRY_ATTEMPTS attempts")
             }
             
             Log.d(TAG, "Nametag mint commitment submitted successfully")
             
-            // Wait for inclusion proof
-            val inclusionProof = InclusionProofUtils.waitInclusionProof(
-                stateTransitionClient,
-                mintCommitment
-            ).await()
+            // Wait for inclusion proof with timeout
+            val inclusionProof = try {
+                withContext(Dispatchers.IO) {
+                    InclusionProofUtils.waitInclusionProof(
+                        stateTransitionClient,
+                        mintCommitment
+                    ).get(30, TimeUnit.SECONDS)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get inclusion proof: ${e.message}", e)
+                throw IllegalStateException("Failed to get inclusion proof: ${e.message}")
+            }
             
             // Create the genesis transaction
             val genesisTransaction = mintCommitment.toTransaction(inclusionProof)
