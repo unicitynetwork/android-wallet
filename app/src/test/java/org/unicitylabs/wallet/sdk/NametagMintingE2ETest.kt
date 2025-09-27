@@ -241,7 +241,7 @@ class NametagMintingE2ETest {
                     nametagString,
                     nametagTokenType,
                     nametagAddress,
-                    ByteArray(10), // Token data
+                    salt, // Use the salt parameter passed to the function
                     ownerAddress
                 )
             

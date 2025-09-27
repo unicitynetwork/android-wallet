@@ -117,6 +117,10 @@ class UserProfileActivity : AppCompatActivity() {
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         agentApiService = AgentApiService()
+
+        // Initialize ServiceProvider with application context for trustbase loading
+        org.unicitylabs.wallet.di.ServiceProvider.init(applicationContext)
+
         nametagService = NametagService(this)
         identityManager = IdentityManager(this)
         setupLocationCallback()
