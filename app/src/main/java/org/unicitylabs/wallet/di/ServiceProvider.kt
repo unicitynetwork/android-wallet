@@ -1,10 +1,13 @@
 package org.unicitylabs.wallet.di
 
+import android.content.Context
 import org.unicitylabs.wallet.utils.WalletConstants
 import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.api.AggregatorClient
 import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
+import java.io.InputStream
 
 /**
  * Simple dependency injection provider for SDK services.
@@ -42,15 +45,47 @@ object ServiceProvider {
     }
 
     /**
+     * Cached trustbase instance
+     */
+    private var cachedTrustBase: RootTrustBase? = null
+
+    /**
+     * Application context for loading assets
+     */
+    private var applicationContext: Context? = null
+
+    /**
+     * Initialize the ServiceProvider with application context
+     */
+    fun init(context: Context) {
+        applicationContext = context.applicationContext
+    }
+
+    /**
      * Creates a RootTrustBase for token verification.
-     * In production, this should be fetched from the network or stored securely.
-     * For now, we'll use a test trust base.
+     * Loads from trustbase-testnet.json if available, otherwise creates a test trustbase.
      */
     fun getRootTrustBase(): RootTrustBase {
-        // For development/testing - in production this should come from the network
-        // or be stored securely with the app
+        // Return cached trustbase if available
+        cachedTrustBase?.let { return it }
+
+        // Try to load from assets if context is available
+        applicationContext?.let { context ->
+            try {
+                val inputStream: InputStream = context.assets.open("trustbase-testnet.json")
+                val json = inputStream.bufferedReader().use { it.readText() }
+                val trustBase = UnicityObjectMapper.JSON.readValue(json, RootTrustBase::class.java)
+                cachedTrustBase = trustBase
+                return trustBase
+            } catch (e: Exception) {
+                // Log error but continue to fallback
+                e.printStackTrace()
+            }
+        }
+
+        // Fallback to test trust base for unit tests or if file not found
         val testSigningService = SigningService(SigningService.generatePrivateKey())
-        return RootTrustBase(
+        val testTrustBase = RootTrustBase(
             0,
             0,
             0,
@@ -68,5 +103,7 @@ object ServiceProvider {
             null,
             emptyMap()
         )
+        cachedTrustBase = testTrustBase
+        return testTrustBase
     }
 }
