@@ -19,15 +19,16 @@ import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
-import org.unicitylabs.sdk.token.TokenState
 import org.unicitylabs.sdk.token.Token
+import org.unicitylabs.sdk.token.TokenId
+import org.unicitylabs.sdk.token.TokenState
 import org.unicitylabs.sdk.token.TokenType
 import org.unicitylabs.sdk.transaction.MintCommitment
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.transaction.NametagMintTransactionData
 import org.unicitylabs.sdk.util.InclusionProofUtils
 import org.unicitylabs.sdk.bft.RootTrustBase
-import org.unicitylabs.sdk.token.TokenId
+import org.unicitylabs.sdk.verification.VerificationException
 import java.io.File
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -88,10 +89,7 @@ class NametagService(
             }
             
             // Generate cryptographic materials for the nametag
-            val nonce = ByteArray(32).apply { 
-                SecureRandom().nextBytes(this)
-            }
-            val salt = ByteArray(32).apply {
+            val nonce = ByteArray(32).apply {
                 SecureRandom().nextBytes(this)
             }
             
@@ -126,25 +124,31 @@ class NametagService(
             // Get the nametag address
             val nametagAddress = nametagPredicate.getReference().toAddress()
 
-            // Create mint commitment for the nametag
-            val mintTransactionData: NametagMintTransactionData<MintTransactionReason> = NametagMintTransactionData(
-                    nametagString,
-                    nametagTokenType,
-                    nametagAddress,
-                    ByteArray(10), // Token data (can be customized)
-                    ownerAddress
-                )
-            
-            val mintCommitment: MintCommitment<NametagMintTransactionData<MintTransactionReason>> = MintCommitment.create(mintTransactionData)
-            
             // Submit the mint commitment with retry logic
             var submitResponse: org.unicitylabs.sdk.api.SubmitCommitmentResponse? = null
             var lastException: Exception? = null
-            
+            var mintCommitment: MintCommitment<NametagMintTransactionData<MintTransactionReason>>? = null
+
             for (attempt in 1..MAX_RETRY_ATTEMPTS) {
                 try {
+                    // Generate new salt for each attempt to avoid REQUEST_ID_EXISTS
+                    // Salt is required (cannot be null) - use random bytes for uniqueness
+                    val salt = ByteArray(32).apply {
+                        SecureRandom().nextBytes(this)
+                    }
+
+                    val mintTransactionData: NametagMintTransactionData<MintTransactionReason> = NametagMintTransactionData(
+                        nametagString,
+                        nametagTokenType,
+                        nametagAddress,
+                        salt, // Salt parameter - can be null or random bytes
+                        ownerAddress
+                    )
+
+                    mintCommitment = MintCommitment.create(mintTransactionData)
+
                     Log.d(TAG, "Submitting mint commitment (attempt $attempt/$MAX_RETRY_ATTEMPTS)")
-                    submitResponse = stateTransitionClient.submitCommitment(mintCommitment).await()
+                    submitResponse = stateTransitionClient.submitCommitment(mintCommitment!!).await()
                     
                     if (submitResponse.status == SubmitCommitmentStatus.SUCCESS) {
                         Log.d(TAG, "Mint commitment submitted successfully on attempt $attempt")
@@ -187,24 +191,34 @@ class NametagService(
                     InclusionProofUtils.waitInclusionProof(
                         stateTransitionClient,
                         rootTrustBase,
-                        mintCommitment
+                        mintCommitment!!
                     ).get(30, TimeUnit.SECONDS)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to get inclusion proof: ${e.message}", e)
                 throw IllegalStateException("Failed to get inclusion proof: ${e.message}")
             }
-            
+
             // Create the genesis transaction
-            val genesisTransaction = mintCommitment.toTransaction(inclusionProof)
-            
+            val genesisTransaction = mintCommitment!!.toTransaction(inclusionProof)
+
             // Create the nametag token
+            // Nametag tokens are proxy tokens that use the nametag predicate
             val trustBase = ServiceProvider.getRootTrustBase()
-            val nametagToken = Token.create(
-                trustBase,
-                TokenState(nametagPredicate, nametagString.toByteArray()),
-                genesisTransaction
-            )
+
+            val nametagToken = try {
+                Token.create(
+                    trustBase,
+                    TokenState(nametagPredicate, null), // tokenData should be null for nametags
+                    genesisTransaction
+                )
+            } catch (e: VerificationException) {
+                // Log the detailed verification error
+                Log.e(TAG, "Token verification failed: ${e.message}")
+                Log.e(TAG, "VerificationResult: ${e.verificationResult}")
+                Log.e(TAG, "Full exception: ", e)
+                throw e
+            }
             
             // Save the nametag to persistent storage
             saveNametag(nametagString, nametagToken, nonce)
