@@ -227,7 +227,7 @@ class MainActivity : AppCompatActivity() {
         
         if (isAgent && isAvailable && unicityTag.isNotEmpty()) {
             // Check if P2P service is already running
-            val existingService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getExistingInstance()
+            val existingService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance()
             if (existingService == null) {
                 Log.d("MainActivity", "Starting P2P service automatically")
                 try {
@@ -295,7 +295,7 @@ class MainActivity : AppCompatActivity() {
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
         val isAgent = sharedPrefs.getBoolean("is_agent", false)
         val isAvailable = sharedPrefs.getBoolean("agent_available", true)
-        val p2pService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getExistingInstance()
+        val p2pService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance()
         
         when {
             !isAgent -> {
@@ -3629,7 +3629,7 @@ class MainActivity : AppCompatActivity() {
                 .setMessage("$fromTag is trying to chat")
                 .setPositiveButton("Accept") { _, _ ->
                     // Get P2P service instance and accept handshake
-                    val p2pService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getExistingInstance()
+                    val p2pService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance()
                     p2pService?.acceptHandshake(fromTag)
                     
                     // Open chat activity

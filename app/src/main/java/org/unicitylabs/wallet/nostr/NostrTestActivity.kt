@@ -82,8 +82,23 @@ class NostrTestActivity : AppCompatActivity() {
 
         setContentView(layout)
 
-        // Initialize Nostr service
-        nostrService = NostrP2PService.getInstance(this)
+        // Initialize Nostr service using P2PServiceFactory
+        // Set Nostr as the service type for this test activity
+        org.unicitylabs.wallet.p2p.P2PServiceFactory.setServiceType(this, org.unicitylabs.wallet.p2p.P2PServiceFactory.ServiceType.NOSTR)
+
+        // Get or create the Nostr service instance with test parameters
+        val service = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance(
+            context = this,
+            userTag = "nostr_test_user",
+            userPublicKey = "test_public_key"
+        )
+
+        nostrService = if (service is NostrP2PService) {
+            service
+        } else {
+            // Fall back to direct instantiation if factory returns wrong type
+            NostrP2PService.getInstance(this) ?: throw IllegalStateException("Failed to create Nostr service")
+        }
     }
 
     private fun connectToNostr() {

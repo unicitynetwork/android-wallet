@@ -63,9 +63,10 @@ class NostrP2PService(
         private var instance: NostrP2PService? = null
 
         @JvmStatic
-        fun getInstance(context: Context?): NostrP2PService {
+        fun getInstance(context: Context?): NostrP2PService? {
+            // If context is null and no instance exists, return null instead of throwing
             if (context == null && instance == null) {
-                throw IllegalStateException("NostrP2PService not initialized. Call with valid context first.")
+                return null
             }
 
             return instance ?: synchronized(this) {

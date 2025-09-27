@@ -106,10 +106,12 @@ class ChatActivity : AppCompatActivity() {
     
     private fun initializeP2PService() {
         // Try to get existing instance first
-        p2pService = P2PServiceFactory.getExistingInstance() as? P2PMessagingService
-        
+        // Try to get existing instance first
+        val existingService = P2PServiceFactory.getInstance()
+        p2pService = existingService as? P2PMessagingService
+
         if (p2pService == null) {
-            // If no instance exists, create one
+            // If no instance exists, create one with required parameters
             val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
             val publicKey = sharedPrefs.getString("wallet_public_key", userTag) ?: userTag
             val service = P2PServiceFactory.getInstance(

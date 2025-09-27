@@ -510,11 +510,13 @@ class UserProfileActivity : AppCompatActivity() {
             val publicKey = unicityTag
             
             try {
-                p2pMessagingService = org.unicitylabs.wallet.p2p.P2PMessagingService.getInstance(
+                // Use P2PServiceFactory to get or create the P2P service instance
+                val service = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance(
                     context = applicationContext,
                     userTag = unicityTag,
                     userPublicKey = publicKey
                 )
+                p2pMessagingService = service as? org.unicitylabs.wallet.p2p.P2PMessagingService
                 Log.d("UserProfileActivity", "P2P service created successfully")
                 
                 // Set initial availability
