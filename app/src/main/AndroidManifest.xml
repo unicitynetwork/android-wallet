@@ -163,7 +163,19 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
-        
+
+        <!-- Nostr Test Activity -->
+        <activity
+            android:name=".nostr.NostrTestActivity"
+            android:exported="true"
+            android:label="Nostr Test"
+            android:theme="@style/Theme.NFCWalletDemo">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
     </application>
 
 </manifest>
