@@ -14,9 +14,11 @@ import org.bouncycastle.crypto.params.ECPrivateKeyParameters
 import org.bouncycastle.jce.ECNamedCurveTable
 import org.bouncycastle.math.ec.FixedPointCombMultiplier
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.UnmaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
 import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
+import java.security.SecureRandom
 import org.unicitylabs.wallet.data.model.UserIdentity
 import org.unicitylabs.wallet.utils.WalletConstants
 import java.math.BigInteger
@@ -198,21 +200,26 @@ class IdentityManager(private val context: Context) {
      */
     private fun deriveAddress(secret: ByteArray, nonce: ByteArray): String {
         return try {
-            // Create signing service with secret and nonce
-            val signingService = SigningService.createFromSecret(secret, nonce)
+            // Create signing service with secret
+            val signingService = SigningService.createFromSecret(secret)
             
+            // Use the currently active chain's token type and generate a token ID
+            val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
+            val tokenId = TokenId(ByteArray(32).apply {
+                SecureRandom().nextBytes(this)
+            })
+
             // Create an unmasked predicate with salt (using nonce as salt)
             val predicate = UnmaskedPredicate.create(
+                tokenId,
+                tokenType,
                 signingService,
                 HashAlgorithm.SHA256,
                 nonce  // Use nonce as salt for the unmasked predicate
             )
             
-            // Use the currently active chain's token type
-            val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
-            
             // Get the address from the predicate reference
-            val address = predicate.getReference(tokenType).toAddress()
+            val address = predicate.getReference().toAddress()
             
             // Return the address string representation
             address.toString()

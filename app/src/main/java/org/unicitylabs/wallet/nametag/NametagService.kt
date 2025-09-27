@@ -16,23 +16,26 @@ import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.address.ProxyAddress
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
-import org.unicitylabs.sdk.token.NameTagTokenState
+import org.unicitylabs.sdk.token.TokenState
 import org.unicitylabs.sdk.token.Token
 import org.unicitylabs.sdk.token.TokenType
 import org.unicitylabs.sdk.transaction.MintCommitment
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.transaction.NametagMintTransactionData
 import org.unicitylabs.sdk.util.InclusionProofUtils
+import org.unicitylabs.sdk.bft.RootTrustBase
+import org.unicitylabs.sdk.token.TokenId
 import java.io.File
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
 class NametagService(
     private val context: Context,
-    private val stateTransitionClient: StateTransitionClient = ServiceProvider.stateTransitionClient
+    private val stateTransitionClient: StateTransitionClient = ServiceProvider.stateTransitionClient,
+    private val rootTrustBase: RootTrustBase = ServiceProvider.getRootTrustBase()
 ) {
     
     private val identityManager = IdentityManager(context)
@@ -100,31 +103,35 @@ class NametagService(
             val secret = hexToBytes(identity.privateKey)
             
             // Create signing service with identity credentials
-            val signingService = SigningService.createFromSecret(secret, nonce)
+            val signingService = SigningService.createFromMaskedSecret(secret, nonce)
             
-            // Create predicate for the nametag
+            
+            // Create token id and type for the nametag
+            val nametagTokenId = TokenId(ByteArray(32).apply {
+                SecureRandom().nextBytes(this)
+            })
+            val nametagTokenType = TokenType(ByteArray(32).apply {
+                SecureRandom().nextBytes(this)
+            })
+
+            // Create predicate for the nametag (SDK 1.2 requires tokenId and tokenType)
             val nametagPredicate = MaskedPredicate.create(
+                nametagTokenId,
+                nametagTokenType,
                 signingService,
                 HashAlgorithm.SHA256,
                 nonce
             )
-            
-            // Create token type for the nametag
-            val nametagTokenType = TokenType(ByteArray(32).apply {
-                SecureRandom().nextBytes(this)
-            })
-            
+
             // Get the nametag address
-            val nametagAddress = nametagPredicate.getReference(nametagTokenType).toAddress()
-            
+            val nametagAddress = nametagPredicate.getReference().toAddress()
+
             // Create mint commitment for the nametag
             val mintTransactionData: NametagMintTransactionData<MintTransactionReason> = NametagMintTransactionData(
                     nametagString,
                     nametagTokenType,
-                    ByteArray(10), // Token data (can be customized)
-                    null, // No coin data for nametag
                     nametagAddress,
-                    salt,
+                    ByteArray(10), // Token data (can be customized)
                     ownerAddress
                 )
             
@@ -179,6 +186,7 @@ class NametagService(
                 withContext(Dispatchers.IO) {
                     InclusionProofUtils.waitInclusionProof(
                         stateTransitionClient,
+                        rootTrustBase,
                         mintCommitment
                     ).get(30, TimeUnit.SECONDS)
                 }
@@ -191,8 +199,10 @@ class NametagService(
             val genesisTransaction = mintCommitment.toTransaction(inclusionProof)
             
             // Create the nametag token
-            val nametagToken = Token(
-                NameTagTokenState(nametagPredicate, ownerAddress),
+            val trustBase = ServiceProvider.getRootTrustBase()
+            val nametagToken = Token.create(
+                trustBase,
+                TokenState(nametagPredicate, nametagString.toByteArray()),
                 genesisTransaction
             )
             

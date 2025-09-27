@@ -13,9 +13,10 @@ import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.signing.SigningService
-import org.unicitylabs.sdk.token.NameTagTokenState
+import org.unicitylabs.sdk.token.TokenState
+import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.Token
 import org.unicitylabs.sdk.token.TokenType
 import org.unicitylabs.sdk.transaction.MintCommitment
@@ -94,10 +95,15 @@ class NametagMintingE2ETest {
         random.nextBytes(salt)
         
         // Create signing service
-        val signingService = SigningService.createFromSecret(secret, nonce)
+        val signingService = SigningService.createFromMaskedSecret(secret, nonce)
         
         // Create predicate for owner
+        val tokenId = TokenId(ByteArray(32).apply { random.nextBytes(this) })
+        val tokenType = TokenType(ByteArray(32).apply { random.nextBytes(this) })
+
         val ownerPredicate = MaskedPredicate.create(
+            tokenId,
+            tokenType,
             signingService,
             HashAlgorithm.SHA256,
             nonce
@@ -109,23 +115,23 @@ class NametagMintingE2ETest {
         })
         
         // Create owner address from predicate reference
-        val ownerAddress = ownerPredicate.getReference(ownerTokenType).toAddress()
+        val ownerAddress = ownerPredicate.getReference().toAddress()
         println("Generated owner address")
-        
+
         // Step 3: Create nametag predicate
+        val nametagTokenId = TokenId(ByteArray(32).apply { random.nextBytes(this) })
+        val nametagTokenType = TokenType(ByteArray(32).apply { random.nextBytes(this) })
+
         val nametagPredicate = MaskedPredicate.create(
+            nametagTokenId,
+            nametagTokenType,
             signingService,
             HashAlgorithm.SHA256,
             nonce
         )
         
-        // Create token type for the nametag
-        val nametagTokenType = TokenType(ByteArray(32).apply {
-            random.nextBytes(this)
-        })
-        
         // Get the nametag address
-        val nametagAddress = nametagPredicate.getReference(nametagTokenType).toAddress()
+        val nametagAddress = nametagPredicate.getReference().toAddress()
         
         // Step 4: Mint the nametag
         val nametagToken = withTimeout(3.minutes) {
@@ -166,14 +172,17 @@ class NametagMintingE2ETest {
         random.nextBytes(nonce)
         random.nextBytes(salt)
         
-        val signingService = SigningService.createFromSecret(secret, nonce)
-        val ownerPredicate = MaskedPredicate.create(signingService, HashAlgorithm.SHA256, nonce)
+        val signingService = SigningService.createFromMaskedSecret(secret, nonce)
+
+        val ownerTokenId = TokenId(ByteArray(32).apply { random.nextBytes(this) })
         val ownerTokenType = TokenType(ByteArray(32).apply { random.nextBytes(this) })
-        val ownerAddress = ownerPredicate.getReference(ownerTokenType).toAddress()
-        
-        val nametagPredicate = MaskedPredicate.create(signingService, HashAlgorithm.SHA256, nonce)
+        val ownerPredicate = MaskedPredicate.create(ownerTokenId, ownerTokenType, signingService, HashAlgorithm.SHA256, nonce)
+        val ownerAddress = ownerPredicate.getReference().toAddress()
+
+        val nametagTokenId = TokenId(ByteArray(32).apply { random.nextBytes(this) })
         val nametagTokenType = TokenType(ByteArray(32).apply { random.nextBytes(this) })
-        val nametagAddress = nametagPredicate.getReference(nametagTokenType).toAddress()
+        val nametagPredicate = MaskedPredicate.create(nametagTokenId, nametagTokenType, signingService, HashAlgorithm.SHA256, nonce)
+        val nametagAddress = nametagPredicate.getReference().toAddress()
         
         // First minting should succeed
         val firstToken = withTimeout(3.minutes) {
@@ -207,14 +216,12 @@ class NametagMintingE2ETest {
             println("Minting nametag: $nametagString")
             
             // Create mint transaction data
-            val mintTransactionData: NametagMintTransactionData<MintTransactionReason> = 
+            val mintTransactionData: NametagMintTransactionData<MintTransactionReason> =
                 NametagMintTransactionData(
                     nametagString,
                     nametagTokenType,
-                    ByteArray(10), // Token data
-                    null, // No coin data for nametag
                     nametagAddress,
-                    salt,
+                    ByteArray(10), // Token data
                     ownerAddress
                 )
             
@@ -232,8 +239,10 @@ class NametagMintingE2ETest {
             println("Commitment submitted successfully")
             
             // Wait for inclusion proof
+            val trustBase = ServiceProvider.getRootTrustBase()
             val inclusionProof = InclusionProofUtils.waitInclusionProof(
                 stateTransitionClient,
+                trustBase,
                 mintCommitment
             ).await()
             println("Inclusion proof received")
@@ -243,16 +252,23 @@ class NametagMintingE2ETest {
             
             // Create the nametag token
             // Note: Using a simple predicate as placeholder for the state
-            val nametagState = NameTagTokenState(
+            val dummyTokenId = TokenId(ByteArray(32))
+            val dummyTokenType = TokenType(ByteArray(32))
+            val dummyNonce = ByteArray(32)
+            val dummySigningService = SigningService.createFromMaskedSecret(ByteArray(32), dummyNonce)
+
+            val nametagState = TokenState(
                 MaskedPredicate.create(
-                    SigningService.createFromSecret(ByteArray(32), ByteArray(32)),
+                    dummyTokenId,
+                    dummyTokenType,
+                    dummySigningService,
                     HashAlgorithm.SHA256,
-                    ByteArray(32)
+                    dummyNonce
                 ),
-                ownerAddress
+                nametagString.toByteArray()
             )
-            
-            val nametagToken = Token(nametagState, genesisTransaction)
+
+            val nametagToken = Token.create(trustBase, nametagState, genesisTransaction)
             
             println("Nametag minted successfully: $nametagString")
             nametagToken

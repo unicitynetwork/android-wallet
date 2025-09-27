@@ -39,11 +39,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.Token
+import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
+import java.security.SecureRandom
 import org.unicitylabs.sdk.transaction.InclusionProofVerificationStatus
 import org.unicitylabs.wallet.di.ServiceProvider
 import java.util.concurrent.TimeUnit
@@ -628,18 +630,24 @@ class UserProfileActivity : AppCompatActivity() {
             val nonce = hexToBytes(identity.nonce)
             
             // Create signing service and predicate
-            val signingService = SigningService.createFromSecret(secret, nonce)
+            val signingService = SigningService.createFromMaskedSecret(secret, nonce)
+
+            // Use the chain's token type for the address
+            val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
+            val tokenId = TokenId(ByteArray(32).apply {
+                SecureRandom().nextBytes(this)
+            })
+
             val predicate = MaskedPredicate.create(
+                tokenId,
+                tokenType,
                 signingService,
                 HashAlgorithm.SHA256,
                 nonce
             )
             
-            // Use the chain's token type for the address
-            val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
-            
             // Return the address
-            predicate.getReference(tokenType).toAddress()
+            predicate.getReference().toAddress()
         } catch (e: Exception) {
             Log.e("UserProfileActivity", "Error getting wallet address", e)
             null
@@ -841,7 +849,8 @@ class UserProfileActivity : AppCompatActivity() {
             
             // Use withContext to run the blocking operation in IO dispatcher
             val status = withContext(Dispatchers.IO) {
-                val statusFuture = stateTransitionClient.getTokenStatus(nametagToken, publicKeyBytes)
+                val trustBase = ServiceProvider.getRootTrustBase()
+                val statusFuture = stateTransitionClient.getTokenStatus(nametagToken, publicKeyBytes, trustBase)
                 statusFuture.get(30, TimeUnit.SECONDS) // Wait up to 30 seconds for the result
             }
             

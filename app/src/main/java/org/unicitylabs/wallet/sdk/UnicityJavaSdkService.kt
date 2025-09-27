@@ -7,7 +7,7 @@ import kotlinx.coroutines.future.await
 import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.Token
@@ -20,6 +20,7 @@ import org.unicitylabs.sdk.transaction.MintCommitment
 import org.unicitylabs.sdk.transaction.MintTransactionData
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.util.InclusionProofUtils
+import org.unicitylabs.sdk.bft.RootTrustBase
 import java.math.BigInteger
 import java.security.SecureRandom
 import java.util.Base64
@@ -29,7 +30,8 @@ import java.util.Base64
  * This service provides coroutine-based wrappers around the Java SDK's CompletableFuture APIs.
  */
 class UnicityJavaSdkService(
-    private val stateTransitionClient: StateTransitionClient = ServiceProvider.stateTransitionClient
+    private val stateTransitionClient: StateTransitionClient = ServiceProvider.stateTransitionClient,
+    private val rootTrustBase: RootTrustBase = ServiceProvider.getRootTrustBase()
 ) {
     companion object {
         private const val TAG = "UnicityJavaSdkService"
@@ -96,16 +98,18 @@ class UnicityJavaSdkService(
             )
             val coinData = TokenCoinData(coins)
             
-            // Create signing service and predicate (SDK 1.1 - no tokenId/tokenType in create)
-            val signingService = SigningService.createFromSecret(secret, nonce)
+            // Create signing service and predicate (SDK 1.2 - tokenId/tokenType required)
+            val signingService = SigningService.createFromMaskedSecret(secret, nonce)
             val predicate = MaskedPredicate.create(
+                tokenId,
+                tokenType,
                 signingService,
                 HashAlgorithm.SHA256,
                 nonce
             )
             
-            // Get recipient address from predicate reference for this token type
-            val recipientAddress = predicate.getReference(tokenType).toAddress()
+            // Get recipient address from predicate reference
+            val recipientAddress = predicate.getReference().toAddress()
             
             // Create token data as byte array
             val tokenDataMap = mapOf(
@@ -143,8 +147,8 @@ class UnicityJavaSdkService(
             
             Log.d(TAG, "Mint commitment submitted successfully")
             
-            // Wait for inclusion proof
-            val inclusionProof = InclusionProofUtils.waitInclusionProof(client, commitment).await()
+            // Wait for inclusion proof (SDK 1.2 requires trustBase)
+            val inclusionProof = InclusionProofUtils.waitInclusionProof(client, rootTrustBase, commitment).await()
             
             // Create transaction from commitment and proof
             val transaction = commitment.toTransaction(inclusionProof)
@@ -153,7 +157,8 @@ class UnicityJavaSdkService(
             val tokenState = TokenState(predicate, ByteArray(0))
             
             // Create and return the token
-            val token = Token(tokenState, transaction)
+            val trustBase = ServiceProvider.getRootTrustBase()
+            val token = Token.create(trustBase, tokenState, transaction)
             
             Log.d(TAG, "Successfully minted token")
             token
@@ -188,7 +193,7 @@ class UnicityJavaSdkService(
             val tokenNode = objectMapper.readTree(tokenJson)
             
             // Create signing service for sender
-            val signingService = SigningService.createFromSecret(senderSecret, senderNonce)
+            val signingService = SigningService.createFromMaskedSecret(senderSecret, senderNonce)
             
             // Generate salt for the transfer
             val salt = ByteArray(32)
@@ -256,7 +261,7 @@ class UnicityJavaSdkService(
             val recipientAddress = packageNode.path("recipient").asText()
             
             // Create recipient's signing service and predicate
-            val recipientSigningService = SigningService.createFromSecret(recipientSecret, recipientNonce)
+            val recipientSigningService = SigningService.createFromMaskedSecret(recipientSecret, recipientNonce)
             
             // In a real implementation, this would:
             // 1. Deserialize the sender's token
