@@ -955,7 +955,53 @@ class P2PMessagingService private constructor(
     override fun isRunning(): Boolean {
         return webSocketServer != null
     }
-    
+
+    override fun broadcastLocation(latitude: Double, longitude: Double) {
+        // For WebSocket implementation, broadcast location to all connected peers on local network
+        scope.launch {
+            try {
+                val locationMessage = mapOf(
+                    "type" to "location",
+                    "from" to userTag,
+                    "latitude" to latitude,
+                    "longitude" to longitude,
+                    "timestamp" to System.currentTimeMillis()
+                )
+
+                val json = Gson().toJson(locationMessage)
+
+                // Broadcast to all active client connections
+                activeConnections.forEach { (peerTag, client) ->
+                    try {
+                        if (client.isOpen) {
+                            client.send(json)
+                            Log.d(TAG, "Sent location to $peerTag: ($latitude, $longitude)")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to send location to $peerTag", e)
+                    }
+                }
+
+                // Also broadcast to incoming server connections
+                serverConnections.forEach { (peerTag, conn) ->
+                    try {
+                        if (conn.isOpen) {
+                            conn.send(json)
+                            Log.d(TAG, "Sent location to server connection $peerTag: ($latitude, $longitude)")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to send location to server connection $peerTag", e)
+                    }
+                }
+
+                val totalPeers = activeConnections.size + serverConnections.size
+                Log.d(TAG, "Broadcasting location to $totalPeers peers")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error broadcasting location", e)
+            }
+        }
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "Unicity Chat Messages"

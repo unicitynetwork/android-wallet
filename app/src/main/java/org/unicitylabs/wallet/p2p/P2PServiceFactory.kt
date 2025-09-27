@@ -16,7 +16,7 @@ object P2PServiceFactory {
         NOSTR
     }
 
-    private var currentServiceType: ServiceType = ServiceType.WEBSOCKET
+    private var currentServiceType: ServiceType = ServiceType.NOSTR  // Default to Nostr for cross-network support
     private var currentInstance: IP2PService? = null
 
     /**
@@ -46,9 +46,9 @@ object P2PServiceFactory {
         require(userTag != null) { "userTag required when creating new P2P service instance" }
         require(userPublicKey != null) { "userPublicKey required when creating new P2P service instance" }
 
-        // Check preferences for service type
+        // Check preferences for service type - default to Nostr for cross-network support
         val prefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
-        val useNostr = prefs.getBoolean("use_nostr_p2p", false)
+        val useNostr = prefs.getBoolean("use_nostr_p2p", true)  // Default to true for Nostr
         currentServiceType = if (useNostr) ServiceType.NOSTR else ServiceType.WEBSOCKET
 
         Log.d(TAG, "Creating new ${currentServiceType.name} P2P service instance")

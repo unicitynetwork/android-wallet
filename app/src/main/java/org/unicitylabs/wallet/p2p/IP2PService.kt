@@ -52,7 +52,12 @@ interface IP2PService {
      * Check if service is running
      */
     fun isRunning(): Boolean
-    
+
+    /**
+     * Broadcast agent location to network
+     */
+    fun broadcastLocation(latitude: Double, longitude: Double)
+
     /**
      * Data class for connection status
      */

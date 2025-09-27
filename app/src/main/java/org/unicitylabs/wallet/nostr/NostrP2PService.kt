@@ -57,8 +57,10 @@ class NostrP2PService(
             "wss://nostr-pub.wellorder.net"
         )
 
-        // Unicity relays (AWS endpoint will be added when available)
-        val UNICITY_RELAYS = mutableListOf<String>()
+        // Unicity private relay on AWS
+        val UNICITY_RELAYS = listOf(
+            "ws://unicity-nostr-relay-alb-1127350537.me-central-1.elb.amazonaws.com:8080"
+        )
 
         private var instance: NostrP2PService? = null
 
@@ -492,7 +494,10 @@ class NostrP2PService(
     // Helper methods
 
     private fun getAllRelays(): List<String> {
-        return DEFAULT_RELAYS + UNICITY_RELAYS
+        // For testing: Use only our private relay first
+        return UNICITY_RELAYS
+        // TODO: Uncomment to also use public relays
+        // return DEFAULT_RELAYS + UNICITY_RELAYS
     }
 
     private fun updateConnectionStatus(identifier: String, isConnected: Boolean) {
@@ -587,8 +592,33 @@ class NostrP2PService(
     }
 
     private fun handleAgentLocation(event: Event) {
-        // TODO: Handle agent location update
-        Log.d(TAG, "Received agent location from ${event.pubkey}")
+        try {
+            // Parse location from content (format: "lat,lon,timestamp,tag")
+            val parts = event.content.split(",")
+            if (parts.size >= 3) {
+                val latitude = parts[0].toDoubleOrNull()
+                val longitude = parts[1].toDoubleOrNull()
+                val timestamp = parts[2].toLongOrNull()
+                val agentTag = if (parts.size > 3) parts[3] else event.pubkey
+
+                if (latitude != null && longitude != null && timestamp != null) {
+                    Log.d(TAG, "Received location from $agentTag: ($latitude, $longitude) at $timestamp")
+
+                    // Update connection status with location info
+                    _connectionStatus.update { current ->
+                        current + (agentTag to IP2PService.ConnectionStatus(
+                            isConnected = true,
+                            isAvailable = true,
+                            lastSeen = timestamp
+                        ))
+                    }
+
+                    // TODO: Notify UI about new agent location
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing agent location", e)
+        }
     }
 
     private fun handleTokenTransfer(event: Event) {
@@ -599,5 +629,34 @@ class NostrP2PService(
     private fun handleFileMetadata(event: Event) {
         // TODO: Handle file metadata
         Log.d(TAG, "Received file metadata from ${event.pubkey}")
+    }
+
+    override fun broadcastLocation(latitude: Double, longitude: Double) {
+        if (!isRunning) {
+            Log.w(TAG, "Cannot broadcast location - service not running")
+            return
+        }
+
+        scope.launch {
+            try {
+                // Get user info
+                val sharedPrefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+                val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+
+                // Create location content (format: "lat,lon,timestamp,tag")
+                val timestamp = System.currentTimeMillis()
+                val content = "$latitude,$longitude,$timestamp,$unicityTag"
+
+                // Create location event
+                val event = createEvent(KIND_AGENT_LOCATION, content, emptyList())
+
+                // Broadcast to all connected relays
+                publishEvent(event)
+
+                Log.d(TAG, "Broadcasting location: ($latitude, $longitude)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error broadcasting location", e)
+            }
+        }
     }
 }
