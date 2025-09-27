@@ -85,7 +85,7 @@ android {
 
 dependencies {
     // Unicity Java SDK: https://jitpack.io/#org.unicitylabs/java-state-transition-sdk
-    implementation("org.unicitylabs:java-state-transition-sdk:1.1.6")
+    implementation("org.unicitylabs:java-state-transition-sdk:1.2.0")
 
     // Required dependencies for Unicity SDK
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.17.0")

@@ -9,8 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
 import java.security.SecureRandom
 
@@ -55,20 +56,24 @@ class UnicityJavaSdkServiceIntegrationTest {
         val (secret, nonce) = generateTestIdentity()
         
         // Create signing service
-        val signingService = SigningService.createFromSecret(secret, nonce)
+        val signingService = SigningService.createFromMaskedSecret(secret, nonce)
         assertNotNull("SigningService should be created", signingService)
-        
-        // Create predicate (SDK 1.1 - no tokenId/tokenType)
+
+        // Create predicate (SDK 1.2 - requires tokenId/tokenType)
+        val tokenId = TokenId(ByteArray(32).apply { SecureRandom().nextBytes(this) })
+        val tokenType = TokenType(ByteArray(32).apply { SecureRandom().nextBytes(this) })
+
         val predicate = MaskedPredicate.create(
+            tokenId,
+            tokenType,
             signingService,
             HashAlgorithm.SHA256,
             nonce
         )
         assertNotNull("Predicate should be created", predicate)
         
-        // Create token type and get address
-        val tokenType = TokenType(ByteArray(32).apply { SecureRandom().nextBytes(this) })
-        val address = predicate.getReference(tokenType).toAddress()
+        // Get address from predicate reference
+        val address = predicate.getReference().toAddress()
         assertNotNull("Address should be created", address)
         
         val addressString = address.toString()

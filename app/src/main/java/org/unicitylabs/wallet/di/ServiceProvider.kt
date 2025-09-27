@@ -3,6 +3,8 @@ package org.unicitylabs.wallet.di
 import org.unicitylabs.wallet.utils.WalletConstants
 import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.api.AggregatorClient
+import org.unicitylabs.sdk.bft.RootTrustBase
+import org.unicitylabs.sdk.signing.SigningService
 
 /**
  * Simple dependency injection provider for SDK services.
@@ -37,5 +39,34 @@ object ServiceProvider {
      */
     fun createStateTransitionClient(aggregatorClient: AggregatorClient): StateTransitionClient {
         return StateTransitionClient(aggregatorClient)
+    }
+
+    /**
+     * Creates a RootTrustBase for token verification.
+     * In production, this should be fetched from the network or stored securely.
+     * For now, we'll use a test trust base.
+     */
+    fun getRootTrustBase(): RootTrustBase {
+        // For development/testing - in production this should come from the network
+        // or be stored securely with the app
+        val testSigningService = SigningService(SigningService.generatePrivateKey())
+        return RootTrustBase(
+            0,
+            0,
+            0,
+            0,
+            setOf(
+                RootTrustBase.NodeInfo(
+                    "NODE",
+                    testSigningService.publicKey,
+                    1
+                )
+            ),
+            1,
+            ByteArray(0),
+            ByteArray(0),
+            null,
+            emptyMap()
+        )
     }
 }
