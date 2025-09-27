@@ -612,27 +612,28 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", android.content.Context.MODE_PRIVATE)
         val isAgent = sharedPrefs.getBoolean("is_agent", false)
         val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
-        
+
         android.util.Log.d(TAG, "ensureP2PServiceRunning - isAgent: $isAgent, unicityTag: $unicityTag")
-        
+
         if (isAgent && unicityTag.isNotEmpty()) {
-            // Check if P2P service is already running
-            val existingService = org.unicitylabs.wallet.p2p.P2PMessagingService.getExistingInstance()
+            // Use P2PServiceFactory to get or create P2P service
+            val existingService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance()
             if (existingService == null) {
                 android.util.Log.d(TAG, "P2P service not running, starting it now...")
                 try {
                     val publicKey = unicityTag // TODO: Get actual public key
-                    org.unicitylabs.wallet.p2p.P2PMessagingService.getInstance(
+                    val service = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance(
                         context = applicationContext,
                         userTag = unicityTag,
                         userPublicKey = publicKey
                     )
-                    android.util.Log.d(TAG, "P2P service started from AgentMapActivity")
+                    service?.start()
+                    android.util.Log.d(TAG, "P2P service (${org.unicitylabs.wallet.p2p.P2PServiceFactory.getCurrentServiceType()}) started from AgentMapActivity")
                 } catch (e: Exception) {
                     android.util.Log.e(TAG, "Failed to start P2P service", e)
                 }
             } else {
-                android.util.Log.d(TAG, "P2P service already running")
+                android.util.Log.d(TAG, "P2P service (${org.unicitylabs.wallet.p2p.P2PServiceFactory.getCurrentServiceType()}) already running")
             }
         }
     }
