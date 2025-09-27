@@ -147,6 +147,9 @@ class MainActivity : AppCompatActivity() {
         initializeBTMesh()
         
         setupActionBar()
+        // Initialize ServiceProvider with application context for trustbase loading
+        org.unicitylabs.wallet.di.ServiceProvider.init(applicationContext)
+
         setupNfc()
         setupUI()
         setupRecyclerView()
