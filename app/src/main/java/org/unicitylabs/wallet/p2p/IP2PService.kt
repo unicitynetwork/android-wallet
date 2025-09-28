@@ -59,6 +59,11 @@ interface IP2PService {
     fun broadcastLocation(latitude: Double, longitude: Double)
 
     /**
+     * Update agent availability status
+     */
+    fun updateAvailability(isAvailable: Boolean)
+
+    /**
      * Data class for connection status
      */
     data class ConnectionStatus(
