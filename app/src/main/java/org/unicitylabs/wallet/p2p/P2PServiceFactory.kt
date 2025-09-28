@@ -46,18 +46,34 @@ object P2PServiceFactory {
         require(userTag != null) { "userTag required when creating new P2P service instance" }
         require(userPublicKey != null) { "userPublicKey required when creating new P2P service instance" }
 
-        // Check preferences for service type - default to Nostr for cross-network support
+        // Always use Nostr for cross-network support
+        // Later we can add a preference if needed, but for now force Nostr
+        currentServiceType = ServiceType.NOSTR
+
+        // Ensure Nostr preference is set
         val prefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
-        val useNostr = prefs.getBoolean("use_nostr_p2p", true)  // Default to true for Nostr
-        currentServiceType = if (useNostr) ServiceType.NOSTR else ServiceType.WEBSOCKET
+        prefs.edit().putBoolean("use_nostr_p2p", true).apply()
 
         Log.d(TAG, "Creating new ${currentServiceType.name} P2P service instance")
 
         currentInstance = when (currentServiceType) {
             ServiceType.NOSTR -> {
-                NostrP2PService.getInstance(context)
+                Log.d(TAG, "Initializing Nostr P2P service")
+                val nostrService = NostrP2PService.getInstance(context)
+                if (nostrService != null) {
+                    Log.d(TAG, "Nostr service created successfully")
+                    // Start the service if not already running
+                    if (!nostrService.isRunning()) {
+                        nostrService.start()
+                        Log.d(TAG, "Nostr service started")
+                    }
+                } else {
+                    Log.e(TAG, "Failed to create Nostr service")
+                }
+                nostrService
             }
             ServiceType.WEBSOCKET -> {
+                Log.d(TAG, "Initializing WebSocket P2P service")
                 P2PMessagingService.getInstance(context, userTag, userPublicKey)
             }
         }

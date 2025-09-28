@@ -35,6 +35,13 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
 - **QR Code Support**: Share addresses and tokens via QR codes
 - **P2P Messaging**: Built-in chat for transaction coordination
 
+### P2P Infrastructure
+- **Nostr Protocol**: Decentralized messaging using WebSocket connections
+- **AWS Relay**: Private Nostr relay on AWS ECS (ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080)
+- **Agent Discovery**: GPS-based agent location broadcasting
+- **Chat System**: Peer-to-peer messaging with handshake protocol
+- **Availability Status**: Agents can toggle online/offline status
+
 ## 📱 Requirements
 
 - **Android 12+** (API level 31+, minSdk 31)
@@ -97,6 +104,8 @@ Data Layer (Models/Storage)
 - **HostCardEmulatorService**: NFC HCE service for receiving tokens
 - **HybridNfcBluetoothClient**: Orchestrates hybrid NFC + Bluetooth transfers
 - **BluetoothMeshTransferService**: Handles Bluetooth LE mesh data transfer
+- **NostrP2PService**: Decentralized P2P messaging via Nostr protocol
+- **AWS Nostr Relay**: Private relay infrastructure for messaging
 - **DirectNfcClient**: Legacy NFC-only transfer implementation
 - **WalletRepository**: Manages token storage and Unicity SDK integration
 - **UnicityJavaSdkService**: Native Java SDK integration for Unicity Protocol operations

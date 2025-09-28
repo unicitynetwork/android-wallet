@@ -59,7 +59,7 @@ class NostrP2PService(
 
         // Unicity private relay on AWS
         val UNICITY_RELAYS = listOf(
-            "ws://unicity-nostr-relay-alb-1127350537.me-central-1.elb.amazonaws.com:8080"
+            "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080"
         )
 
         private var instance: NostrP2PService? = null
@@ -494,10 +494,8 @@ class NostrP2PService(
     // Helper methods
 
     private fun getAllRelays(): List<String> {
-        // For testing: Use only our private relay first
+        // Use ONLY our private AWS relay to ensure it's working
         return UNICITY_RELAYS
-        // TODO: Uncomment to also use public relays
-        // return DEFAULT_RELAYS + UNICITY_RELAYS
     }
 
     private fun updateConnectionStatus(identifier: String, isConnected: Boolean) {
@@ -656,6 +654,27 @@ class NostrP2PService(
                 Log.d(TAG, "Broadcasting location: ($latitude, $longitude)")
             } catch (e: Exception) {
                 Log.e(TAG, "Error broadcasting location", e)
+            }
+        }
+    }
+
+    override fun updateAvailability(isAvailable: Boolean) {
+        // Store availability status
+        val sharedPrefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        sharedPrefs.edit().putBoolean("agent_available", isAvailable).apply()
+
+        // Optionally broadcast availability status to network
+        if (isRunning) {
+            scope.launch {
+                try {
+                    val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+                    val content = if (isAvailable) "$unicityTag:available" else "$unicityTag:unavailable"
+                    val event = createEvent(KIND_AGENT_PROFILE, content, emptyList())
+                    publishEvent(event)
+                    Log.d(TAG, "Updated availability: $isAvailable")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error updating availability", e)
+                }
             }
         }
     }

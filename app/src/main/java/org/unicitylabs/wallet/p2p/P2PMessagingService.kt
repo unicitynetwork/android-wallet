@@ -829,7 +829,7 @@ class P2PMessagingService private constructor(
         }
     }
     
-    fun updateAvailability(isAvailable: Boolean) {
+    override fun updateAvailability(isAvailable: Boolean) {
         // Broadcast to all connected peers
         val message = P2PMessage(
             from = userTag,

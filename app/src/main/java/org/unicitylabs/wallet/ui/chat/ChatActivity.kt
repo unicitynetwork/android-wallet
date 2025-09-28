@@ -1,6 +1,7 @@
 package org.unicitylabs.wallet.ui.chat
 
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
@@ -14,6 +15,7 @@ import org.unicitylabs.wallet.data.chat.ConversationDao
 import org.unicitylabs.wallet.data.chat.MessageDao
 import org.unicitylabs.wallet.data.chat.MessageType
 import org.unicitylabs.wallet.databinding.ActivityChatBinding
+import org.unicitylabs.wallet.p2p.IP2PService
 import org.unicitylabs.wallet.p2p.P2PMessagingService
 import org.unicitylabs.wallet.p2p.P2PServiceFactory
 import kotlinx.coroutines.flow.collectLatest
@@ -34,7 +36,7 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var chatDatabase: ChatDatabase
     private lateinit var messageDao: MessageDao
     private lateinit var conversationDao: ConversationDao
-    private var p2pService: P2PMessagingService? = null
+    private var p2pService: IP2PService? = null
     
     private var agentTag: String = ""
     private var agentName: String = ""
@@ -74,6 +76,11 @@ class ChatActivity : AppCompatActivity() {
         // Get user tag from preferences
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
         userTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+
+        // If no unicity tag, check for temporary chat ID
+        if (userTag.isEmpty()) {
+            userTag = sharedPrefs.getString("temp_chat_id", "") ?: ""
+        }
         
         // Initialize P2P service if available
         initializeP2PService()
@@ -106,21 +113,52 @@ class ChatActivity : AppCompatActivity() {
     
     private fun initializeP2PService() {
         // Try to get existing instance first
-        // Try to get existing instance first
-        val existingService = P2PServiceFactory.getInstance()
-        p2pService = existingService as? P2PMessagingService
+        p2pService = P2PServiceFactory.getInstance()
 
         if (p2pService == null) {
-            // If no instance exists, create one with required parameters
+            // If no instance exists, create one for any user who wants to chat
             val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
-            val publicKey = sharedPrefs.getString("wallet_public_key", userTag) ?: userTag
-            val service = P2PServiceFactory.getInstance(
+
+            // For non-agent users who don't have a saved tag, use a temporary identifier
+            val effectiveUserTag = when {
+                userTag.isNotEmpty() -> userTag
+                else -> {
+                    // Generate or retrieve a temporary user identifier for chatting
+                    val existingTempId = sharedPrefs.getString("temp_chat_id", "") ?: ""
+                    if (existingTempId.isNotEmpty()) {
+                        existingTempId
+                    } else {
+                        val tempId = "user_${System.currentTimeMillis()}"
+                        sharedPrefs.edit().putString("temp_chat_id", tempId).apply()
+                        tempId
+                    }
+                }
+            }
+
+            // Get public key or generate one if needed
+            var publicKey = sharedPrefs.getString("wallet_public_key", "") ?: ""
+            if (publicKey.isEmpty()) {
+                // Use the effective user tag as a fallback identifier
+                publicKey = effectiveUserTag
+            }
+
+            Log.d("ChatActivity", "Initializing P2P service for user: $effectiveUserTag")
+
+            p2pService = P2PServiceFactory.getInstance(
                 context = applicationContext,
-                userTag = userTag,
+                userTag = effectiveUserTag,
                 userPublicKey = publicKey
             )
-            // For backward compatibility, cast to P2PMessagingService if needed
-            p2pService = service as? P2PMessagingService
+
+            if (p2pService != null) {
+                Log.d("ChatActivity", "P2P service initialized successfully")
+                // Start the service if it's not running
+                if (!p2pService!!.isRunning()) {
+                    p2pService!!.start()
+                }
+            } else {
+                Log.e("ChatActivity", "Failed to initialize P2P service")
+            }
         }
     }
     
@@ -237,11 +275,16 @@ class ChatActivity : AppCompatActivity() {
             .setTitle("Start Chat")
             .setMessage("Send a handshake request to $agentName?")
             .setPositiveButton("Send") { _, _ ->
+                // Initialize P2P service if needed before sending handshake
+                if (p2pService == null) {
+                    initializeP2PService()
+                }
+
                 if (p2pService != null) {
                     p2pService?.initiateHandshake(agentTag)
                     Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this, "P2P service not available. Please enable agent mode first.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Failed to initialize chat service. Please try again.", Toast.LENGTH_LONG).show()
                     finish() // Close chat if P2P is not available
                 }
             }
@@ -258,11 +301,16 @@ class ChatActivity : AppCompatActivity() {
             .setTitle("Start Chat")
             .setMessage("Send a handshake request to $agentName?")
             .setPositiveButton("Send") { _, _ ->
+                // Initialize P2P service if needed before sending handshake
+                if (p2pService == null) {
+                    initializeP2PService()
+                }
+
                 if (p2pService != null) {
                     p2pService?.initiateHandshake(agentTag)
                     Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this, "P2P service not available. Please enable agent mode first.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Failed to initialize chat service. Please try again.", Toast.LENGTH_LONG).show()
                 }
             }
             .setNegativeButton("Cancel", null)

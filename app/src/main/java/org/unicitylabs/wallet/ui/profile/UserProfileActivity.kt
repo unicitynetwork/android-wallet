@@ -60,7 +60,7 @@ class UserProfileActivity : AppCompatActivity() {
     private lateinit var nametagService: NametagService
     private lateinit var identityManager: IdentityManager
     private var isAgentMode = false
-    private var p2pMessagingService: org.unicitylabs.wallet.p2p.P2PMessagingService? = null
+    private var p2pMessagingService: org.unicitylabs.wallet.p2p.IP2PService? = null
     
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
@@ -495,14 +495,9 @@ class UserProfileActivity : AppCompatActivity() {
     private fun startP2PService() {
         Log.d("UserProfileActivity", "Starting P2P service...")
         
-        // First check if there's an existing P2P service and shut it down
-        val existingService = org.unicitylabs.wallet.p2p.P2PMessagingService.getExistingInstance()
-        if (existingService != null) {
-            Log.d("UserProfileActivity", "Shutting down existing P2P service before starting new one")
-            existingService.shutdown()
-            // Give it a moment to clean up
-            Thread.sleep(100)
-        }
+        // Reset any existing P2P service to start fresh
+        Log.d("UserProfileActivity", "Resetting P2P service factory")
+        org.unicitylabs.wallet.p2p.P2PServiceFactory.reset()
         
         val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
         val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
@@ -517,12 +512,11 @@ class UserProfileActivity : AppCompatActivity() {
             
             try {
                 // Use P2PServiceFactory to get or create the P2P service instance
-                val service = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance(
+                p2pMessagingService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance(
                     context = applicationContext,
                     userTag = unicityTag,
                     userPublicKey = publicKey
                 )
-                p2pMessagingService = service as? org.unicitylabs.wallet.p2p.P2PMessagingService
                 Log.d("UserProfileActivity", "P2P service created successfully")
                 
                 // Set initial availability

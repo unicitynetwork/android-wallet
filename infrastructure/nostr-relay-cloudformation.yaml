@@ -162,8 +162,11 @@ Resources:
       TaskRoleArn: !GetAtt ECSTaskRole.Arn
       ContainerDefinitions:
         - Name: nostr-relay
-          Image: scsibug/nostr-rs-relay:latest
+          Image: scsibug/nostr-rs-relay:0.9.0
           Essential: true
+          WorkingDirectory: /usr/src/app
+          EntryPoint:
+            - /usr/src/app/nostr-rs-relay
           PortMappings:
             - ContainerPort: 8080
               Protocol: tcp
@@ -178,62 +181,13 @@ Resources:
               Value: admin@unicity.network
             - Name: RELAY_ICON
               Value: https://unicity.network/favicon.ico
-          MountPoints:
-            - SourceVolume: config-volume
-              ContainerPath: /usr/src/app
-              ReadOnly: false
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-group: !Ref CloudWatchLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: nostr-relay
-      Volumes:
-        - Name: config-volume
-          EFSVolumeConfiguration:
-            FilesystemId: !Ref EFSFileSystem
-            TransitEncryption: ENABLED
 
-  # EFS for persistent storage
-  EFSFileSystem:
-    Type: AWS::EFS::FileSystem
-    Properties:
-      Encrypted: true
-      PerformanceMode: generalPurpose
-      ThroughputMode: bursting
-      FileSystemTags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-efs
-
-  EFSMountTarget1:
-    Type: AWS::EFS::MountTarget
-    Properties:
-      FileSystemId: !Ref EFSFileSystem
-      SubnetId: !Ref PublicSubnet1
-      SecurityGroups:
-        - !Ref EFSSecurityGroup
-
-  EFSMountTarget2:
-    Type: AWS::EFS::MountTarget
-    Properties:
-      FileSystemId: !Ref EFSFileSystem
-      SubnetId: !Ref PublicSubnet2
-      SecurityGroups:
-        - !Ref EFSSecurityGroup
-
-  EFSSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for EFS
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 2049
-          ToPort: 2049
-          SourceSecurityGroupId: !Ref ECSSecurityGroup
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-efs-sg
 
   # Application Load Balancer
   ApplicationLoadBalancer:
@@ -338,16 +292,6 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-      Policies:
-        - PolicyName: EFSAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - elasticfilesystem:ClientMount
-                  - elasticfilesystem:ClientWrite
-                Resource: !GetAtt EFSFileSystem.Arn
 
   ECSTaskRole:
     Type: AWS::IAM::Role
