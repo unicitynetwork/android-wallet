@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -121,6 +122,219 @@ public class NostrClient {
             @Override
             public void onFailure(WebSocket webSocket, Throwable t, Response response) {
                 System.err.println("❌ WebSocket error: " + t.getMessage());
+                future.completeExceptionally(t);
+            }
+        };
+
+        httpClient.newWebSocket(request, listener);
+        return future;
+    }
+
+    /**
+     * Publish a nametag binding to the Nostr relay
+     */
+    public CompletableFuture<Boolean> publishNametagBinding(String relayUrl, String nametagId, String unicityAddress) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        NostrNametagBinding bindingManager = new NostrNametagBinding();
+
+        try {
+            NostrEvent bindingEvent = bindingManager.createBindingEvent(
+                publicKeyHex, privateKey, nametagId, unicityAddress);
+
+            Request request = new Request.Builder()
+                    .url(relayUrl)
+                    .build();
+
+            WebSocketListener listener = new WebSocketListener() {
+                @Override
+                public void onOpen(WebSocket webSocket, Response response) {
+                    try {
+                        List<Object> eventRequest = Arrays.asList("EVENT", bindingEvent);
+                        String json = jsonMapper.writeValueAsString(eventRequest);
+
+                        System.out.println("🔗 Publishing nametag binding...");
+                        System.out.println("   Nametag: " + nametagId);
+                        System.out.println("   Address: " + unicityAddress.substring(0, 16) + "...");
+                        System.out.println("   Event ID: " + bindingEvent.id.substring(0, 16) + "...");
+                        webSocket.send(json);
+                    } catch (Exception e) {
+                        future.completeExceptionally(e);
+                        webSocket.close(1000, "Error");
+                    }
+                }
+
+                @Override
+                public void onMessage(WebSocket webSocket, String text) {
+                    try {
+                        List<?> message = jsonMapper.readValue(text, List.class);
+                        String messageType = (String) message.get(0);
+
+                        if ("OK".equals(messageType)) {
+                            boolean success = message.size() > 2 && (Boolean) message.get(2);
+                            if (success) {
+                                System.out.println("✅ Nametag binding published successfully!");
+                                future.complete(true);
+                            } else {
+                                System.err.println("❌ Binding rejected: " + (message.size() > 3 ? message.get(3) : ""));
+                                future.complete(false);
+                            }
+                            webSocket.close(1000, "Done");
+                        }
+                    } catch (Exception e) {
+                        future.completeExceptionally(e);
+                        webSocket.close(1000, "Error");
+                    }
+                }
+
+                @Override
+                public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+                    future.completeExceptionally(t);
+                }
+            };
+
+            httpClient.newWebSocket(request, listener);
+            return future;
+
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+            return future;
+        }
+    }
+
+    /**
+     * Query nametag binding by Nostr pubkey
+     */
+    public CompletableFuture<String> queryNametagByPubkey(String relayUrl, String nostrPubkey) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        NostrNametagBinding bindingManager = new NostrNametagBinding();
+
+        Request request = new Request.Builder()
+                .url(relayUrl)
+                .build();
+
+        WebSocketListener listener = new WebSocketListener() {
+            private String subscriptionId = "query-nametag-" + System.currentTimeMillis();
+
+            @Override
+            public void onOpen(WebSocket webSocket, Response response) {
+                try {
+                    Map<String, Object> filter = bindingManager.createPubkeyToNametagFilter(nostrPubkey);
+                    List<Object> reqMessage = Arrays.asList("REQ", subscriptionId, filter);
+                    String json = jsonMapper.writeValueAsString(reqMessage);
+
+                    System.out.println("🔍 Querying nametag for pubkey: " + nostrPubkey.substring(0, 16) + "...");
+                    webSocket.send(json);
+                } catch (Exception e) {
+                    future.completeExceptionally(e);
+                    webSocket.close(1000, "Error");
+                }
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, String text) {
+                try {
+                    List<?> message = jsonMapper.readValue(text, List.class);
+                    String messageType = (String) message.get(0);
+
+                    if ("EVENT".equals(messageType) && message.size() > 2) {
+                        Map<String, Object> eventData = (Map<String, Object>) message.get(2);
+                        NostrEvent event = jsonMapper.convertValue(eventData, NostrEvent.class);
+                        String nametag = bindingManager.parseNametagFromEvent(event);
+
+                        if (nametag != null) {
+                            System.out.println("✅ Found nametag: " + nametag);
+                            future.complete(nametag);
+                            webSocket.close(1000, "Done");
+                        }
+                    } else if ("EOSE".equals(messageType)) {
+                        if (!future.isDone()) {
+                            System.out.println("❌ No nametag found for pubkey");
+                            future.complete(null);
+                            webSocket.close(1000, "Done");
+                        }
+                    }
+                } catch (Exception e) {
+                    future.completeExceptionally(e);
+                    webSocket.close(1000, "Error");
+                }
+            }
+
+            @Override
+            public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+                future.completeExceptionally(t);
+            }
+        };
+
+        httpClient.newWebSocket(request, listener);
+        return future;
+    }
+
+    /**
+     * Query Nostr pubkey by nametag
+     */
+    public CompletableFuture<String> queryPubkeyByNametag(String relayUrl, String nametagId) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        NostrNametagBinding bindingManager = new NostrNametagBinding();
+
+        Request request = new Request.Builder()
+                .url(relayUrl)
+                .build();
+
+        WebSocketListener listener = new WebSocketListener() {
+            private String subscriptionId = "query-pubkey-" + System.currentTimeMillis();
+
+            @Override
+            public void onOpen(WebSocket webSocket, Response response) {
+                try {
+                    Map<String, Object> filter = bindingManager.createNametagToPubkeyFilter(nametagId);
+                    List<Object> reqMessage = Arrays.asList("REQ", subscriptionId, filter);
+                    String json = jsonMapper.writeValueAsString(reqMessage);
+
+                    System.out.println("🔍 Querying pubkey for nametag: " + nametagId);
+                    System.out.println("   Filter: " + filter);
+                    webSocket.send(json);
+                } catch (Exception e) {
+                    future.completeExceptionally(e);
+                    webSocket.close(1000, "Error");
+                }
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, String text) {
+                try {
+                    List<?> message = jsonMapper.readValue(text, List.class);
+                    String messageType = (String) message.get(0);
+
+                    if ("EVENT".equals(messageType) && message.size() > 2) {
+                        Map<String, Object> eventData = (Map<String, Object>) message.get(2);
+                        String pubkey = (String) eventData.get("pubkey");
+
+                        // Debug: Show the event we received
+                        System.out.println("   Received event for nametag query:");
+                        System.out.println("   Event pubkey: " + (pubkey != null ? pubkey.substring(0, 16) + "..." : "null"));
+                        System.out.println("   Event kind: " + eventData.get("kind"));
+                        System.out.println("   Event tags: " + eventData.get("tags"));
+
+                        if (pubkey != null) {
+                            System.out.println("✅ Found pubkey: " + pubkey.substring(0, 16) + "...");
+                            future.complete(pubkey);
+                            webSocket.close(1000, "Done");
+                        }
+                    } else if ("EOSE".equals(messageType)) {
+                        if (!future.isDone()) {
+                            System.out.println("❌ No pubkey found for nametag");
+                            future.complete(null);
+                            webSocket.close(1000, "Done");
+                        }
+                    }
+                } catch (Exception e) {
+                    future.completeExceptionally(e);
+                    webSocket.close(1000, "Error");
+                }
+            }
+
+            @Override
+            public void onFailure(WebSocket webSocket, Throwable t, Response response) {
                 future.completeExceptionally(t);
             }
         };
