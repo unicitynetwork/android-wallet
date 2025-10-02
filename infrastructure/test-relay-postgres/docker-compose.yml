@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16.3
+    environment:
+      POSTGRES_USER: nostrrelay
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: nostr
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nostrrelay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nostr-relay:
+    image: scsibug/nostr-rs-relay:0.9.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.toml:/usr/src/app/config.toml:ro
+    environment:
+      RUST_LOG: info,nostr_rs_relay=debug
+      DATABASE_URL: postgresql://nostrrelay:testpassword@postgres:5432/nostr
+    command: /usr/src/app/nostr-rs-relay
+
+volumes:
+  postgres_data:

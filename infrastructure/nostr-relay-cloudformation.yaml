@@ -21,6 +21,14 @@ Parameters:
     Default: ''
     Description: ARN of the SSL certificate (optional, will create if not provided)
 
+  DBPassword:
+    Type: String
+    Description: PostgreSQL database password
+    NoEcho: true
+    MinLength: 12
+    Default: 'ChangeMeNow123!'
+    ConstraintDescription: Must be at least 12 characters
+
 Resources:
   # VPC Configuration
   VPC:
@@ -54,6 +62,26 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-public-subnet-2
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.11.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-subnet-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.0.12.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-subnet-2
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -166,7 +194,30 @@ Resources:
           Essential: true
           WorkingDirectory: /usr/src/app
           EntryPoint:
-            - /usr/src/app/nostr-rs-relay
+            - /bin/sh
+            - -c
+          Command:
+            - !Sub |
+              cat > /usr/src/app/config.toml << 'EOF'
+              [database]
+              engine = "postgres"
+              connection = "postgresql://nostrrelay:${DBPassword}@${NostrDatabase.Endpoint.Address}:5432/nostr"
+
+              [network]
+              address = "0.0.0.0"
+              port = 8080
+
+              [limits]
+              messages_per_sec = 10
+              max_event_bytes = 524288
+              max_subscriptions = 100
+
+              [retention]
+              default_retention = 0
+              EOF
+              echo "Config file created with PostgreSQL connection"
+              cat /usr/src/app/config.toml
+              exec /usr/src/app/nostr-rs-relay
           PortMappings:
             - ContainerPort: 8080
               Protocol: tcp
@@ -248,6 +299,57 @@ Resources:
       Port: 8080
       Protocol: HTTP
 
+  # RDS PostgreSQL Database
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Nostr relay PostgreSQL database
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db-subnet-group
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for PostgreSQL database
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db-sg
+
+  NostrDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub ${AWS::StackName}-postgres
+      Engine: postgres
+      EngineVersion: '16.3'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: nostrrelay
+      MasterUserPassword: !Ref DBPassword
+      DBName: nostr
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: "03:00-04:00"
+      PreferredMaintenanceWindow: "sun:04:00-sun:05:00"
+      MultiAZ: false  # Set to true for production
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-postgres
+
   # ECS Service
   NostrRelayService:
     Type: AWS::ECS::Service
@@ -258,7 +360,7 @@ Resources:
       ServiceName: !Sub ${AWS::StackName}-nostr-relay
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref NostrRelayTaskDefinition
-      DesiredCount: 2
+      DesiredCount: 1
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -437,6 +539,18 @@ Outputs:
     Value: !Ref S3Bucket
     Export:
       Name: !Sub ${AWS::StackName}-s3-bucket
+
+  DatabaseEndpoint:
+    Description: PostgreSQL database endpoint
+    Value: !GetAtt NostrDatabase.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-db-endpoint
+
+  DatabasePort:
+    Description: PostgreSQL database port
+    Value: !GetAtt NostrDatabase.Endpoint.Port
+    Export:
+      Name: !Sub ${AWS::StackName}-db-port
 
   ECSClusterName:
     Description: ECS Cluster name
