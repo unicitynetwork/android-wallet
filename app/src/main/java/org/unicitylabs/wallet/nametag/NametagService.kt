@@ -4,9 +4,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
-import org.unicitylabs.wallet.di.ServiceProvider
-import org.unicitylabs.wallet.identity.IdentityManager
-import org.unicitylabs.wallet.utils.WalletConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
@@ -15,6 +12,7 @@ import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.address.ProxyAddress
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
+import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
@@ -27,8 +25,9 @@ import org.unicitylabs.sdk.transaction.MintCommitment
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.transaction.NametagMintTransactionData
 import org.unicitylabs.sdk.util.InclusionProofUtils
-import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.verification.VerificationException
+import org.unicitylabs.wallet.di.ServiceProvider
+import org.unicitylabs.wallet.identity.IdentityManager
 import java.io.File
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit

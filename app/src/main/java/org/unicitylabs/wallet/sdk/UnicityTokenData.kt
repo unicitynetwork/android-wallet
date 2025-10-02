@@ -1,16 +1,16 @@
 package org.unicitylabs.wallet.sdk
 
-import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
+import com.fasterxml.jackson.annotation.JsonProperty
+import org.unicitylabs.wallet.util.JsonMapper
 
 data class UnicityIdentity(
     val privateKey: String,
     val nonce: String
 ) {
-    fun toJson(): String = Gson().toJson(this)
-    
+    fun toJson(): String = JsonMapper.toJson(this)
+
     companion object {
-        fun fromJson(json: String): UnicityIdentity = Gson().fromJson(json, UnicityIdentity::class.java)
+        fun fromJson(json: String): UnicityIdentity = JsonMapper.fromJson(json)
     }
 }
 
@@ -19,10 +19,10 @@ data class UnicityTokenData(
     val amount: Long = 100,
     val stateData: String = "Default state"
 ) {
-    fun toJson(): String = Gson().toJson(this)
-    
+    fun toJson(): String = JsonMapper.toJson(this)
+
     companion object {
-        fun fromJson(json: String): UnicityTokenData = Gson().fromJson(json, UnicityTokenData::class.java)
+        fun fromJson(json: String): UnicityTokenData = JsonMapper.fromJson(json)
     }
 }
 
@@ -31,18 +31,18 @@ data class UnicityMintResult(
     val identity: UnicityIdentity,
     val status: String? = null  // Add status field for pending tokens
 ) {
-    fun toJson(): String = Gson().toJson(this)
-    
+    fun toJson(): String = JsonMapper.toJson(this)
+
     companion object {
-        fun fromJson(json: String): UnicityMintResult = Gson().fromJson(json, UnicityMintResult::class.java)
-        
+        fun fromJson(json: String): UnicityMintResult = JsonMapper.fromJson(json)
+
         fun success(tokenJson: String): UnicityMintResult {
             // Parse token JSON to extract identity if possible
             // For now, create a dummy identity since we need to refactor this
             val dummyIdentity = UnicityIdentity("", "")
             return UnicityMintResult(tokenJson, dummyIdentity, "success")
         }
-        
+
         fun error(message: String): UnicityMintResult {
             val dummyIdentity = UnicityIdentity("", "")
             return UnicityMintResult(message, dummyIdentity, "error")
@@ -53,13 +53,13 @@ data class UnicityMintResult(
 data class UnicityTransferResult(
     val token: Any,
     val transaction: Any,
-    @SerializedName("receiverPredicate")
+    @JsonProperty("receiverPredicate")  // Jackson uses @JsonProperty instead of @SerializedName
     val receiverPredicate: UnicityIdentity
 ) {
-    fun toJson(): String = Gson().toJson(this)
-    
+    fun toJson(): String = JsonMapper.toJson(this)
+
     companion object {
-        fun fromJson(json: String): UnicityTransferResult = Gson().fromJson(json, UnicityTransferResult::class.java)
+        fun fromJson(json: String): UnicityTransferResult = JsonMapper.fromJson(json)
     }
 }
 
@@ -72,9 +72,9 @@ data class UnicityToken(
     val mintResult: UnicityMintResult? = null,
     val isReal: Boolean = true
 ) {
-    fun toJson(): String = Gson().toJson(this)
-    
+    fun toJson(): String = JsonMapper.toJson(this)
+
     companion object {
-        fun fromJson(json: String): UnicityToken = Gson().fromJson(json, UnicityToken::class.java)
+        fun fromJson(json: String): UnicityToken = JsonMapper.fromJson(json)
     }
 }

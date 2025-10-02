@@ -11,9 +11,9 @@ import androidx.lifecycle.viewModelScope
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.api.services.drive.DriveScopes
+import kotlinx.coroutines.launch
 import org.unicitylabs.wallet.identity.GoogleDriveBackupManager
 import org.unicitylabs.wallet.identity.IdentityManager
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

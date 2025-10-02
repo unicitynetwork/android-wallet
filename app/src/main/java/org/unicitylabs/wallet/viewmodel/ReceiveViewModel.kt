@@ -3,12 +3,12 @@ package org.unicitylabs.wallet.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.data.repository.WalletRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.data.repository.WalletRepository
 
 enum class ReceiveState {
     READY_TO_RECEIVE,

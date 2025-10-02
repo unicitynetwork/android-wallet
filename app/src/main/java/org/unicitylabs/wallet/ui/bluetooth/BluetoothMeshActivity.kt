@@ -18,14 +18,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import org.unicitylabs.wallet.bluetooth.BluetoothMeshManager
-import org.unicitylabs.wallet.databinding.ActivityBluetoothMeshBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import org.unicitylabs.wallet.bluetooth.BluetoothMeshManager
+import org.unicitylabs.wallet.databinding.ActivityBluetoothMeshBinding
 import java.util.UUID
 
 class BluetoothMeshActivity : AppCompatActivity() {

@@ -3,14 +3,14 @@ package org.unicitylabs.wallet.nostr
 import android.content.Context
 import android.util.Log
 import fr.acinq.secp256k1.Secp256k1
+import kotlinx.coroutines.runBlocking
 import org.spongycastle.crypto.digests.SHA256Digest
 import org.spongycastle.util.encoders.Hex
 import org.unicitylabs.wallet.identity.IdentityManager
-import kotlinx.coroutines.runBlocking
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import java.security.SecureRandom
 
 /**
  * Production-ready Nostr key management that integrates with wallet's existing identity

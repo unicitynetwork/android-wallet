@@ -4,11 +4,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import com.google.gson.Gson
+import kotlinx.coroutines.launch
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import org.unicitylabs.wallet.ui.receive.ReceiveActivity
-import kotlinx.coroutines.launch
+import org.unicitylabs.wallet.util.JsonMapper
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
@@ -22,7 +22,7 @@ class HostCardEmulatorLogic(
     private var tokenChunks: List<ByteArray> = emptyList()
     private var currentChunkIndex = 0
     private var transferMode = "BLE_READY"
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
 
     // Storage for generated receiver addresses
     private var generatedReceiverAddress: String? = null
@@ -282,7 +282,7 @@ class HostCardEmulatorLogic(
 
             // Check if this is crypto transfer data or token data
             val transferType = try {
-                val dataMap = gson.fromJson(receivedData, Map::class.java)
+                val dataMap = JsonMapper.fromJson(receivedData, Map::class.java)
                 dataMap["type"] as? String
             } catch (e: Exception) {
                 null
@@ -318,7 +318,7 @@ class HostCardEmulatorLogic(
     private fun processTokenTransfer(tokenJson: String) {
         try {
             // Parse the token
-            val receivedToken = gson.fromJson(tokenJson, Token::class.java)
+            val receivedToken = JsonMapper.fromJson(tokenJson, Token::class.java)
             tokenToReceive = receivedToken
 
             Log.d(TAG, "Token successfully received via direct NFC: ${receivedToken.name}")
@@ -451,7 +451,7 @@ class HostCardEmulatorLogic(
         pendingToken = token
 
         // Create chunks for sending
-        val tokenJson = gson.toJson(token)
+        val tokenJson = JsonMapper.toJson(token)
         val tokenBytes = tokenJson.toByteArray(StandardCharsets.UTF_8)
 
         Log.d(TAG, "Preparing direct transfer for token: ${token.name}, size: ${tokenBytes.size} bytes")
@@ -513,7 +513,7 @@ class HostCardEmulatorLogic(
 
             // Parse the token request to get token ID and type
             val tokenRequest = try {
-                gson.fromJson(requestData, TokenTransferRequest::class.java)
+                JsonMapper.fromJson(requestData, TokenTransferRequest::class.java)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse token transfer request", e)
                 return SW_ERROR
@@ -612,7 +612,7 @@ class HostCardEmulatorLogic(
                     receiver_address = address
                 )
 
-                val responseJson = gson.toJson(response)
+                val responseJson = JsonMapper.toJson(response)
                 val responseBytes = responseJson.toByteArray(StandardCharsets.UTF_8)
                 
                 // Check response size to ensure it fits in APDU
@@ -621,7 +621,7 @@ class HostCardEmulatorLogic(
                     Log.e(TAG, "Response too large: ${responseBytes.size} bytes, using minimal format")
                     // If still too large, just send the address
                     val minimalResponse = mapOf("address" to address)
-                    val minimalJson = gson.toJson(minimalResponse)
+                    val minimalJson = JsonMapper.toJson(minimalResponse)
                     minimalJson.toByteArray(StandardCharsets.UTF_8) + SW_OK
                 } else {
                     responseBytes + SW_OK
@@ -636,7 +636,7 @@ class HostCardEmulatorLogic(
                     error = "Receiver address still being generated"
                 )
 
-                val responseJson = gson.toJson(response)
+                val responseJson = JsonMapper.toJson(response)
                 val responseBytes = responseJson.toByteArray(StandardCharsets.UTF_8)
 
                 // Return the not ready response + SW_OK (sender should retry)
@@ -700,7 +700,7 @@ class HostCardEmulatorLogic(
 
                 try {
                     // Parse the complete offline transaction package
-                    val transferPackage = gson.fromJson(completeOfflineTransactionData, Map::class.java)
+                    val transferPackage = JsonMapper.fromJson(completeOfflineTransactionData, Map::class.java)
                     Log.d(TAG, "Successfully parsed offline transaction package")
                     
                     // Log the structure to understand what we received
@@ -743,13 +743,13 @@ class HostCardEmulatorLogic(
 
             // Try to parse as OfflineTransactionPackage first
             try {
-                val transferPackage = gson.fromJson(receivedData, OfflineTransactionPackage::class.java)
+                val transferPackage = JsonMapper.fromJson(receivedData, OfflineTransactionPackage::class.java)
                 Log.d(TAG, "Successfully parsed as OfflineTransactionPackage, processing...")
                 processOfflineUnicityTransfer(receivedData)
             } catch (e: Exception) {
                 // Fall back to old format with type field
                 Log.w(TAG, "Failed to parse as OfflineTransactionPackage, trying legacy format", e)
-                val transferPackage = gson.fromJson(receivedData, Map::class.java)
+                val transferPackage = JsonMapper.fromJson(receivedData, Map::class.java)
                 val transferType = transferPackage["type"] as? String
                 
                 if (transferType == "unicity_offline_transfer") {
@@ -758,7 +758,7 @@ class HostCardEmulatorLogic(
                     val tokenName = transferPackage["token_name"] as? String ?: "Unknown Token"
                     val offlineTransaction = transferPackage["offline_transaction"] as? String ?: ""
                     val newPackage = OfflineTransactionPackage(tokenName, offlineTransaction)
-                    processOfflineUnicityTransfer(gson.toJson(newPackage))
+                    processOfflineUnicityTransfer(JsonMapper.toJson(newPackage))
                 } else {
                     Log.w(TAG, "Unknown offline transfer type: $transferType")
                 }
@@ -785,7 +785,7 @@ class HostCardEmulatorLogic(
         try {
             // Parse the transfer package
             val transferPackage = try {
-                gson.fromJson(transferPackageJson, OfflineTransactionPackage::class.java)
+                JsonMapper.fromJson(transferPackageJson, OfflineTransactionPackage::class.java)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse offline transaction package", e)
                 return
@@ -839,7 +839,7 @@ class HostCardEmulatorLogic(
             // Extract the actual transaction data from the SDK response format
             val actualTransactionData = try {
                 // First parse: Extract from SDK response wrapper {"status":"success","data":"..."}
-                val responseJson = gson.fromJson(offlineTransactionData, Map::class.java)
+                val responseJson = JsonMapper.fromJson(offlineTransactionData, Map::class.java)
                 val status = responseJson["status"] as? String
                 
                 if (status == "success") {
@@ -867,7 +867,7 @@ class HostCardEmulatorLogic(
             // Check if the transaction data is double-encoded JSON
             val finalTransactionData = try {
                 // Try to parse it as JSON to see if it's a stringified JSON
-                val parsed = gson.fromJson(actualTransactionData, Map::class.java)
+                val parsed = JsonMapper.fromJson(actualTransactionData, Map::class.java)
                 Log.d(TAG, "Transaction data appears to be valid JSON, using as-is")
                 actualTransactionData
             } catch (e: Exception) {
@@ -878,12 +878,12 @@ class HostCardEmulatorLogic(
             
             // Complete the offline transaction using the SDK
             // receiverIdentity is already a Map<String, String>, convert it to JSON
-            val receiverIdentityJson = gson.toJson(receiverIdentity)
+            val receiverIdentityJson = JsonMapper.toJson(receiverIdentity)
             Log.d(TAG, "Receiver identity JSON: ${receiverIdentityJson.take(100)}...")
             
             // Log the full transaction data to understand its structure
             try {
-                val transactionObj = gson.fromJson(actualTransactionData, Map::class.java)
+                val transactionObj = JsonMapper.fromJson(actualTransactionData, Map::class.java)
                 Log.d(TAG, "Transaction object keys: ${transactionObj.keys}")
                 if (transactionObj.containsKey("commitment")) {
                     Log.d(TAG, "Found commitment in transaction data")
@@ -895,7 +895,7 @@ class HostCardEmulatorLogic(
             // Launch coroutine to call suspend function
             kotlinx.coroutines.GlobalScope.launch {
                 // Parse receiver identity
-                val identityJson = gson.fromJson(receiverIdentityJson, Map::class.java)
+                val identityJson = JsonMapper.fromJson(receiverIdentityJson, Map::class.java)
                 val receiverSecret = (identityJson["secret"] as? String ?: "").toByteArray()
                 val receiverNonce = hexStringToByteArray(identityJson["nonce"] as? String ?: "")
                 
@@ -958,7 +958,7 @@ class HostCardEmulatorLogic(
             
             // Parse the ping message
             val pingMessage = try {
-                gson.fromJson(pingJson, TestPingMessage::class.java)
+                JsonMapper.fromJson(pingJson, TestPingMessage::class.java)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse ping message", e)
                 return SW_ERROR
@@ -991,7 +991,7 @@ class HostCardEmulatorLogic(
                 response_message = "PONG received",
                 timestamp = System.currentTimeMillis()
             )
-            val responseBytes = gson.toJson(pongResponse).toByteArray(StandardCharsets.UTF_8)
+            val responseBytes = JsonMapper.toJson(pongResponse).toByteArray(StandardCharsets.UTF_8)
             
             Log.d(TAG, "Sending PONG: $pongResponse")
             
@@ -1042,7 +1042,7 @@ class HostCardEmulatorLogic(
                 putExtra("handshake", handshakeJson)
                 putExtra("sender_mac", handshake.bluetoothMAC)
                 putExtra("transfer_id", handshake.transferId)
-                putExtra("token_preview", gson.toJson(handshake.tokenPreview))
+                putExtra("token_preview", JsonMapper.toJson(handshake.tokenPreview))
                 setPackage(context.packageName)
             }
             context.sendBroadcast(intent)

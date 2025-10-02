@@ -1,28 +1,18 @@
 package org.unicitylabs.wallet.nostr
 
-// Nostr protocol implementation without external library dependency
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import org.spongycastle.util.encoders.Hex
+import com.google.gson.Gson
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+// Nostr protocol implementation without external library dependency
+import okhttp3.*
 import org.unicitylabs.wallet.p2p.IP2PService
-import org.unicitylabs.wallet.util.JsonMapper
-import java.security.MessageDigest
-import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.UUID
+import java.security.MessageDigest
+import fr.acinq.secp256k1.Secp256k1
+import org.spongycastle.util.encoders.Hex
 
 // Event data class for Nostr protocol
 data class Event(
@@ -90,7 +80,7 @@ class NostrP2PService(
 
     // Core components
     private val keyManager = NostrKeyManager(context)
-    // Using shared JsonMapper
+    private val gson = Gson()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // WebSocket connections
@@ -241,7 +231,7 @@ class NostrP2PService(
      */
     private fun handleRelayMessage(message: String) {
         try {
-            val json = JsonMapper.fromJson(message, List::class.java)
+            val json = gson.fromJson(message, List::class.java)
 
             when (json[0]) {
                 "EVENT" -> {
@@ -336,7 +326,7 @@ class NostrP2PService(
         val subscriptionId = UUID.randomUUID().toString().substring(0, 8)
         val request = listOf("REQ", subscriptionId, filters)
 
-        webSocket.send(JsonMapper.toJson(request))
+        webSocket.send(gson.toJson(request))
     }
 
     /**
@@ -365,7 +355,7 @@ class NostrP2PService(
 
         return createEvent(
             kind = KIND_PROFILE,
-            content = JsonMapper.toJson(content),
+            content = gson.toJson(content),
             tags = listOf()
         )
     }
@@ -412,7 +402,7 @@ class NostrP2PService(
             event.content
         )
 
-        val json = JsonMapper.toJson(serialized)
+        val json = gson.toJson(serialized)
         val hash = org.spongycastle.crypto.digests.SHA256Digest()
         val bytes = json.toByteArray()
         hash.update(bytes, 0, bytes.size)
@@ -438,7 +428,7 @@ class NostrP2PService(
      */
     private fun publishEvent(event: Event) {
         val message = listOf("EVENT", event)
-        val json = JsonMapper.toJson(message)
+        val json = gson.toJson(message)
 
         relayConnections.values.forEach { ws ->
             ws.send(json)
@@ -486,7 +476,7 @@ class NostrP2PService(
                 )
                 Log.d(TAG, "=== HANDSHAKE DEBUG: Creating encrypted message with content: $content ===")
 
-                val event = createEncryptedMessage(recipientPubkey, JsonMapper.toJson(content))
+                val event = createEncryptedMessage(recipientPubkey, gson.toJson(content))
                 Log.d(TAG, "=== HANDSHAKE DEBUG: Created event with id: ${event.id}, publishing... ===")
 
                 publishEvent(event)
@@ -533,7 +523,7 @@ class NostrP2PService(
         messageQueue.toList().forEach { queued ->
             if (relayUrl in queued.relays) {
                 val message = listOf("EVENT", queued.event)
-                ws.send(JsonMapper.toJson(message))
+                ws.send(gson.toJson(message))
             }
         }
     }

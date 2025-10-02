@@ -18,12 +18,12 @@ import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
-import java.security.SecureRandom
 import org.unicitylabs.wallet.data.model.UserIdentity
 import org.unicitylabs.wallet.utils.WalletConstants
 import java.math.BigInteger
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey

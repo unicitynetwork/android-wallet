@@ -4,13 +4,11 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.unicitylabs.wallet.p2p.IP2PService
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 

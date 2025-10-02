@@ -2,9 +2,6 @@ package org.unicitylabs.wallet.nfc
 
 import android.content.Context
 import android.util.Log
-import org.unicitylabs.wallet.bluetooth.BluetoothMeshTransferService
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +14,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONException
 import org.json.JSONObject
+import org.unicitylabs.wallet.bluetooth.BluetoothMeshTransferService
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import java.util.UUID
 
 /**

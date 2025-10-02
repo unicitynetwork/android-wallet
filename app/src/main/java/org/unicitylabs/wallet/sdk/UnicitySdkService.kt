@@ -8,7 +8,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.google.gson.Gson
+import org.unicitylabs.wallet.util.JsonMapper
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -16,7 +16,7 @@ class UnicitySdkService(context: Context) {
 
     private val webView: WebView = WebView(context)
     private val callbacks = ConcurrentHashMap<String, (Result<String>) -> Unit>()
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     private var isInitialized = false
     
     companion object {
@@ -166,7 +166,7 @@ class UnicitySdkService(context: Context) {
             params = params
         )
         
-        val requestJson = gson.toJson(request)
+        val requestJson = JsonMapper.toJson(request)
         val escapedJson = escapeJavaScriptString(requestJson)
         
         Handler(Looper.getMainLooper()).post {

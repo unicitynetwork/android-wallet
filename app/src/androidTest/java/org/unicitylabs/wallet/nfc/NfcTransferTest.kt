@@ -6,13 +6,13 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.gson.Gson
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 

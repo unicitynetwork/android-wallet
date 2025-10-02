@@ -9,6 +9,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import org.unicitylabs.wallet.data.chat.ChatConversation
 import org.unicitylabs.wallet.data.chat.ChatDatabase
 import org.unicitylabs.wallet.data.chat.ConversationDao
@@ -16,10 +18,7 @@ import org.unicitylabs.wallet.data.chat.MessageDao
 import org.unicitylabs.wallet.data.chat.MessageType
 import org.unicitylabs.wallet.databinding.ActivityChatBinding
 import org.unicitylabs.wallet.p2p.IP2PService
-import org.unicitylabs.wallet.p2p.P2PMessagingService
 import org.unicitylabs.wallet.p2p.P2PServiceFactory
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 
 class ChatActivity : AppCompatActivity() {
     companion object {

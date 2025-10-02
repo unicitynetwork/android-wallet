@@ -13,14 +13,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.google.gson.Gson
-import org.unicitylabs.wallet.R
-import org.unicitylabs.wallet.data.chat.ChatConversation
-import org.unicitylabs.wallet.data.chat.ChatDatabase
-import org.unicitylabs.wallet.data.chat.ChatMessage
-import org.unicitylabs.wallet.data.chat.MessageStatus
-import org.unicitylabs.wallet.data.chat.MessageType
-import org.unicitylabs.wallet.ui.chat.ChatActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +27,14 @@ import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ClientHandshake
 import org.java_websocket.handshake.ServerHandshake
 import org.java_websocket.server.WebSocketServer
+import org.unicitylabs.wallet.R
+import org.unicitylabs.wallet.data.chat.ChatConversation
+import org.unicitylabs.wallet.data.chat.ChatDatabase
+import org.unicitylabs.wallet.data.chat.ChatMessage
+import org.unicitylabs.wallet.data.chat.MessageStatus
+import org.unicitylabs.wallet.data.chat.MessageType
+import org.unicitylabs.wallet.ui.chat.ChatActivity
+import org.unicitylabs.wallet.util.JsonMapper
 import java.net.InetSocketAddress
 import java.net.URI
 import java.security.MessageDigest
@@ -76,7 +76,7 @@ class P2PMessagingService private constructor(
         fun getExistingInstance(): P2PMessagingService? = INSTANCE
     }
     
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     private val chatDatabase = ChatDatabase.getDatabase(context)
     private val messageDao = chatDatabase.messageDao()
     private val conversationDao = chatDatabase.conversationDao()
@@ -166,7 +166,7 @@ class P2PMessagingService private constructor(
                 Log.d(TAG, "WebSocket server received message: $message")
                 message?.let { 
                     try {
-                        val p2pMessage = gson.fromJson(it, P2PMessage::class.java)
+                        val p2pMessage = JsonMapper.fromJson(it, P2PMessage::class.java)
                         // Store the connection mapping when we receive the first message
                         if (!serverConnections.containsKey(p2pMessage.from)) {
                             conn?.let { ws ->
@@ -456,7 +456,7 @@ class P2PMessagingService private constructor(
                         type = MessageType.IDENTIFICATION,
                         content = userPublicKey
                     )
-                    send(gson.toJson(identMessage))
+                    send(JsonMapper.toJson(identMessage))
                     Log.d(TAG, "Sent identification message to $agentTag")
                     
                     // Send any pending messages
@@ -505,7 +505,7 @@ class P2PMessagingService private constructor(
         scope.launch {
             try {
                 Log.d(TAG, "Inside coroutine, parsing message...")
-                val p2pMessage = gson.fromJson(messageJson, P2PMessage::class.java)
+                val p2pMessage = JsonMapper.fromJson(messageJson, P2PMessage::class.java)
                 Log.d(TAG, "Parsed message - from: ${p2pMessage.from}, to: ${p2pMessage.to}, type: ${p2pMessage.type}")
                 
                 // Verify message is for us
@@ -701,7 +701,7 @@ class P2PMessagingService private constructor(
             client != null -> {
                 // Use outgoing connection
                 try {
-                    val messageJson = gson.toJson(message)
+                    val messageJson = JsonMapper.toJson(message)
                     Log.d(TAG, "Sending message via client connection: $messageJson")
                     client.send(messageJson)
                     Log.d(TAG, "Message sent successfully via client")
@@ -714,7 +714,7 @@ class P2PMessagingService private constructor(
             serverConn != null -> {
                 // Use incoming connection
                 try {
-                    val messageJson = gson.toJson(message)
+                    val messageJson = JsonMapper.toJson(message)
                     Log.d(TAG, "Sending message via server connection: $messageJson")
                     serverConn.send(messageJson)
                     Log.d(TAG, "Message sent successfully via server")
@@ -842,7 +842,7 @@ class P2PMessagingService private constructor(
         activeConnections.forEach { (agentTag, client) ->
             try {
                 val personalizedMessage = message.copy(to = agentTag)
-                client.send(gson.toJson(personalizedMessage))
+                client.send(JsonMapper.toJson(personalizedMessage))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send availability update to $agentTag (client)", e)
             }
@@ -852,7 +852,7 @@ class P2PMessagingService private constructor(
         serverConnections.forEach { (agentTag, conn) ->
             try {
                 val personalizedMessage = message.copy(to = agentTag)
-                conn.send(gson.toJson(personalizedMessage))
+                conn.send(JsonMapper.toJson(personalizedMessage))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send availability update to $agentTag (server)", e)
             }
@@ -968,7 +968,7 @@ class P2PMessagingService private constructor(
                     "timestamp" to System.currentTimeMillis()
                 )
 
-                val json = Gson().toJson(locationMessage)
+                val json = JsonMapper.toJson(locationMessage)
 
                 // Broadcast to all active client connections
                 activeConnections.forEach { (peerTag, client) ->

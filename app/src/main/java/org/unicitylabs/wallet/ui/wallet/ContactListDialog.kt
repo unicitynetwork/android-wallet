@@ -11,14 +11,14 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
-import org.unicitylabs.wallet.R
-import org.unicitylabs.wallet.data.model.Contact
-import org.unicitylabs.wallet.databinding.DialogContactListBinding
-import org.unicitylabs.wallet.utils.ContactsHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.unicitylabs.wallet.R
+import org.unicitylabs.wallet.data.model.Contact
+import org.unicitylabs.wallet.databinding.DialogContactListBinding
+import org.unicitylabs.wallet.utils.ContactsHelper
 
 class ContactListDialog(
     context: Context,

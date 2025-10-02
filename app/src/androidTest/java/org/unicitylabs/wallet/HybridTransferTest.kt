@@ -5,14 +5,6 @@ import android.content.Context
 import android.nfc.NfcAdapter
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.unicitylabs.wallet.bluetooth.BluetoothMeshTransferService
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.nfc.ApduTransceiver
-import org.unicitylabs.wallet.nfc.BluetoothHandshake
-import org.unicitylabs.wallet.nfc.BluetoothHandshakeResponse
-import org.unicitylabs.wallet.nfc.HybridNfcBluetoothClient
-import org.unicitylabs.wallet.nfc.TokenPreview
-import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -26,6 +18,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.unicitylabs.wallet.bluetooth.BluetoothMeshTransferService
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.nfc.ApduTransceiver
+import org.unicitylabs.wallet.nfc.BluetoothHandshake
+import org.unicitylabs.wallet.nfc.BluetoothHandshakeResponse
+import org.unicitylabs.wallet.nfc.HybridNfcBluetoothClient
+import org.unicitylabs.wallet.nfc.TokenPreview
+import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import java.util.UUID
 
 /**

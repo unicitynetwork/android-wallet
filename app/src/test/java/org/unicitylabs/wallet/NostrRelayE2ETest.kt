@@ -1,12 +1,16 @@
 package org.unicitylabs.wallet
 
-import okhttp3.*
-import org.junit.Test
-import org.junit.Assert.*
 import com.google.gson.Gson
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.security.MessageDigest
 import kotlin.random.Random
 
 /**

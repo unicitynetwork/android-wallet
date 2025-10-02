@@ -1,13 +1,13 @@
 package org.unicitylabs.wallet.network
 
 import android.util.Log
-import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.unicitylabs.wallet.util.JsonMapper
 import java.util.concurrent.TimeUnit
 
 data class TransferRequest(
@@ -49,7 +49,7 @@ class TransferApiService {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
         
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     
     suspend fun createTransferRequest(
         senderTag: String?,
@@ -69,7 +69,7 @@ class TransferApiService {
                 message = message
             )
             
-            val json = gson.toJson(requestBody)
+            val json = JsonMapper.toJson(requestBody)
             val body = json.toRequestBody("application/json".toMediaType())
             
             val request = Request.Builder()
@@ -83,7 +83,7 @@ class TransferApiService {
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
                 if (!responseBody.isNullOrEmpty()) {
-                    val transferRequest = gson.fromJson(responseBody, TransferRequest::class.java)
+                    val transferRequest = JsonMapper.fromJson(responseBody, TransferRequest::class.java)
                     Log.d(TAG, "Transfer request created: ${transferRequest.requestId}")
                     Result.success(transferRequest)
                 } else {
@@ -112,7 +112,7 @@ class TransferApiService {
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
                 if (!responseBody.isNullOrEmpty()) {
-                    val transfers = gson.fromJson(responseBody, Array<TransferRequest>::class.java).toList()
+                    val transfers = JsonMapper.fromJson(responseBody, Array<TransferRequest>::class.java).toList()
                     Log.d(TAG, "Found ${transfers.size} pending transfers for $recipientTag")
                     Result.success(transfers)
                 } else {
@@ -141,7 +141,7 @@ class TransferApiService {
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
                 if (!responseBody.isNullOrEmpty()) {
-                    val transferRequest = gson.fromJson(responseBody, TransferRequest::class.java)
+                    val transferRequest = JsonMapper.fromJson(responseBody, TransferRequest::class.java)
                     Log.d(TAG, "Transfer request accepted: $requestId")
                     Result.success(transferRequest)
                 } else {
@@ -171,7 +171,7 @@ class TransferApiService {
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
                 if (!responseBody.isNullOrEmpty()) {
-                    val transferRequest = gson.fromJson(responseBody, TransferRequest::class.java)
+                    val transferRequest = JsonMapper.fromJson(responseBody, TransferRequest::class.java)
                     Log.d(TAG, "Transfer request rejected: $requestId")
                     Result.success(transferRequest)
                 } else {

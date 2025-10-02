@@ -18,7 +18,7 @@ import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.gson.Gson
+import kotlinx.coroutines.launch
 import org.unicitylabs.wallet.R
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.data.model.TokenStatus
@@ -26,16 +26,16 @@ import org.unicitylabs.wallet.databinding.ActivityReceiveBinding
 import org.unicitylabs.wallet.nfc.HostCardEmulatorLogic
 import org.unicitylabs.wallet.sdk.UnicitySdkService
 import org.unicitylabs.wallet.ui.wallet.MainActivity
+import org.unicitylabs.wallet.util.JsonMapper
 import org.unicitylabs.wallet.viewmodel.ReceiveState
 import org.unicitylabs.wallet.viewmodel.ReceiveViewModel
-import kotlinx.coroutines.launch
 
 class ReceiveActivity : AppCompatActivity() {
     private lateinit var binding: ActivityReceiveBinding
     private val viewModel: ReceiveViewModel by viewModels()
     
     private var nfcAdapter: NfcAdapter? = null
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     private lateinit var sdkService: UnicitySdkService
     
     // Success dialog properties
@@ -67,7 +67,7 @@ class ReceiveActivity : AppCompatActivity() {
                         if (tokenJson != null) {
                             try {
                                 // Check if this is a Unicity transfer or demo token
-                                val transferData = gson.fromJson(tokenJson, Map::class.java)
+                                val transferData = JsonMapper.fromJson(tokenJson, Map::class.java)
                                 when (transferData["type"]) {
                                     "unicity_transfer" -> {
                                         // Handle online Unicity transfer
@@ -83,7 +83,7 @@ class ReceiveActivity : AppCompatActivity() {
                                     }
                                     else -> {
                                         // Handle demo token
-                                        val token = gson.fromJson(tokenJson, Token::class.java)
+                                        val token = JsonMapper.fromJson(tokenJson, Token::class.java)
                                         Log.d("ReceiveActivity", "Demo token received via NFC: ${token.name}")
                                         runOnUiThread {
                                             viewModel.onTokenReceived(token)
@@ -339,7 +339,7 @@ class ReceiveActivity : AppCompatActivity() {
                 // Process the token transfer
                 lifecycleScope.launch {
                     try {
-                        val token = gson.fromJson(tokenJson, Token::class.java)
+                        val token = JsonMapper.fromJson(tokenJson, Token::class.java)
                         viewModel.onTokenReceived(token)
                         showSuccessDialog("Received ${token.name} successfully!")
                         Toast.makeText(this@ReceiveActivity, "Token received: ${token.name}", Toast.LENGTH_SHORT).show()
@@ -478,7 +478,7 @@ class ReceiveActivity : AppCompatActivity() {
                 type = "Unicity Token",
                 status = TokenStatus.PENDING,
                 isOfflineTransfer = true,
-                pendingOfflineData = gson.toJson(mapOf(
+                pendingOfflineData = JsonMapper.toJson(mapOf(
                     "receiverIdentity" to receiverIdentityJson,
                     "offlineTransaction" to offlineTransactionJson
                 )),
@@ -592,7 +592,7 @@ class ReceiveActivity : AppCompatActivity() {
             // This should match the one used to generate the receiver address
             val receiverIdentity = HostCardEmulatorLogic.getGeneratedReceiverIdentity()
                 ?: throw Exception("No receiver identity found - handshake may have failed")
-            val receiverIdentityJson = gson.toJson(receiverIdentity)
+            val receiverIdentityJson = JsonMapper.toJson(receiverIdentity)
             
             Log.d("ReceiveActivity", "Generated receiver identity for offline transfer")
             
@@ -602,7 +602,7 @@ class ReceiveActivity : AppCompatActivity() {
                 type = "Unicity Token",
                 status = TokenStatus.PENDING,
                 isOfflineTransfer = true,
-                pendingOfflineData = gson.toJson(mapOf(
+                pendingOfflineData = JsonMapper.toJson(mapOf(
                     "receiverIdentity" to receiverIdentityJson,
                     "offlineTransaction" to offlineTransactionJson
                 )),
@@ -690,7 +690,7 @@ class ReceiveActivity : AppCompatActivity() {
             sdkService.generateIdentity { result ->
                 result.onSuccess { identityJson ->
                     try {
-                        val identity = gson.fromJson(identityJson, Map::class.java) as Map<String, String>
+                        val identity = JsonMapper.fromJson(identityJson, Map::class.java) as Map<String, String>
                         continuation.resumeWith(Result.success(identity))
                     } catch (e: Exception) {
                         Log.e("ReceiveActivity", "Failed to parse receiver identity", e)
@@ -716,7 +716,7 @@ class ReceiveActivity : AppCompatActivity() {
     private fun createTokenFromUnicityResult(tokenName: String, resultJson: String): Token {
         return try {
             // Parse the result and create a Token object
-            val resultData = gson.fromJson(resultJson, Map::class.java)
+            val resultData = JsonMapper.fromJson(resultJson, Map::class.java)
             
             Token(
                 name = tokenName,
@@ -742,7 +742,7 @@ class ReceiveActivity : AppCompatActivity() {
         try {
             Log.d("ReceiveActivity", "Crypto transfer received via NFC")
             
-            val cryptoData = gson.fromJson(cryptoJson, Map::class.java)
+            val cryptoData = JsonMapper.fromJson(cryptoJson, Map::class.java)
             val cryptoSymbol = cryptoData["crypto_symbol"] as? String ?: "UNKNOWN"
             val cryptoName = cryptoData["crypto_name"] as? String ?: "Unknown Crypto"
             

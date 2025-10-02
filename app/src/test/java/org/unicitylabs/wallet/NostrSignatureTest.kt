@@ -1,19 +1,19 @@
 package org.unicitylabs.wallet
 
-import org.junit.Test
-import org.junit.Assert.*
 import com.google.gson.Gson
-import java.security.MessageDigest
-import org.spongycastle.util.encoders.Hex
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
 import org.spongycastle.asn1.x9.X9ECParameters
+import org.spongycastle.crypto.digests.SHA256Digest
 import org.spongycastle.crypto.ec.CustomNamedCurves
 import org.spongycastle.crypto.params.ECDomainParameters
 import org.spongycastle.crypto.params.ECPrivateKeyParameters
-import org.spongycastle.crypto.params.ECPublicKeyParameters
 import org.spongycastle.crypto.signers.ECDSASigner
 import org.spongycastle.crypto.signers.HMacDSAKCalculator
-import org.spongycastle.crypto.digests.SHA256Digest
+import org.spongycastle.util.encoders.Hex
 import java.math.BigInteger
+import java.security.MessageDigest
 
 /**
  * Test to verify proper Nostr event signature generation

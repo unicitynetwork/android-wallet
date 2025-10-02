@@ -3,7 +3,11 @@ package org.unicitylabs.wallet.data.repository
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import com.google.gson.Gson
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.data.model.TokenStatus
 import org.unicitylabs.wallet.data.model.Wallet
@@ -12,17 +16,13 @@ import org.unicitylabs.wallet.sdk.UnicityIdentity
 import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import org.unicitylabs.wallet.sdk.UnicityMintResult
 import org.unicitylabs.wallet.sdk.UnicityTokenData
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.wallet.util.JsonMapper
 import java.util.UUID
 
 class WalletRepository(context: Context) {
     private val sharedPreferences: SharedPreferences = 
         context.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     private val unicitySdkService = UnicityJavaSdkService()
     private val identityManager = IdentityManager(context)
     
@@ -46,7 +46,7 @@ class WalletRepository(context: Context) {
     private fun loadWallet() {
         val walletJson = sharedPreferences.getString("wallet", null)
         if (walletJson != null) {
-            val wallet = gson.fromJson(walletJson, Wallet::class.java)
+            val wallet = JsonMapper.fromJson(walletJson, Wallet::class.java)
             _wallet.value = wallet
             _tokens.value = wallet.tokens
         } else {
@@ -70,7 +70,7 @@ class WalletRepository(context: Context) {
     private fun saveWallet(wallet: Wallet) {
         _wallet.value = wallet
         _tokens.value = wallet.tokens
-        val walletJson = gson.toJson(wallet)
+        val walletJson = JsonMapper.toJson(wallet)
         sharedPreferences.edit().putString("wallet", walletJson).apply()
     }
     
@@ -165,8 +165,8 @@ class WalletRepository(context: Context) {
             // - Genesis (mint) transaction with inclusion proof
             // - Complete transaction history
             // This is the same format used for .txf file exports
-            val mintResultObj = gson.fromJson(mintResult.toJson(), Map::class.java)
-            val tokenJson = gson.toJson(mintResultObj["token"])
+            val mintResultObj = JsonMapper.fromJson(mintResult.toJson(), Map::class.java)
+            val tokenJson = JsonMapper.toJson(mintResultObj["token"])
             
             // Check if this is a pending token
             val status = if (mintResultObj["status"] == "pending") {

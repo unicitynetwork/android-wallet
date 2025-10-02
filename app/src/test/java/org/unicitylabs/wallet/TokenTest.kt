@@ -1,10 +1,10 @@
 package org.unicitylabs.wallet
 
-import org.unicitylabs.wallet.data.model.Token
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.unicitylabs.wallet.data.model.Token
 
 class TokenTest {
     
