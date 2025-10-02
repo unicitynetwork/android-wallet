@@ -4,11 +4,6 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import org.unicitylabs.wallet.R
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.data.repository.WalletRepository
-import org.unicitylabs.wallet.data.service.CryptoPriceService
-import org.unicitylabs.wallet.model.CryptoCurrency
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,6 +14,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.unicitylabs.wallet.R
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.data.repository.WalletRepository
+import org.unicitylabs.wallet.data.service.CryptoPriceService
+import org.unicitylabs.wallet.model.CryptoCurrency
 
 class WalletViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = WalletRepository(application)

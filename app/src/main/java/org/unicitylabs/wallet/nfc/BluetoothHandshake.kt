@@ -1,6 +1,6 @@
 package org.unicitylabs.wallet.nfc
+import org.unicitylabs.wallet.util.JsonMapper
 
-import com.google.gson.Gson
 
 /**
  * Data class for NFC handshake that exchanges Bluetooth connection info
@@ -13,15 +13,15 @@ data class BluetoothHandshake(
     val protocolVersion: Int = 1  // Version for compatibility checking
 ) {
     companion object {
-        private val gson = Gson()
+        // Using shared JsonMapper.mapper
         
         fun fromJson(json: String): BluetoothHandshake {
-            return gson.fromJson(json, BluetoothHandshake::class.java)
+            return JsonMapper.fromJson(json, BluetoothHandshake::class.java)
         }
     }
     
     fun toJson(): String {
-        return gson.toJson(this)
+        return JsonMapper.toJson(this)
     }
     
     fun toByteArray(): ByteArray {
@@ -49,15 +49,15 @@ data class BluetoothHandshakeResponse(
     val accepted: Boolean
 ) {
     companion object {
-        private val gson = Gson()
+        // Using shared JsonMapper.mapper
         
         fun fromJson(json: String): BluetoothHandshakeResponse {
-            return gson.fromJson(json, BluetoothHandshakeResponse::class.java)
+            return JsonMapper.fromJson(json, BluetoothHandshakeResponse::class.java)
         }
     }
     
     fun toJson(): String {
-        return gson.toJson(this)
+        return JsonMapper.toJson(this)
     }
     
     fun toByteArray(): ByteArray {

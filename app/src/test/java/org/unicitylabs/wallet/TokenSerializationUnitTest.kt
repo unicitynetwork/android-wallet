@@ -1,13 +1,13 @@
 package org.unicitylabs.wallet
 
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.data.model.TokenStatus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.data.model.TokenStatus
 import java.io.File
 
 /**

@@ -2,16 +2,16 @@ package org.unicitylabs.wallet.nfc
 
 import android.nfc.TagLostException
 import android.util.Log
-import com.google.gson.Gson
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.sdk.UnicityIdentity
-import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.sdk.UnicityIdentity
+import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
+import org.unicitylabs.wallet.util.JsonMapper
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.resume
 
@@ -57,7 +57,7 @@ class DirectNfcClient(
     }
     
     private var tokenToSend: Token? = null
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     private var isTestMode = false
     
     fun setTokenToSend(token: Token) {
@@ -225,7 +225,7 @@ class DirectNfcClient(
                     message = "Hello NFC Test",
                     timestamp = System.currentTimeMillis()
                 )
-                val testData = gson.toJson(testPing).toByteArray(StandardCharsets.UTF_8)
+                val testData = JsonMapper.toJson(testPing).toByteArray(StandardCharsets.UTF_8)
                 val pingCommand = byteArrayOf(0x00.toByte(), CMD_TEST_PING, 0x00.toByte(), 0x00.toByte(), testData.size.toByte()) + testData
                 
                 val pingResponse = apduTransceiver.transceive(pingCommand)
@@ -247,7 +247,7 @@ class DirectNfcClient(
                     message = "Test 2",
                     timestamp = System.currentTimeMillis()
                 )
-                val testData2 = gson.toJson(testPing2).toByteArray(StandardCharsets.UTF_8)
+                val testData2 = JsonMapper.toJson(testPing2).toByteArray(StandardCharsets.UTF_8)
                 val pingCommand2 = byteArrayOf(0x00.toByte(), CMD_TEST_PING, 0x00.toByte(), 0x00.toByte(), testData2.size.toByte()) + testData2
                 
                 val pingResponse2 = apduTransceiver.transceive(pingCommand2)
@@ -385,7 +385,7 @@ class DirectNfcClient(
                     Log.d(TAG, "Received address response: $responseJson")
 
                     try {
-                        val response = gson.fromJson(responseJson, ReceiverAddressResponse::class.java)
+                        val response = JsonMapper.fromJson(responseJson, ReceiverAddressResponse::class.java)
 
                         when (response.status) {
                             "success" -> {
@@ -439,7 +439,7 @@ class DirectNfcClient(
                 token_name = token.name,
                 offline_transaction = offlinePackage
             )
-            val wrappedPackageJson = gson.toJson(transferPackage)
+            val wrappedPackageJson = JsonMapper.toJson(transferPackage)
             
             Log.d(TAG, "Wrapped offline package with token name: ${token.name}")
             
@@ -519,7 +519,7 @@ class DirectNfcClient(
             val senderData = extractSenderData(token)
             Log.d(TAG, "Extracted sender data successfully")
             
-            val parsedTokenData = gson.fromJson(senderData.tokenJson, Map::class.java)
+            val parsedTokenData = JsonMapper.fromJson<Map<*, *>>(senderData.tokenJson)
             
             // Extract token ID and type from the nested genesis structure
             val tokenId = try {
@@ -548,7 +548,7 @@ class DirectNfcClient(
             )
             
             Log.d(TAG, "Created token transfer request for handshake")
-            gson.toJson(tokenRequest)
+            JsonMapper.toJson(tokenRequest)
             
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create token transfer request: ${e.message}", e)
@@ -558,7 +558,7 @@ class DirectNfcClient(
             
             // Fallback to demo token transfer
             Log.w(TAG, "Falling back to demo token transfer due to offline transfer failure")
-            gson.toJson(token)
+            JsonMapper.toJson(token)
         }
     }
     
@@ -570,7 +570,7 @@ class DirectNfcClient(
     private fun extractSenderData(token: Token): SenderData {
         return try {
             // Parse the stored jsonData to extract sender identity and token
-            val mintResult = gson.fromJson(token.jsonData, Map::class.java)
+            val mintResult = JsonMapper.fromJson<Map<*, *>>(token.jsonData ?: "{}")
             
             // Extract identity from mint result
             val identityData = mintResult["identity"] as? Map<*, *>
@@ -585,7 +585,7 @@ class DirectNfcClient(
             
             // Extract token data
             val tokenData = mintResult["token"]
-            val tokenJson = gson.toJson(tokenData)
+            val tokenJson = JsonMapper.toJson(tokenData)
             
             SenderData(senderIdentity, tokenJson)
         } catch (e: Exception) {
@@ -612,14 +612,14 @@ class DirectNfcClient(
             val senderData = extractSenderData(token)
             
             // Parse the token JSON to get the actual token data structure
-            val mintResult = gson.fromJson(token.jsonData, Map::class.java)
+            val mintResult = JsonMapper.fromJson<Map<*, *>>(token.jsonData ?: "{}")
             val tokenData = mintResult["token"] as? Map<*, *> 
                 ?: throw Exception("Token data not found in mint result")
             
             // Create offline transfer package using SDK
             CoroutineScope(Dispatchers.IO).launch {
                 val offlinePackage = sdkService.createOfflineTransfer(
-                    gson.toJson(tokenData),
+                    JsonMapper.toJson(tokenData),
                     receiverAddress,
                     null, // Use full amount
                     senderData.senderIdentity.privateKey.toByteArray(),
@@ -634,14 +634,14 @@ class DirectNfcClient(
                     val fallbackTransfer = mapOf(
                         "error" to "sdk_offline_transfer_failed",
                         "message" to "Failed to create offline transfer",
-                        "token" to gson.toJson(token)
+                        "token" to JsonMapper.toJson(token)
                     )
-                    continuation.resume(gson.toJson(fallbackTransfer))
+                    continuation.resume(JsonMapper.toJson(fallbackTransfer))
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create offline transfer package", e)
-            continuation.resume(gson.toJson(mapOf("error" to e.message)))
+            continuation.resume(JsonMapper.toJson(mapOf("error" to e.message)))
         }
     }
     

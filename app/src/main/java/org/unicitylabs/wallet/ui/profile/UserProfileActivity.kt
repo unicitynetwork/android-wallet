@@ -29,25 +29,24 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.api.services.drive.DriveScopes
-import org.unicitylabs.wallet.databinding.ActivityUserProfileBinding
-import org.unicitylabs.wallet.identity.IdentityManager
-import org.unicitylabs.wallet.nametag.NametagService
-import org.unicitylabs.wallet.network.AgentApiService
-import org.unicitylabs.wallet.utils.WalletConstants
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
-import org.unicitylabs.sdk.token.Token
 import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
-import java.security.SecureRandom
 import org.unicitylabs.sdk.transaction.InclusionProofVerificationStatus
+import org.unicitylabs.wallet.databinding.ActivityUserProfileBinding
 import org.unicitylabs.wallet.di.ServiceProvider
+import org.unicitylabs.wallet.identity.IdentityManager
+import org.unicitylabs.wallet.nametag.NametagService
+import org.unicitylabs.wallet.network.AgentApiService
+import org.unicitylabs.wallet.utils.WalletConstants
+import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
 class UserProfileActivity : AppCompatActivity() {

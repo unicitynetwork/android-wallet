@@ -1,11 +1,11 @@
 package org.unicitylabs.wallet
 
 import com.google.gson.Gson
-import org.unicitylabs.wallet.sdk.UnicityIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.unicitylabs.wallet.sdk.UnicityIdentity
 
 /**
  * Unit test to verify that tokens are stored in the correct .txf format

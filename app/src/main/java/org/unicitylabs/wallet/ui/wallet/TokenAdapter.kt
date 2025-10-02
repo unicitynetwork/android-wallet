@@ -9,12 +9,12 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.R
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.data.model.TokenStatus
 import org.unicitylabs.wallet.databinding.ItemTokenBinding
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.wallet.util.JsonMapper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,7 +29,7 @@ class TokenAdapter(
     private var expandedTokenId: String? = null
     private var transferringTokenId: String? = null
     private val transferProgress = mutableMapOf<String, Pair<Int, Int>>() // tokenId -> (current, total)
-    private val objectMapper = ObjectMapper()
+    // Using shared JsonMapper.mapper for JSON operations
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TokenViewHolder {
         val binding = ItemTokenBinding.inflate(
@@ -135,7 +135,7 @@ class TokenAdapter(
             if (message != null && message.isTextual) {
                 // Try to parse message as JSON
                 try {
-                    val messageData = objectMapper.readTree(message.asText())
+                    val messageData = JsonMapper.mapper.readTree(message.asText())
                     messageData?.get("amount")?.let { 
                         if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
                     }

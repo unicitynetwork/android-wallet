@@ -87,11 +87,12 @@ dependencies {
     // Unicity Java SDK: https://jitpack.io/#org.unicitylabs/java-state-transition-sdk
     implementation("org.unicitylabs:java-state-transition-sdk:1.2.0")
 
-    // Required dependencies for Unicity SDK
+    // Required dependencies for Unicity SDK (also used app-wide for JSON serialization)
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.17.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.17.0")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.0")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.81")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.81")
     implementation("com.google.guava:guava:33.0.0-android")
@@ -123,18 +124,18 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
-    // JSON handling
-    implementation("com.google.code.gson:gson:2.10.1")
-    
+    // JSON handling - using Jackson (also required by Unicity SDK)
+    // Note: Gson removed in favor of Jackson for consistency
+
     // Kotlin Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
-    
+
     // SwipeRefreshLayout
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    
+
     // Networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.retrofit2:converter-jackson:2.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     

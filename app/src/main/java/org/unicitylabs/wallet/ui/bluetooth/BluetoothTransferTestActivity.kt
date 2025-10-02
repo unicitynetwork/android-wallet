@@ -44,8 +44,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import org.unicitylabs.wallet.bluetooth.BluetoothMeshTransferService
 import kotlinx.coroutines.launch
+import org.unicitylabs.wallet.bluetooth.BluetoothMeshTransferService
 import java.util.UUID
 
 /**

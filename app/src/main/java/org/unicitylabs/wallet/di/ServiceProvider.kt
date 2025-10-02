@@ -1,12 +1,12 @@
 package org.unicitylabs.wallet.di
 
 import android.content.Context
-import org.unicitylabs.wallet.utils.WalletConstants
 import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.api.AggregatorClient
 import org.unicitylabs.sdk.bft.RootTrustBase
-import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.sdk.signing.SigningService
+import org.unicitylabs.wallet.utils.WalletConstants
 import java.io.InputStream
 
 /**

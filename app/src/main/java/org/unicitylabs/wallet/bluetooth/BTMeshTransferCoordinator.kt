@@ -3,10 +3,6 @@ package org.unicitylabs.wallet.bluetooth
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.util.Log
-import com.google.gson.Gson
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
-import org.unicitylabs.wallet.utils.WalletConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,6 +14,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
+import org.unicitylabs.wallet.util.JsonMapper
+import org.unicitylabs.wallet.utils.WalletConstants
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -36,7 +36,7 @@ object BTMeshTransferCoordinator {
     private lateinit var sdkService: UnicityJavaSdkService
     private var isInitialized = false
 
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     private val activeTransfers = ConcurrentHashMap<String, ActiveTransfer>()
     
     private fun logd(message: String) {
@@ -259,7 +259,7 @@ object BTMeshTransferCoordinator {
             val isJson = messageString.trim().startsWith("{") && messageString.trim().endsWith("}")
             if (isJson) {
                 try {
-                    val message = gson.fromJson(messageString, BTMeshMessage::class.java)
+                    val message = JsonMapper.fromJson(messageString, BTMeshMessage::class.java)
                     logd( "Successfully parsed JSON message")
                     handleJsonMessage(message, fromDevice)
                     return
@@ -418,7 +418,7 @@ object BTMeshTransferCoordinator {
         logd( "My device ID: ${BluetoothAdapter.getDefaultAdapter()?.address ?: "Unknown"}")
         
         try {
-            val payload = gson.fromJson(gson.toJson(message.payload), PermissionRequestPayload::class.java)
+            val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), PermissionRequestPayload::class.java)
             logd( "Parsed payload - sender: ${payload.senderName}, token: ${payload.tokenName}")
             
             val approvalRequest = TransferApprovalRequest(
@@ -536,7 +536,7 @@ object BTMeshTransferCoordinator {
         logd( "Sending rejection response to ${approval.senderPeerId}")
         
         // Debug: Log the exact JSON being sent
-        val jsonToSend = gson.toJson(response)
+        val jsonToSend = JsonMapper.toJson(response)
         logd( "Rejection JSON: $jsonToSend")
         logd( "JSON length: ${jsonToSend.length}")
         
@@ -600,7 +600,7 @@ object BTMeshTransferCoordinator {
         logd( "=== RECEIVED PERMISSION RESPONSE ===")
         logd( "Transfer ID: ${message.transferId}")
         logd( "From device: $fromDevice")
-        logd( "Raw payload: ${gson.toJson(message.payload)}")
+        logd( "Raw payload: ${JsonMapper.toJson(message.payload)}")
         
         val transfer = activeTransfers[message.transferId]
         if (transfer == null) {
@@ -615,7 +615,7 @@ object BTMeshTransferCoordinator {
             timeoutJob.cancel()
         }
         
-        val payload = gson.fromJson(gson.toJson(message.payload), PermissionResponsePayload::class.java)
+        val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), PermissionResponsePayload::class.java)
         logd( "Parsed approved value: ${payload.approved}")
         logd( "Approved is true: ${payload.approved == true}")
         logd( "Approved is false: ${payload.approved == false}")
@@ -707,7 +707,7 @@ object BTMeshTransferCoordinator {
         logd( "Transfer ID: ${message.transferId}")
         logd( "From device: $fromDevice")
         
-        val payload = gson.fromJson(gson.toJson(message.payload), TransferRequestPayload::class.java)
+        val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), TransferRequestPayload::class.java)
         logd( "Token type: ${payload.tokenType}")
         logd( "Token ID: ${payload.tokenId}")
         
@@ -755,7 +755,7 @@ object BTMeshTransferCoordinator {
     }
 
     private fun handleAddressResponse(message: BTMeshMessage, fromDevice: String) {
-        val payload = gson.fromJson(gson.toJson(message.payload), AddressResponsePayload::class.java)
+        val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), AddressResponsePayload::class.java)
         val transfer = activeTransfers[message.transferId] ?: return
         
         updateTransferState(message.transferId, TransferState.CREATING_PACKAGE)
@@ -806,7 +806,7 @@ object BTMeshTransferCoordinator {
     }
 
     private fun handleTransferPackage(message: BTMeshMessage, fromDevice: String) {
-        val payload = gson.fromJson(gson.toJson(message.payload), TransferPackagePayload::class.java)
+        val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), TransferPackagePayload::class.java)
         val transfer = activeTransfers[message.transferId] ?: return
         
         updateTransferState(message.transferId, TransferState.COMPLETING_TRANSFER)
@@ -832,7 +832,7 @@ object BTMeshTransferCoordinator {
                             transferId = message.transferId,
                             payload = TransferCompletePayload(
                                 success = true,
-                                tokenJson = gson.toJson(receivedToken)
+                                tokenJson = JsonMapper.toJson(receivedToken)
                             )
                         )
                         
@@ -840,7 +840,7 @@ object BTMeshTransferCoordinator {
                         updateTransferState(message.transferId, TransferState.COMPLETED)
                         
                         // Notify the app to update token list
-                        notifyTokenReceived(gson.toJson(receivedToken))
+                        notifyTokenReceived(JsonMapper.toJson(receivedToken))
                         
                         // Cleanup after a delay
                         delay(5000)
@@ -856,7 +856,7 @@ object BTMeshTransferCoordinator {
 
     private fun handleTransferComplete(message: BTMeshMessage, fromDevice: String) {
         logd( "=== TRANSFER COMPLETE RECEIVED ===")
-        val payload = gson.fromJson(gson.toJson(message.payload), TransferCompletePayload::class.java)
+        val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), TransferCompletePayload::class.java)
         
         if (payload.success) {
             updateTransferState(message.transferId, TransferState.COMPLETED)
@@ -890,7 +890,7 @@ object BTMeshTransferCoordinator {
     }
 
     private fun handleTransferError(message: BTMeshMessage, fromDevice: String) {
-        val payload = gson.fromJson(gson.toJson(message.payload), TransferErrorPayload::class.java)
+        val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), TransferErrorPayload::class.java)
         Log.e(TAG, "Transfer error from $fromDevice: ${payload.error}")
         
         updateTransferState(message.transferId, TransferState.FAILED)
@@ -898,7 +898,7 @@ object BTMeshTransferCoordinator {
     }
 
     private fun sendMessage(peerId: String, message: BTMeshMessage) {
-        val messageString = gson.toJson(message)
+        val messageString = JsonMapper.toJson(message)
         logd( "=== SENDING BT MESH MESSAGE ===")
         logd( "To peer: $peerId")
         logd( "Message type: ${message.type}")
@@ -908,7 +908,7 @@ object BTMeshTransferCoordinator {
         
         // Debug: Check if the JSON is valid
         try {
-            val parsed = gson.fromJson(messageString, BTMeshMessage::class.java)
+            val parsed = JsonMapper.fromJson(messageString, BTMeshMessage::class.java)
             logd( "JSON is valid - can be parsed back")
             logd( "Parsed type: ${parsed.type}")
         } catch (e: Exception) {
@@ -926,7 +926,7 @@ object BTMeshTransferCoordinator {
                 
                 // Special logging for rejection
                 if (message.type == BTMeshMessageType.TRANSFER_PERMISSION_RESPONSE) {
-                    val payload = gson.fromJson(gson.toJson(message.payload), PermissionResponsePayload::class.java)
+                    val payload = JsonMapper.fromJson(JsonMapper.toJson(message.payload), PermissionResponsePayload::class.java)
                     if (!payload.approved) {
                         logd( "✓✓✓ REJECTION SENT SUCCESSFULLY to $peerId")
                     }
@@ -1116,7 +1116,7 @@ object BTMeshTransferCoordinator {
             "secret" to secret,
             "nonce" to nonce.toHexString()
         )
-        return com.google.gson.Gson().toJson(identity)
+        return JsonMapper.toJson(identity)
     }
     
     private fun ByteArray.toHexString(): String {

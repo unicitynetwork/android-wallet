@@ -5,8 +5,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.unicitylabs.wallet.identity.IdentityManager
-import org.unicitylabs.wallet.nametag.NametagService
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertFalse
@@ -21,6 +19,8 @@ import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.MaskedPredicate
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenType
+import org.unicitylabs.wallet.identity.IdentityManager
+import org.unicitylabs.wallet.nametag.NametagService
 import java.security.SecureRandom
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes

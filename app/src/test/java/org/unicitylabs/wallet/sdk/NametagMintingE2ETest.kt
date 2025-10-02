@@ -1,6 +1,5 @@
 package org.unicitylabs.wallet.sdk
 
-import org.unicitylabs.wallet.di.ServiceProvider
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -17,14 +16,15 @@ import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
-import org.unicitylabs.sdk.token.TokenState
-import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.Token
+import org.unicitylabs.sdk.token.TokenId
+import org.unicitylabs.sdk.token.TokenState
 import org.unicitylabs.sdk.token.TokenType
 import org.unicitylabs.sdk.transaction.MintCommitment
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.transaction.NametagMintTransactionData
 import org.unicitylabs.sdk.util.InclusionProofUtils
+import org.unicitylabs.wallet.di.ServiceProvider
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom

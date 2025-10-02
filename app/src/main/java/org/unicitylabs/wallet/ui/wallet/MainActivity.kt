@@ -37,13 +37,18 @@ import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
-import com.google.gson.Gson
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.R
 import org.unicitylabs.wallet.bluetooth.BTMeshTransferCoordinator
 import org.unicitylabs.wallet.bluetooth.BluetoothMeshManager
@@ -68,14 +73,9 @@ import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import org.unicitylabs.wallet.ui.bluetooth.PeerSelectionDialog
 import org.unicitylabs.wallet.ui.bluetooth.TransferApprovalDialog
 import org.unicitylabs.wallet.ui.scanner.PortraitCaptureActivity
+import org.unicitylabs.wallet.util.JsonMapper
 import org.unicitylabs.wallet.utils.PermissionUtils
 import org.unicitylabs.wallet.viewmodel.WalletViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -96,7 +96,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private lateinit var sdkService: UnicityJavaSdkService
-    private val gson = Gson()
+    // Using shared JsonMapper.mapper
     private var currentContactDialog: ContactListDialog? = null
     
     // BT Mesh components
@@ -883,7 +883,7 @@ class MainActivity : AppCompatActivity() {
                         "secret" to "temp_secret_${System.currentTimeMillis()}",
                         "nonce" to "temp_nonce_${System.currentTimeMillis()}"
                     )
-                    Gson().toJson(tempIdentity)
+                    JsonMapper.toJson(tempIdentity)
                 }
                 
                 realNfcTransceiver.enableReaderMode(this@MainActivity)
@@ -2284,7 +2284,7 @@ class MainActivity : AppCompatActivity() {
             "timestamp" to System.currentTimeMillis(),
             "icon_res_id" to crypto.iconResId
         )
-        val jsonData = com.google.gson.Gson().toJson(transferData)
+        val jsonData = JsonMapper.toJson(transferData)
         Log.d("MainActivity", "Created transfer JSON with amount: $amount")
         Log.d("MainActivity", "Transfer JSON: $jsonData")
         return jsonData
@@ -2305,7 +2305,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "Submitting ${token.name} to network...", Toast.LENGTH_SHORT).show()
                 
                 // Parse the pending offline data
-                val pendingData = gson.fromJson(token.pendingOfflineData, Map::class.java)
+                val pendingData = JsonMapper.fromJson(token.pendingOfflineData, Map::class.java)
                 val receiverIdentityJson = pendingData["receiverIdentity"] as? String ?: ""
                 val offlineTransactionJson = pendingData["offlineTransaction"] as? String ?: ""
                 
@@ -2347,8 +2347,7 @@ class MainActivity : AppCompatActivity() {
     
     private suspend fun completeOfflineTransfer(receiverIdentityJson: String, offlineTransactionJson: String): String {
         // Parse receiver identity
-        val gson = com.google.gson.Gson()
-        val identityMap = gson.fromJson(receiverIdentityJson, Map::class.java)
+        val identityMap = JsonMapper.fromJson(receiverIdentityJson, Map::class.java)
         val receiverSecret = (identityMap["secret"] as? String ?: "").toByteArray()
         val receiverNonce = hexStringToByteArray(identityMap["nonce"] as? String ?: "")
         

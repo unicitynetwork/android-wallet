@@ -5,9 +5,9 @@ import android.content.Context
 import android.database.Cursor
 import android.provider.ContactsContract
 import android.util.Log
-import org.unicitylabs.wallet.data.model.Contact
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.unicitylabs.wallet.data.model.Contact
 
 class ContactsHelper(private val context: Context) {
     

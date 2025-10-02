@@ -3,8 +3,6 @@ package org.unicitylabs.wallet
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.unicitylabs.wallet.data.model.Token
-import org.unicitylabs.wallet.data.model.TokenStatus
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -12,6 +10,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.unicitylabs.wallet.data.model.Token
+import org.unicitylabs.wallet.data.model.TokenStatus
 import java.io.File
 
 /**
