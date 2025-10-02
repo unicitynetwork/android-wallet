@@ -1,0 +1,19 @@
+{
+  "tokenType": {
+    "systemId": 2,
+    "unitId": "0x01020304050607080102030405060708010203040506070801020304050607FF"
+  },
+  "coinId": "solana-test",
+  "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
+  "aggregatorUrl": "https://goggregator-test.unicity.network",
+  "faucetPrivateKey": "0000000000000000000000000000000000000000000000000000000000000001",
+  "defaultAmount": 1000,
+  "notes": {
+    "tokenType": "Configure the token type (systemId and unitId) for minting",
+    "coinId": "The coin identifier used in token data (e.g., 'solana-test', 'bitcoin-test')",
+    "nostrRelay": "WebSocket URL of the Nostr relay for P2P messaging",
+    "aggregatorUrl": "URL of the Unicity aggregator service",
+    "faucetPrivateKey": "Private key for the faucet (secp256k1 32-byte hex). Keep this secure!",
+    "defaultAmount": "Default token amount if not specified via CLI"
+  }
+}
