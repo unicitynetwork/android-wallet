@@ -572,14 +572,37 @@ class UserProfileActivity : AppCompatActivity() {
                 if (walletAddress != null) {
                     // Mint the nametag
                     val nametagToken = nametagService.mintNametag(nametagString, walletAddress)
-                    
+
                     if (nametagToken != null) {
+                        // Publish nametag binding to Nostr relay
+                        try {
+                            val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(this)
+                            if (nostrService != null) {
+                                val proxyAddress = nametagService.getProxyAddress(nametagToken)
+                                val published = nostrService.publishNametagBinding(
+                                    nametagId = nametagString,
+                                    unicityAddress = proxyAddress.toString()
+                                )
+
+                                if (published) {
+                                    Log.d("UserProfileActivity", "Nametag binding published to Nostr relay")
+                                } else {
+                                    Log.w("UserProfileActivity", "Failed to publish nametag binding to Nostr relay")
+                                }
+                            } else {
+                                Log.w("UserProfileActivity", "Nostr service not available, skipping nametag binding")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("UserProfileActivity", "Error publishing nametag binding", e)
+                            // Don't fail the whole operation if Nostr publishing fails
+                        }
+
                         runOnUiThread {
                             binding.llNametagStatus.visibility = View.VISIBLE
                             binding.llNametagActions.visibility = View.VISIBLE
                             binding.tvNametagStatus.text = "Nametag minted successfully"
                             binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_info)
-                            
+
                             Toast.makeText(this, "Nametag minted successfully!", Toast.LENGTH_LONG).show()
                         }
                     } else {
