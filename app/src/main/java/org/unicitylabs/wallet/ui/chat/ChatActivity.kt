@@ -297,19 +297,25 @@ class ChatActivity : AppCompatActivity() {
     }
     
     private fun showApprovalDialog() {
+        Log.d("ChatActivity", "=== HANDSHAKE DEBUG: showApprovalDialog called for agent: $agentTag ===")
         AlertDialog.Builder(this)
             .setTitle("Start Chat")
             .setMessage("Send a handshake request to $agentName?")
             .setPositiveButton("Send") { _, _ ->
+                Log.d("ChatActivity", "=== HANDSHAKE DEBUG: User clicked Send ===")
                 // Initialize P2P service if needed before sending handshake
                 if (p2pService == null) {
+                    Log.d("ChatActivity", "=== HANDSHAKE DEBUG: P2P service is null, initializing... ===")
                     initializeP2PService()
                 }
 
                 if (p2pService != null) {
+                    Log.d("ChatActivity", "=== HANDSHAKE DEBUG: Calling initiateHandshake($agentTag) ===")
+                    Log.d("ChatActivity", "=== HANDSHAKE DEBUG: P2P service class: ${p2pService?.javaClass?.simpleName} ===")
                     p2pService?.initiateHandshake(agentTag)
                     Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
                 } else {
+                    Log.e("ChatActivity", "=== HANDSHAKE DEBUG: P2P service is still null after init ===")
                     Toast.makeText(this, "Failed to initialize chat service. Please try again.", Toast.LENGTH_LONG).show()
                 }
             }
