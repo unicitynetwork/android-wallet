@@ -1,0 +1,29 @@
+# Nostr-rs-relay configuration for PostgreSQL testing
+
+[database]
+# Use PostgreSQL engine
+engine = "postgres"
+# Connection string to PostgreSQL
+connection = "postgresql://nostrrelay:testpassword@postgres:5432/nostr"
+
+[network]
+address = "0.0.0.0"
+port = 8080
+ping_interval = 300
+
+[limits]
+messages_per_sec = 10
+max_event_bytes = 524288
+max_ws_message_bytes = 524288
+max_ws_frame_bytes = 524288
+max_subscriptions = 100
+
+[authorization]
+pubkey_whitelist = []
+
+[retention]
+default_retention = 0
+ephemeral_retention = 60
+
+[diagnostics]
+# tracing = false
