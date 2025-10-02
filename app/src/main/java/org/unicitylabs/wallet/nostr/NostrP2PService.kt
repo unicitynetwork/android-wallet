@@ -10,6 +10,7 @@ import okhttp3.*
 import org.unicitylabs.wallet.p2p.IP2PService
 import java.util.concurrent.TimeUnit
 import java.util.UUID
+import java.security.MessageDigest
 import fr.acinq.secp256k1.Secp256k1
 import org.spongycastle.util.encoders.Hex
 
@@ -459,10 +460,13 @@ class NostrP2PService(
     }
 
     override fun initiateHandshake(agentTag: String) {
+        Log.d(TAG, "=== HANDSHAKE DEBUG: initiateHandshake called with agentTag: $agentTag ===")
         // In Nostr, handshakes are implicit through contact lists
         // We can create a contact request event
         scope.launch {
+            Log.d(TAG, "=== HANDSHAKE DEBUG: Resolving tag to pubkey for: $agentTag ===")
             val recipientPubkey = resolveTagToPubkey(agentTag)
+            Log.d(TAG, "=== HANDSHAKE DEBUG: Resolved pubkey: ${recipientPubkey?.take(20)}... ===")
 
             if (recipientPubkey != null) {
                 val content = mapOf(
@@ -470,11 +474,16 @@ class NostrP2PService(
                     "from" to getAgentTag(),
                     "timestamp" to System.currentTimeMillis()
                 )
+                Log.d(TAG, "=== HANDSHAKE DEBUG: Creating encrypted message with content: $content ===")
 
                 val event = createEncryptedMessage(recipientPubkey, gson.toJson(content))
+                Log.d(TAG, "=== HANDSHAKE DEBUG: Created event with id: ${event.id}, publishing... ===")
+
                 publishEvent(event)
 
-                Log.d(TAG, "Handshake initiated with $agentTag")
+                Log.d(TAG, "=== HANDSHAKE DEBUG: Handshake initiated with $agentTag ===")
+            } else {
+                Log.e(TAG, "=== HANDSHAKE DEBUG: Failed to resolve pubkey for $agentTag ===")
             }
         }
     }
@@ -554,8 +563,23 @@ class NostrP2PService(
     }
 
     private suspend fun resolveTagToPubkey(tag: String): String? {
-        // TODO: Implement tag resolution
-        return null
+        Log.d(TAG, "=== RESOLVE DEBUG: Resolving tag '$tag' to pubkey ===")
+
+        // For now, we'll use a deterministic way to generate pubkeys from tags
+        // In production, this should query a name service or user registry
+
+        // Generate a deterministic key from the tag for testing
+        // This ensures both devices can derive the same pubkey for a given tag
+        return try {
+            val tagBytes = tag.toByteArray()
+            val hash = MessageDigest.getInstance("SHA-256").digest(tagBytes)
+            val pubkey = Hex.toHexString(hash)
+            Log.d(TAG, "=== RESOLVE DEBUG: Generated pubkey for $tag: ${pubkey.take(20)}... ===")
+            pubkey
+        } catch (e: Exception) {
+            Log.e(TAG, "=== RESOLVE DEBUG: Failed to generate pubkey for $tag: ${e.message} ===")
+            null
+        }
     }
 
     private fun createEncryptedMessage(recipientPubkey: String, content: String): Event {

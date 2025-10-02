@@ -180,6 +180,9 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("org.testcontainers:testcontainers:1.19.3")
     testImplementation("org.testcontainers:junit-jupiter:1.19.3")
+    testImplementation("org.bouncycastle:bcprov-jdk18on:1.81")
+    testImplementation("com.madgag.spongycastle:core:1.58.0.0")
+    testImplementation("fr.acinq.secp256k1:secp256k1-kmp-jvm:0.10.1")
     
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
