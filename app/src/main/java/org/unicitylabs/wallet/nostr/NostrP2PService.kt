@@ -575,16 +575,24 @@ class NostrP2PService(
     private suspend fun resolveTagToPubkey(tag: String): String? {
         Log.d(TAG, "=== RESOLVE DEBUG: Resolving tag '$tag' to pubkey ===")
 
-        // For now, we'll use a deterministic way to generate pubkeys from tags
-        // In production, this should query a name service or user registry
+        // First try to query the nametag binding from Nostr relay
+        try {
+            val pubkey = queryPubkeyByNametag(tag)
+            if (pubkey != null) {
+                Log.d(TAG, "=== RESOLVE DEBUG: Found pubkey from Nostr binding: ${pubkey.take(20)}... ===")
+                return pubkey
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "=== RESOLVE DEBUG: Failed to query Nostr binding for $tag: ${e.message} ===")
+        }
 
-        // Generate a deterministic key from the tag for testing
+        // Fallback to deterministic generation for backwards compatibility
         // This ensures both devices can derive the same pubkey for a given tag
         return try {
             val tagBytes = tag.toByteArray()
             val hash = MessageDigest.getInstance("SHA-256").digest(tagBytes)
             val pubkey = Hex.toHexString(hash)
-            Log.d(TAG, "=== RESOLVE DEBUG: Generated pubkey for $tag: ${pubkey.take(20)}... ===")
+            Log.d(TAG, "=== RESOLVE DEBUG: Generated fallback pubkey for $tag: ${pubkey.take(20)}... ===")
             pubkey
         } catch (e: Exception) {
             Log.e(TAG, "=== RESOLVE DEBUG: Failed to generate pubkey for $tag: ${e.message} ===")
@@ -710,6 +718,166 @@ class NostrP2PService(
                     Log.e(TAG, "Error updating availability", e)
                 }
             }
+        }
+    }
+
+    /**
+     * Publish a nametag binding to the Nostr relay
+     * This creates a replaceable event that maps the user's Nostr pubkey to their Unicity nametag
+     */
+    suspend fun publishNametagBinding(nametagId: String, unicityAddress: String): Boolean {
+        return try {
+            val bindingManager = NostrNametagBinding()
+            val publicKey = keyManager.getPublicKey()
+
+            Log.d(TAG, "Publishing nametag binding for: $nametagId")
+
+            val bindingEvent = bindingManager.createBindingEvent(
+                publicKeyHex = publicKey,
+                nametagId = nametagId,
+                unicityAddress = unicityAddress,
+                keyManager = keyManager
+            )
+
+            // Publish the event to all connected relays
+            publishEvent(bindingEvent)
+
+            Log.d(TAG, "Nametag binding published successfully: $nametagId")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to publish nametag binding", e)
+            false
+        }
+    }
+
+    /**
+     * Query nametag by Nostr pubkey
+     * Returns the nametag string if found, null otherwise
+     */
+    suspend fun queryNametagByPubkey(nostrPubkey: String): String? {
+        return try {
+            val bindingManager = NostrNametagBinding()
+            val filter = bindingManager.createPubkeyToNametagFilter(nostrPubkey)
+
+            Log.d(TAG, "Querying nametag for pubkey: ${nostrPubkey.take(16)}...")
+
+            // Subscribe and wait for result
+            val subscriptionId = "query-nametag-${System.currentTimeMillis()}"
+            var result: String? = null
+            val receivedEvent = kotlinx.coroutines.CompletableDeferred<Event?>()
+
+            // Add temporary listener for this query
+            val listener: (Event) -> Unit = { event ->
+                if (event.kind == NostrNametagBinding.KIND_NAMETAG_BINDING &&
+                    event.pubkey.equals(nostrPubkey, ignoreCase = true)) {
+                    receivedEvent.complete(event)
+                }
+            }
+
+            eventListeners.add(listener)
+
+            try {
+                // Send REQ message to all connected relays
+                val reqMessage = listOf("REQ", subscriptionId, filter)
+                val json = JsonMapper.toJson(reqMessage)
+                relayConnections.values.forEach { ws ->
+                    ws.send(json)
+                }
+
+                // Wait for response with timeout
+                kotlinx.coroutines.withTimeout(5000) {
+                    val event = receivedEvent.await()
+                    result = event?.let { bindingManager.parseNametagFromEvent(it) }
+                }
+
+                if (result != null) {
+                    Log.d(TAG, "Found nametag: $result")
+                } else {
+                    Log.d(TAG, "No nametag found for pubkey")
+                }
+
+                result
+            } finally {
+                // Clean up
+                eventListeners.remove(listener)
+                // Send CLOSE message
+                val closeMessage = listOf("CLOSE", subscriptionId)
+                val closeJson = JsonMapper.toJson(closeMessage)
+                relayConnections.values.forEach { ws ->
+                    ws.send(closeJson)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query nametag by pubkey", e)
+            null
+        }
+    }
+
+    /**
+     * Query Nostr pubkey by nametag
+     * Returns the pubkey (hex) if found, null otherwise
+     * IMPORTANT: Uses 't' tag for querying which is indexed by the relay
+     */
+    suspend fun queryPubkeyByNametag(nametagId: String): String? {
+        return try {
+            val bindingManager = NostrNametagBinding()
+            val filter = bindingManager.createNametagToPubkeyFilter(nametagId)
+
+            Log.d(TAG, "Querying pubkey for nametag: $nametagId")
+            Log.d(TAG, "Filter: $filter")
+
+            // Subscribe and wait for result
+            val subscriptionId = "query-pubkey-${System.currentTimeMillis()}"
+            var result: String? = null
+            val receivedEvent = kotlinx.coroutines.CompletableDeferred<Event?>()
+
+            // Add temporary listener for this query
+            val listener: (Event) -> Unit = { event ->
+                if (event.kind == NostrNametagBinding.KIND_NAMETAG_BINDING) {
+                    // Check if this event has the nametag we're looking for
+                    val eventNametag = bindingManager.parseNametagFromEvent(event)
+                    if (eventNametag == nametagId) {
+                        receivedEvent.complete(event)
+                    }
+                }
+            }
+
+            eventListeners.add(listener)
+
+            try {
+                // Send REQ message to all connected relays
+                val reqMessage = listOf("REQ", subscriptionId, filter)
+                val json = JsonMapper.toJson(reqMessage)
+                relayConnections.values.forEach { ws ->
+                    ws.send(json)
+                }
+
+                // Wait for response with timeout
+                kotlinx.coroutines.withTimeout(5000) {
+                    val event = receivedEvent.await()
+                    result = event?.pubkey
+                }
+
+                if (result != null) {
+                    Log.d(TAG, "Found pubkey: ${result!!.take(16)}...")
+                } else {
+                    Log.d(TAG, "No pubkey found for nametag")
+                }
+
+                result
+            } finally {
+                // Clean up
+                eventListeners.remove(listener)
+                // Send CLOSE message
+                val closeMessage = listOf("CLOSE", subscriptionId)
+                val closeJson = JsonMapper.toJson(closeMessage)
+                relayConnections.values.forEach { ws ->
+                    ws.send(closeJson)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query pubkey by nametag", e)
+            null
         }
     }
 }
