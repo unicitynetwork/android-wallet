@@ -75,39 +75,35 @@ public class TokenMinter {
     /**
      * Mint a token with specified parameters
      *
-     * @param systemId Token system ID (currently unused)
-     * @param unitId Token unit ID (hex string, currently unused)
-     * @param coinId Coin identifier (e.g., "solana-test")
+     * @param tokenTypeHex Token type hex string (32 bytes)
+     * @param coinIdHex Coin ID hex string (32 bytes)
      * @param amount Token amount
      * @return Minted token
      */
     public CompletableFuture<Token<MintTransactionData<MintTransactionReason>>> mintToken(
-        int systemId, String unitId, String coinId, long amount
+        String tokenTypeHex, String coinIdHex, long amount
     ) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 System.out.println("🔨 Minting token...");
-                System.out.println("   Coin: " + coinId);
+                System.out.println("   Token Type: " + tokenTypeHex);
+                System.out.println("   Coin ID: " + coinIdHex);
                 System.out.println("   Amount: " + amount);
 
-                // Generate random token ID and token type
+                // Generate random token ID
                 byte[] tokenIdData = new byte[32];
                 random.nextBytes(tokenIdData);
                 TokenId tokenId = new TokenId(tokenIdData);
 
-                byte[] tokenTypeData = new byte[32];
-                random.nextBytes(tokenTypeData);
+                // Use token type from config
+                byte[] tokenTypeData = hexStringToByteArray(tokenTypeHex);
                 TokenType tokenType = new TokenType(tokenTypeData);
 
-                // Create coin data (use the wallet's approach: split into two coins)
-                byte[] coinId1Data = new byte[32];
-                byte[] coinId2Data = new byte[32];
-                random.nextBytes(coinId1Data);
-                random.nextBytes(coinId2Data);
+                // Use coin ID from config
+                byte[] coinIdData = hexStringToByteArray(coinIdHex);
 
                 Map<CoinId, BigInteger> coins = new HashMap<>();
-                coins.put(new CoinId(coinId1Data), BigInteger.valueOf(amount / 2));
-                coins.put(new CoinId(coinId2Data), BigInteger.valueOf(amount - (amount / 2)));
+                coins.put(new CoinId(coinIdData), BigInteger.valueOf(amount));
                 TokenCoinData coinData = new TokenCoinData(coins);
 
                 // Generate random nonce for masked predicate
@@ -122,11 +118,8 @@ public class TokenMinter {
                     nonce
                 ).toAddress();
 
-                // Create token data
-                Map<String, Object> tokenDataMap = new HashMap<>();
-                tokenDataMap.put("data", coinId);
-                tokenDataMap.put("amount", amount);
-                byte[] tokenDataBytes = UnicityObjectMapper.JSON.writeValueAsBytes(tokenDataMap);
+                // No token data bytes - leave as null as requested
+                byte[] tokenDataBytes = null;
 
                 // Create salt
                 byte[] salt = new byte[32];
@@ -268,6 +261,19 @@ public class TokenMinter {
                 throw new RuntimeException("Failed to transfer token", e);
             }
         });
+    }
+
+    /**
+     * Helper method to convert hex string to byte array
+     */
+    private static byte[] hexStringToByteArray(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                                 + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
     }
 
     /**

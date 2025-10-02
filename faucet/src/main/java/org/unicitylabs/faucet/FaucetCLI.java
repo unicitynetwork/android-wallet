@@ -53,6 +53,7 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("✅ Configuration loaded");
         System.out.println("   Relay: " + config.nostrRelay);
         System.out.println("   Aggregator: " + config.aggregatorUrl);
+        System.out.println("   Token Type: " + config.tokenType);
         System.out.println("   Coin ID: " + config.coinId);
         System.out.println();
 
@@ -69,8 +70,7 @@ public class FaucetCLI implements Callable<Integer> {
         // Step 2: Mint the token (includes submission to aggregator)
         TokenMinter minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey);
         var token = minter.mintToken(
-            config.tokenType.systemId,
-            config.tokenType.unitId,
+            config.tokenType,
             config.coinId,
             tokenAmount
         ).join();
@@ -97,7 +97,7 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println();
         System.out.println("📊 Summary:");
         System.out.println("   Recipient: " + nametag);
-        System.out.println("   Amount: " + tokenAmount + " " + config.coinId);
+        System.out.println("   Amount: " + tokenAmount + " tokens");
         System.out.println("   Delivery: Nostr relay");
         System.out.println();
 
