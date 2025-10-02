@@ -121,8 +121,12 @@ public class NostrClient {
 
             @Override
             public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-                System.err.println("❌ WebSocket error: " + t.getMessage());
-                future.completeExceptionally(t);
+                // Only log if it's a real error (not a normal close)
+                if (t != null && t.getMessage() != null) {
+                    System.err.println("❌ WebSocket error: " + t.getMessage());
+                    future.completeExceptionally(t);
+                }
+                // Normal WebSocket close is fine, don't error
             }
         };
 

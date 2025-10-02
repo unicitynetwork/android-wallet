@@ -35,6 +35,10 @@ public class FaucetE2ETest {
     private static final long TIMEOUT_SECONDS = 60L;
     private static final int KIND_TOKEN_TRANSFER = 31113; // Custom Unicity event kind
 
+    // Fixed values from faucet-config.json
+    private static final String TOKEN_TYPE_HEX = "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509";
+    private static final String COIN_ID_HEX = "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93";
+
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // No read timeout - keep connection open indefinitely
@@ -116,10 +120,9 @@ public class FaucetE2ETest {
 
         TokenMinter tokenMinter = new TokenMinter(AGGREGATOR_URL, faucetPrivateKey);
         var token = tokenMinter.mintToken(
-            2,  // systemId
-            "0x01020304050607080102030405060708010203040506070801020304050607FF",  // unitId
-            "solana-test",  // coinId
-            1000L  // amount
+            TOKEN_TYPE_HEX,  // token type from config
+            COIN_ID_HEX,     // coin ID from config
+            1000L            // amount
         ).join();
 
         assertNotNull("Token should be minted", token);

@@ -12,13 +12,8 @@ import java.io.InputStream;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FaucetConfig {
 
-    public static class TokenType {
-        public int systemId;
-        public String unitId;
-    }
-
-    public TokenType tokenType;
-    public String coinId;
+    public String tokenType;  // Hex string for token type (32 bytes)
+    public String coinId;     // Hex string for coin ID (32 bytes)
     public String nostrRelay;
     public String aggregatorUrl;
     public String faucetPrivateKey;
