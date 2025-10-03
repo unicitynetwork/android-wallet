@@ -259,16 +259,41 @@ class TokenAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         
         fun bind(token: Token, isExpanded: Boolean, isTransferring: Boolean) {
-            // Basic token info
-            binding.tvTokenName.text = token.name
+            // Basic token info - show amount and symbol if available
+            android.util.Log.d("TokenAdapter", "Binding token: name=${token.name}, amount=${token.amount}, symbol=${token.symbol}, iconUrl=${token.iconUrl}")
+            binding.tvTokenName.text = if (token.amount != null && token.symbol != null) {
+                "${token.amount} ${token.symbol}"
+            } else {
+                token.name
+            }
             binding.tvTokenIdShort.text = token.id.take(8)
-            
-            // Set Unicity logo for token icon
-            binding.ivTokenIcon.setImageResource(R.drawable.unicity_logo)
-            binding.ivTokenIcon.background = null
-            binding.ivTokenIcon.setPadding(0, 0, 0, 0)
-            binding.ivTokenIcon.imageTintList = null // Remove any tint
-            binding.ivTokenIcon.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+
+            // Load token icon if available, otherwise use Unicity logo
+            if (token.iconUrl != null) {
+                try {
+                    val iconManager = org.unicitylabs.wallet.util.IconCacheManager.getInstance(binding.root.context)
+                    iconManager.loadIcon(
+                        url = token.iconUrl,
+                        imageView = binding.ivTokenIcon,
+                        placeholder = R.drawable.unicity_logo,
+                        error = R.drawable.unicity_logo
+                    )
+                    binding.ivTokenIcon.background = null
+                    binding.ivTokenIcon.setPadding(8, 8, 8, 8)
+                    binding.ivTokenIcon.imageTintList = null
+                    binding.ivTokenIcon.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                } catch (e: Exception) {
+                    // Fallback to Unicity logo on error
+                    binding.ivTokenIcon.setImageResource(R.drawable.unicity_logo)
+                }
+            } else {
+                // Set Unicity logo for token icon
+                binding.ivTokenIcon.setImageResource(R.drawable.unicity_logo)
+                binding.ivTokenIcon.background = null
+                binding.ivTokenIcon.setPadding(0, 0, 0, 0)
+                binding.ivTokenIcon.imageTintList = null
+                binding.ivTokenIcon.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            }
             
             // Expanded details
             binding.tvTokenId.text = "ID: ${token.id.take(12)}..."

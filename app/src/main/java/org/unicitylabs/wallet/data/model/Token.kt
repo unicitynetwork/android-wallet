@@ -23,7 +23,11 @@ data class Token(
     val status: TokenStatus? = TokenStatus.CONFIRMED,
     val transactionId: String? = null,
     val isOfflineTransfer: Boolean = false,
-    val pendingOfflineData: String? = null
+    val pendingOfflineData: String? = null,
+    val amount: Long? = null,           // Amount of fungible tokens (e.g., 1000 SOL)
+    val coinId: String? = null,         // Hex string coin ID from registry
+    val symbol: String? = null,         // e.g., "SOL"
+    val iconUrl: String? = null         // Icon URL from registry
 ) {
     fun getFormattedSize(): String {
         return when {
