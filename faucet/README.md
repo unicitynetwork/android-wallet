@@ -22,7 +22,7 @@ Edit `src/main/resources/faucet-config.json`:
   "coinId": "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93",
   "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
   "aggregatorUrl": "https://goggregator-test.unicity.network",
-  "faucetPrivateKey": "0000000000000000000000000000000000000000000000000000000000000001",
+  "faucetMnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
   "defaultAmount": 1000
 }
 ```
@@ -33,7 +33,7 @@ Edit `src/main/resources/faucet-config.json`:
 - **coinId**: Fixed coin ID hex (32 bytes) for fungible tokens (e.g., Solana testnet)
 - **nostrRelay**: WebSocket URL of the Nostr relay for P2P messaging
 - **aggregatorUrl**: URL of the Unicity aggregator service
-- **faucetPrivateKey**: Secp256k1 private key (32 bytes hex) - **KEEP SECURE!**
+- **faucetMnemonic**: BIP-39 mnemonic phrase for faucet identity - **KEEP SECURE!** (Default: "abandon abandon..." for testnet)
 - **defaultAmount**: Default token amount if not specified via CLI
 
 See [unicity-ids.testnet.json](https://github.com/unicitynetwork/unicity-ids/blob/main/unicity-ids.testnet.json) for the token registry with metadata.

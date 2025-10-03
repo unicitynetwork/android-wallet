@@ -40,6 +40,9 @@ dependencies {
     // CLI argument parsing
     implementation("info.picocli:picocli:4.7.5")
 
+    // BIP-39 for mnemonic phrase (pure Java)
+    implementation("org.bitcoinj:bitcoinj-core:0.16.3")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.awaitility:awaitility:4.2.0")

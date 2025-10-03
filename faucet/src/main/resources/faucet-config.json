@@ -3,14 +3,14 @@
   "coinId": "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93",
   "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
   "aggregatorUrl": "https://goggregator-test.unicity.network",
-  "faucetPrivateKey": "0000000000000000000000000000000000000000000000000000000000000001",
+  "faucetMnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
   "defaultAmount": 1000,
   "notes": {
     "tokenType": "Fixed token type hex for solana-test tokens (32 bytes)",
     "coinId": "Fixed coin ID hex for solana tokens (32 bytes)",
     "nostrRelay": "WebSocket URL of the Nostr relay for P2P messaging",
     "aggregatorUrl": "URL of the Unicity aggregator service",
-    "faucetPrivateKey": "Private key for the faucet (secp256k1 32-byte hex). Keep this secure!",
+    "faucetMnemonic": "BIP-39 mnemonic phrase for faucet identity. Keep this secure!",
     "defaultAmount": "Default token amount if not specified via CLI"
   }
 }

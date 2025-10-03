@@ -16,7 +16,7 @@ public class FaucetConfig {
     public String coinId;     // Hex string for coin ID (32 bytes)
     public String nostrRelay;
     public String aggregatorUrl;
-    public String faucetPrivateKey;
+    public String faucetMnemonic;  // BIP-39 mnemonic phrase
     public int defaultAmount;
 
     /**
