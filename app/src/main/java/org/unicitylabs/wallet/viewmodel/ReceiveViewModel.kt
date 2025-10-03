@@ -20,7 +20,7 @@ enum class ReceiveState {
 }
 
 class ReceiveViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = WalletRepository(application)
+    private val repository = WalletRepository.getInstance(application)
     
     private val _state = MutableStateFlow(ReceiveState.READY_TO_RECEIVE)
     val state: StateFlow<ReceiveState> = _state.asStateFlow()

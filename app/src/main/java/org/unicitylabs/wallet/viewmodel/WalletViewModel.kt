@@ -21,7 +21,7 @@ import org.unicitylabs.wallet.data.service.CryptoPriceService
 import org.unicitylabs.wallet.model.CryptoCurrency
 
 class WalletViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = WalletRepository(application)
+    private val repository = WalletRepository.getInstance(application)
     private val prefs = application.getSharedPreferences("crypto_balances", android.content.Context.MODE_PRIVATE)
     private val priceService = CryptoPriceService(application)
     private var priceUpdateJob: Job? = null
