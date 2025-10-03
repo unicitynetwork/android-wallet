@@ -65,7 +65,17 @@ public class FaucetCLI implements Callable<Integer> {
 
         // Step 1: Resolve nametag to Nostr public key
         NametagResolver nametagResolver = new NametagResolver(config.nostrRelay, faucetPrivateKey);
-        String recipientPubKey = nametagResolver.resolveNametag(nametag).join();
+        String recipientPubKey;
+        try {
+            recipientPubKey = nametagResolver.resolveNametag(nametag).join();
+        } catch (Exception e) {
+            Throwable cause = e.getCause();
+            String errorMsg = (cause != null) ? cause.getMessage() : e.getMessage();
+            System.err.println("\n❌ " + errorMsg);
+            System.err.println("\nMake sure the wallet user has minted the nametag and published the binding to Nostr.");
+            System.exit(1);
+            return 1;
+        }
 
         // Step 2: Mint the token (includes submission to aggregator)
         TokenMinter minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey);
