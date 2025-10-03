@@ -92,8 +92,9 @@ class WalletRepository(context: Context) {
 
         Log.d(TAG, "Current tokens count: ${currentWallet.tokens.size}")
 
+        // Add new token at the beginning (newest first)
         val updatedWallet = currentWallet.copy(
-            tokens = currentWallet.tokens + token
+            tokens = listOf(token) + currentWallet.tokens
         )
 
         Log.d(TAG, "Updated tokens count: ${updatedWallet.tokens.size}")
