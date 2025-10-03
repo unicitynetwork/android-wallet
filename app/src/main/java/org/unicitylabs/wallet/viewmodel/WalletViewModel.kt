@@ -36,12 +36,44 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     val mintResult: StateFlow<Result<Token>?> = _mintResult.asStateFlow()
     
     private val _allCryptocurrencies = MutableStateFlow<List<CryptoCurrency>>(emptyList())
-    
-    // Public cryptocurrencies flow that filters out zero balances
-    val cryptocurrencies: StateFlow<List<CryptoCurrency>> = _allCryptocurrencies
-        .map { cryptos -> cryptos.filter { it.balance > 0.00000001 } } // Use epsilon for floating point comparison
+
+    // Aggregated token balances from Tokens tab
+    private val aggregatedTokenBalances: StateFlow<List<CryptoCurrency>> = tokens
+        .map { tokenList ->
+            // Group tokens by coinId and sum amounts
+            val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(application)
+            tokenList
+                .filter { it.coinId != null && it.amount != null }
+                .groupBy { it.coinId!! }
+                .mapNotNull { (coinId, tokensForCoin) ->
+                    val coinDef = registry.getCoinDefinition(coinId)
+                    if (coinDef != null) {
+                        val totalBalance = tokensForCoin.sumOf { it.amount ?: 0L }.toDouble()
+                        CryptoCurrency(
+                            id = coinId,
+                            symbol = coinDef.symbol ?: coinId.take(4),
+                            name = coinDef.name,
+                            balance = totalBalance,
+                            priceUsd = 0.0, // TODO: Get real price
+                            priceEur = 0.0,
+                            change24h = 0.0,
+                            iconResId = R.drawable.unicity_logo,
+                            isDemo = false,
+                            iconUrl = coinDef.icon
+                        )
+                    } else null
+                }
+        }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
-    
+
+    // Public cryptocurrencies flow that combines demo cryptos + aggregated tokens
+    val cryptocurrencies: StateFlow<List<CryptoCurrency>> = kotlinx.coroutines.flow.combine(
+        _allCryptocurrencies,
+        aggregatedTokenBalances
+    ) { demoCryptos, tokenCryptos ->
+        (tokenCryptos + demoCryptos).filter { it.balance > 0.00000001 }
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
+
     init {
         Log.d("WalletViewModel", "ViewModel initialized - loading saved balances")
         loadSavedCryptocurrencies()
