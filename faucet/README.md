@@ -18,11 +18,8 @@ Edit `src/main/resources/faucet-config.json`:
 
 ```json
 {
-  "tokenType": {
-    "systemId": 2,
-    "unitId": "0x01020304050607080102030405060708010203040506070801020304050607FF"
-  },
-  "coinId": "solana-test",
+  "tokenType": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509",
+  "coinId": "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93",
   "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
   "aggregatorUrl": "https://goggregator-test.unicity.network",
   "faucetPrivateKey": "0000000000000000000000000000000000000000000000000000000000000001",
@@ -32,13 +29,14 @@ Edit `src/main/resources/faucet-config.json`:
 
 ### Configuration Options
 
-- **tokenType.systemId**: Unicity system ID for token type (default: 2)
-- **tokenType.unitId**: Token unit ID as hex string (32 bytes)
-- **coinId**: Coin identifier used in token data (e.g., "solana-test", "bitcoin-test")
+- **tokenType**: Fixed token type hex (32 bytes) for Unicity testnet NFT container
+- **coinId**: Fixed coin ID hex (32 bytes) for fungible tokens (e.g., Solana testnet)
 - **nostrRelay**: WebSocket URL of the Nostr relay for P2P messaging
 - **aggregatorUrl**: URL of the Unicity aggregator service
 - **faucetPrivateKey**: Secp256k1 private key (32 bytes hex) - **KEEP SECURE!**
 - **defaultAmount**: Default token amount if not specified via CLI
+
+See [unicity-ids.testnet.json](https://github.com/unicitynetwork/unicity-ids/blob/main/unicity-ids.testnet.json) for the token registry with metadata.
 
 ## Usage
 
@@ -79,52 +77,57 @@ Options:
 
 ## How It Works
 
-### 1. Token Minting
+### 1. Nametag Resolution
+- Queries the Nostr relay for the recipient's nametag binding
+- Uses filter: `{"kinds": [30078], "#t": ["nametag"], "limit": 1}`
+- Retrieves the recipient's Nostr public key from the binding event
+
+### 2. Token Minting
 - Creates a Unicity token using the Java State Transition SDK
 - Token contains:
-  - System ID and Unit ID from config
-  - Coin identifier (e.g., "solana-test")
+  - Fixed token type (f8aa1383... - Unicity NFT container)
+  - Fixed coin ID (dee5f8ce... - Solana testnet)
   - Amount specified via CLI or config
   - Masked predicate for ownership
 
-### 2. Token Submission
-- Submits the minted token to the Unicity aggregator
-- Aggregator validates and includes it in the blockchain
-
-### 3. Nametag Resolution
-- Queries the Unicity nametag service to resolve the recipient's nametag
-- Retrieves the recipient's Nostr public key
+### 3. Token Transfer
+- Transfers the minted token to the recipient's nametag
+- Creates a transfer transaction commitment
+- Submits to aggregator and waits for inclusion proof
 
 ### 4. Nostr Message Delivery
-- Creates an encrypted Nostr event (kind 4 - encrypted DM)
+- Creates an encrypted Nostr event (kind 31113 - token transfer)
+- Uses simple hex encoding for message content
 - Signs the event with Schnorr signature (BIP-340)
-- Sends the token JSON via WebSocket to the Nostr relay
-- The wallet app receives and processes the token
+- Sends format: `token_transfer:{tokenJson}`
+- The wallet app receives and processes the token automatically
 
 ## Testing with Wallet App
 
 ### Prerequisites
-1. Wallet app must be running with Nostr P2P enabled
-2. Wallet user must have a registered nametag
-3. Both faucet and wallet must use the same Nostr relay
+1. Wallet app must be running with Nostr P2P service started
+2. Wallet user must have minted a nametag
+3. Nametag binding must be published to the Nostr relay
+4. Both faucet and wallet must use the same Nostr relay
 
 ### Test Flow
 
-1. **Register nametag in wallet app**:
+1. **Mint nametag in wallet app**:
    - Open wallet app
-   - Go to Profile
-   - Register a nametag (e.g., "alice")
-   - Enable "Available as Agent" toggle
+   - Go to Profile → Nametag section
+   - Tap "Mint Nametag" and enter a unique name (e.g., "alice-test-123")
+   - Wait for minting and Nostr binding to complete
 
 2. **Run the faucet**:
    ```bash
-   ./gradlew run --args="--nametag=alice --amount=1000"
+   cd faucet
+   ./gradlew run --args="--nametag=alice-test-123 --amount=1000"
    ```
 
 3. **Verify in wallet app**:
-   - Token should appear in wallet after a few seconds
-   - Check wallet balance and token list
-   - Verify token details (coin type, amount)
+   - Token should appear in Tokens tab immediately
+   - Should display as "1000 SOL" with Solana icon
+   - New tokens appear at the top of the list
 
 ## Message Format
 
@@ -169,10 +172,11 @@ The wallet app's `NostrP2PService` recognizes this format and automatically:
 
 ## Troubleshooting
 
-### "Nametag not found"
-- Ensure the nametag is registered in the wallet app
-- Check the nametag service URL is accessible
-- Verify nametag spelling
+### "Nametag not found in relay"
+- Ensure the nametag is minted in the wallet app (Profile → Nametag)
+- Check that the Nostr service started successfully after minting
+- Wait 2-3 seconds after minting for the binding to publish
+- Verify nametag spelling matches exactly
 
 ### "Message rejected"
 - Check Nostr relay is running and accessible
