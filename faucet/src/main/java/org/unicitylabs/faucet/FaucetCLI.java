@@ -64,7 +64,7 @@ public class FaucetCLI implements Callable<Integer> {
         byte[] faucetPrivateKey = hexStringToByteArray(config.faucetPrivateKey);
 
         // Step 1: Resolve nametag to Nostr public key
-        NametagResolver nametagResolver = new NametagResolver();
+        NametagResolver nametagResolver = new NametagResolver(config.nostrRelay, faucetPrivateKey);
         String recipientPubKey = nametagResolver.resolveNametag(nametag).join();
 
         // Step 2: Mint the token (includes submission to aggregator)

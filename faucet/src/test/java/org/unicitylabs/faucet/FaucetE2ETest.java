@@ -92,11 +92,14 @@ public class FaucetE2ETest {
         System.out.println("\n📋 Test Flow:");
         System.out.println("   1. Mint nametag for Alice");
         System.out.println("   2. Mint solana-test token");
+        System.out.println("   2.5. Publish Alice's nametag binding to Nostr");
+        System.out.println("   2.6. Test NametagResolver lookup");
         System.out.println("   3. Transfer token to Alice (adds transfer tx)");
         System.out.println("   4. Connect Alice to Nostr relay");
         System.out.println("   5. Send token to Alice via Nostr");
         System.out.println("   6. Verify Alice receives token");
-        System.out.println("   7. Verify token has complete transaction history (mint + transfer)\n");
+        System.out.println("   7. Verify token has complete transaction history (mint + transfer)");
+        System.out.println("   8. Verify nametag binding queries work bidirectionally\n");
 
         // Step 1: Mint nametag for Alice
         System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -143,6 +146,17 @@ public class FaucetE2ETest {
 
         assertTrue("Nametag binding should be published", bindingPublished);
         System.out.println("✅ Alice's nametag binding published!");
+
+        // Step 2.6: Test nametag resolution using NametagResolver
+        System.out.println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        System.out.println("Step 2.6: Testing NametagResolver lookup");
+        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+        NametagResolver resolver = new NametagResolver(NOSTR_RELAY, faucetPrivateKey);
+        String resolvedPubkey = resolver.resolveNametag(aliceNametag).join();
+        assertNotNull("Resolved pubkey should not be null", resolvedPubkey);
+        assertEquals("Resolved pubkey should match Alice's pubkey", aliceNostrPubKey, resolvedPubkey);
+        System.out.println("✅ NametagResolver successfully looked up Alice's pubkey!");
 
         // Transfer token to Alice's nametag
         System.out.println("\n🔄 Transferring token to Alice's nametag: " + aliceNametag);
