@@ -99,8 +99,9 @@ class NostrP2PService(
     // WebSocket connections
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.SECONDS) // No read timeout for WebSocket
         .writeTimeout(30, TimeUnit.SECONDS)
+        .pingInterval(25, TimeUnit.SECONDS) // Send ping every 25 seconds to keep connection alive
         .build()
 
     // Relay connections
