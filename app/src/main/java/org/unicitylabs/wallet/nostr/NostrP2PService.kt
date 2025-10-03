@@ -18,7 +18,10 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.spongycastle.util.encoders.Hex
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper
+import org.unicitylabs.wallet.data.repository.WalletRepository
 import org.unicitylabs.wallet.p2p.IP2PService
+import org.unicitylabs.wallet.token.UnicityTokenRegistry
 import org.unicitylabs.wallet.util.JsonMapper
 import java.security.MessageDigest
 import java.util.UUID
@@ -174,6 +177,12 @@ class NostrP2PService(
      * Connect to a single relay
      */
     private fun connectToRelay(url: String) {
+        // Check if already connected
+        if (relayConnections.containsKey(url)) {
+            Log.d(TAG, "Already connected to relay: $url")
+            return
+        }
+
         Log.d(TAG, "Connecting to relay: $url")
 
         val request = Request.Builder()
@@ -305,8 +314,14 @@ class NostrP2PService(
         return Event(
             id = data["id"] as String,
             pubkey = data["pubkey"] as String,
-            created_at = (data["created_at"] as Double).toLong(),
-            kind = (data["kind"] as Double).toInt(),
+            created_at = when (val ts = data["created_at"]) {
+                is Number -> ts.toLong()
+                else -> 0L
+            },
+            kind = when (val k = data["kind"]) {
+                is Number -> k.toInt()
+                else -> 0
+            },
             tags = (data["tags"] as List<*>).map { it as List<String> },
             content = data["content"] as String,
             sig = data["sig"] as String
@@ -324,7 +339,7 @@ class NostrP2PService(
             mapOf(
                 "kinds" to listOf(KIND_ENCRYPTED_DM, KIND_GIFT_WRAP, KIND_TOKEN_TRANSFER),
                 "#p" to listOf(publicKey),
-                "since" to (System.currentTimeMillis() / 1000 - 86400) // Last 24 hours
+                "since" to (System.currentTimeMillis() / 1000) // Only new events from now
             ),
             mapOf(
                 "kinds" to listOf(KIND_AGENT_LOCATION, KIND_AGENT_PROFILE),
@@ -334,7 +349,9 @@ class NostrP2PService(
         )
 
         val subscriptionId = UUID.randomUUID().toString().substring(0, 8)
-        val request = listOf("REQ", subscriptionId, filters)
+        val request = mutableListOf<Any>("REQ", subscriptionId).apply {
+            addAll(filters)
+        }
 
         webSocket.send(JsonMapper.toJson(request))
     }
@@ -662,8 +679,156 @@ class NostrP2PService(
     }
 
     private fun handleTokenTransfer(event: Event) {
-        // TODO: Handle token transfer request
-        Log.d(TAG, "Received token transfer from ${event.pubkey}")
+        scope.launch {
+            try {
+                Log.d(TAG, "Processing token transfer from ${event.pubkey}")
+
+                // Decrypt the message content
+                // Try hex decoding first (faucet uses simple hex), then NIP-04
+                val decryptedContent = try {
+                    // First try simple hex decoding (faucet format)
+                    try {
+                        String(Hex.decode(event.content), Charsets.UTF_8)
+                    } catch (hexError: Exception) {
+                        // Fall back to NIP-04 encryption
+                        val senderPubkeyBytes = Hex.decode(event.pubkey)
+                        keyManager.decryptMessage(event.content, senderPubkeyBytes)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decrypt token transfer", e)
+                    return@launch
+                }
+
+                // Check if it's a token_transfer message
+                if (!decryptedContent.startsWith("token_transfer:")) {
+                    Log.w(TAG, "Not a token_transfer message")
+                    return@launch
+                }
+
+                // Extract token JSON
+                val tokenJson = decryptedContent.substring("token_transfer:".length)
+                Log.d(TAG, "Received token JSON (${tokenJson.length} chars)")
+                Log.d(TAG, "Token JSON preview: ${tokenJson.take(500)}")
+
+                // Parse the Unicity SDK token
+                val unicityToken = try {
+                    UnicityObjectMapper.JSON.readValue(tokenJson, org.unicitylabs.sdk.token.Token::class.java)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse Unicity token", e)
+                    return@launch
+                }
+
+                // Extract token metadata - using JSON parsing for simplicity
+                // The SDK Token is complex, so we parse the JSON to extract metadata
+                val registry = UnicityTokenRegistry.getInstance(context)
+                var amount: Long? = null
+                var coinIdHex: String? = null
+                var symbol: String? = null
+                var iconUrl: String? = null
+                var tokenTypeHex = "unknown"
+
+                try {
+                    // Parse the token JSON to extract metadata
+                    val tokenJsonObj = JsonMapper.fromJson(tokenJson, Map::class.java) as Map<*, *>
+                    Log.d(TAG, "Token JSON keys: ${tokenJsonObj.keys}")
+
+                    // Extract token type from genesis transaction
+                    val genesis = tokenJsonObj["genesis"] as? Map<*, *>
+                    Log.d(TAG, "Genesis keys: ${genesis?.keys}")
+                    if (genesis != null) {
+                        val genesisData = genesis["data"] as? Map<*, *>
+                        Log.d(TAG, "Genesis data keys: ${genesisData?.keys}")
+                        if (genesisData != null) {
+                            // Token type
+                            val tokenType = genesisData["tokenType"] as? String
+                            if (tokenType != null) {
+                                tokenTypeHex = tokenType
+                                Log.d(TAG, "Token type: $tokenTypeHex")
+                            }
+
+                            // Try to find coins - format is array of [coinId, amount] pairs
+                            // Option 1: genesisData.coins (mint transaction)
+                            var coinsArray = genesisData["coins"] as? List<*>
+
+                            // Option 2: genesisData.data.coins (nested)
+                            if (coinsArray == null || coinsArray.isEmpty()) {
+                                val data = genesisData["data"] as? Map<*, *>
+                                coinsArray = data?.get("coins") as? List<*>
+                            }
+
+                            // Option 3: Current state data (for transferred tokens)
+                            if (coinsArray == null || coinsArray.isEmpty()) {
+                                val state = tokenJsonObj["state"] as? Map<*, *>
+                                val stateData = state?.get("data") as? Map<*, *>
+                                coinsArray = stateData?.get("coins") as? List<*>
+                            }
+
+                            Log.d(TAG, "Coins array: $coinsArray")
+                            if (coinsArray != null && coinsArray.isNotEmpty()) {
+                                // Get first coin entry [coinId, amount]
+                                val firstCoin = coinsArray[0] as? List<*>
+                                if (firstCoin != null && firstCoin.size >= 2) {
+                                    coinIdHex = firstCoin[0] as? String
+                                    amount = (firstCoin[1] as? String)?.toLongOrNull()
+                                        ?: (firstCoin[1] as? Number)?.toLong()
+
+                                    Log.d(TAG, "Coin ID: $coinIdHex, Amount: $amount")
+
+                                    // Look up coin metadata in registry
+                                    if (coinIdHex != null) {
+                                        val coinDef = registry.getCoinDefinition(coinIdHex)
+                                        if (coinDef != null) {
+                                            symbol = coinDef.symbol
+                                            iconUrl = coinDef.icon
+                                            Log.d(TAG, "Found coin: ${coinDef.name} ($symbol) = $amount")
+                                        } else {
+                                            Log.w(TAG, "Coin $coinIdHex not found in registry")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to extract token metadata from JSON", e)
+                    e.printStackTrace()
+                }
+
+                // Create wallet Token model
+                val walletToken = org.unicitylabs.wallet.data.model.Token(
+                    name = symbol ?: "Token",
+                    type = tokenTypeHex,
+                    jsonData = tokenJson,
+                    sizeBytes = tokenJson.length,
+                    status = org.unicitylabs.wallet.data.model.TokenStatus.CONFIRMED,
+                    amount = amount,
+                    coinId = coinIdHex,
+                    symbol = symbol,
+                    iconUrl = iconUrl
+                )
+
+                // Save to wallet repository
+                val walletRepository = org.unicitylabs.wallet.data.repository.WalletRepository(context)
+                walletRepository.addToken(walletToken)
+
+                Log.i(TAG, "✅ Token received and saved: $amount $symbol")
+
+                // Show notification to user
+                showTokenReceivedNotification(amount, symbol ?: "tokens")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling token transfer", e)
+            }
+        }
+    }
+
+    private fun showTokenReceivedNotification(amount: Long?, symbol: String) {
+        // TODO: Implement notification
+        Log.i(TAG, "📬 New token received: $amount $symbol")
+    }
+
+    private fun bytesToHex(bytes: ByteArray): String {
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun handleFileMetadata(event: Event) {

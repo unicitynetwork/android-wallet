@@ -578,6 +578,13 @@ class UserProfileActivity : AppCompatActivity() {
                         try {
                             val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(this)
                             if (nostrService != null) {
+                                // Start the service if not running
+                                if (!nostrService.isRunning()) {
+                                    nostrService.start()
+                                    // Wait a bit for connection
+                                    kotlinx.coroutines.delay(2000)
+                                }
+
                                 val proxyAddress = nametagService.getProxyAddress(nametagToken)
                                 val published = nostrService.publishNametagBinding(
                                     nametagId = nametagString,

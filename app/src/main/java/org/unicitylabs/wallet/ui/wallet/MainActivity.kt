@@ -150,6 +150,9 @@ class MainActivity : AppCompatActivity() {
         // Initialize ServiceProvider with application context for trustbase loading
         org.unicitylabs.wallet.di.ServiceProvider.init(applicationContext)
 
+        // Start Nostr P2P service to listen for token transfers
+        startNostrService()
+
         setupNfc()
         setupUI()
         setupRecyclerView()
@@ -3646,5 +3649,24 @@ class MainActivity : AppCompatActivity() {
                 .show()
         }
     }
-    
+
+    private fun startNostrService() {
+        try {
+            val prefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+            val unicityTag = prefs.getString("unicity_tag", "") ?: ""
+
+            if (unicityTag.isNotEmpty()) {
+                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                if (nostrService != null && !nostrService.isRunning()) {
+                    nostrService.start()
+                    android.util.Log.d("MainActivity", "Nostr P2P service started to listen for token transfers")
+                }
+            } else {
+                android.util.Log.d("MainActivity", "No nametag yet, will start Nostr service after minting")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to start Nostr service", e)
+        }
+    }
+
 }

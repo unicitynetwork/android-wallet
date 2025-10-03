@@ -1,0 +1,18 @@
+[
+  {
+    "network": "unicity:testnet",
+    "assetKind": "non-fungible",
+    "name": "Unicity",
+    "description": "Unicity testnet token type",
+    "id": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509"
+  },
+  {
+    "network": "unicity:testnet",
+    "assetKind": "fungible",
+    "name": "Solana",
+    "symbol": "SOL",
+    "description": "Solana testnet coin on Unicity",
+    "icon": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/icon/sol.png",
+    "id": "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93"
+  }
+]

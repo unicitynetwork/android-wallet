@@ -76,24 +76,30 @@ class WalletRepository(context: Context) {
     
     fun addToken(token: Token) {
         Log.d(TAG, "=== addToken called ===")
-        Log.d(TAG, "Token to add: ${token.name}, type: ${token.type}")
-        
+        Log.d(TAG, "Token to add: ${token.name}, type: ${token.type}, id: ${token.id}")
+
         val currentWallet = _wallet.value
         if (currentWallet == null) {
             Log.e(TAG, "Current wallet is null! Cannot add token")
             return
         }
-        
+
+        // Check for duplicates by token ID
+        if (currentWallet.tokens.any { it.id == token.id }) {
+            Log.w(TAG, "Token with ID ${token.id} already exists, skipping duplicate")
+            return
+        }
+
         Log.d(TAG, "Current tokens count: ${currentWallet.tokens.size}")
-        
+
         val updatedWallet = currentWallet.copy(
             tokens = currentWallet.tokens + token
         )
-        
+
         Log.d(TAG, "Updated tokens count: ${updatedWallet.tokens.size}")
-        
+
         saveWallet(updatedWallet)
-        
+
         Log.d(TAG, "Token added and wallet saved")
     }
     
