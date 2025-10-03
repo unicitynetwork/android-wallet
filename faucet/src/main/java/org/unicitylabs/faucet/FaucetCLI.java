@@ -60,8 +60,8 @@ public class FaucetCLI implements Callable<Integer> {
         // Determine amount
         long tokenAmount = (amount != null) ? amount : config.defaultAmount;
 
-        // Convert faucet private key from hex
-        byte[] faucetPrivateKey = hexStringToByteArray(config.faucetPrivateKey);
+        // Derive private key from mnemonic
+        byte[] faucetPrivateKey = mnemonicToPrivateKey(config.faucetMnemonic);
 
         // Step 1: Resolve nametag to Nostr public key
         NametagResolver nametagResolver = new NametagResolver(config.nostrRelay, faucetPrivateKey);
@@ -122,6 +122,22 @@ public class FaucetCLI implements Callable<Integer> {
     private String createTransferMessage(String tokenJson, long amount, String coinId) {
         // Format: token_transfer:{tokenJson}
         return "token_transfer:" + tokenJson;
+    }
+
+    /**
+     * Derive private key from BIP-39 mnemonic phrase
+     */
+    private byte[] mnemonicToPrivateKey(String mnemonic) throws Exception {
+        // Convert mnemonic to seed using BIP-39 (BitcoinJ)
+        byte[] seed = org.bitcoinj.crypto.MnemonicCode.toSeed(
+            java.util.Arrays.asList(mnemonic.split(" ")),
+            "" // No passphrase
+        );
+
+        // Use first 32 bytes of seed as private key
+        byte[] privateKey = new byte[32];
+        System.arraycopy(seed, 0, privateKey, 0, 32);
+        return privateKey;
     }
 
     /**
