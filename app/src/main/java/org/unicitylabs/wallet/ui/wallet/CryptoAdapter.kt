@@ -84,8 +84,18 @@ class CryptoAdapter(
             // Log what's being displayed in UI
             android.util.Log.d("CryptoAdapter", "Binding ${crypto.symbol}: balance=${crypto.balance} formatted=${crypto.getFormattedBalance()}")
             
-            // Basic info
-            cryptoIcon.setImageResource(crypto.iconResId)
+            // Basic info - load icon from URL if available, otherwise use resource
+            if (crypto.iconUrl != null) {
+                val iconManager = org.unicitylabs.wallet.util.IconCacheManager.getInstance(itemView.context)
+                iconManager.loadIcon(
+                    url = crypto.iconUrl,
+                    imageView = cryptoIcon,
+                    placeholder = crypto.iconResId,
+                    error = crypto.iconResId
+                )
+            } else {
+                cryptoIcon.setImageResource(crypto.iconResId)
+            }
             cryptoName.text = crypto.name
             cryptoBalance.text = "${crypto.getFormattedBalance()} ${crypto.symbol}"
             cryptoTotalValue.text = crypto.getFormattedBalanceInFiat(currency)

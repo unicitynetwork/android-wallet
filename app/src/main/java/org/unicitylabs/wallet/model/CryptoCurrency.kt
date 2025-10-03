@@ -9,7 +9,8 @@ data class CryptoCurrency(
     val priceEur: Double,
     val change24h: Double,
     val iconResId: Int,
-    val isDemo: Boolean = true // Demo coins vs real Unicity tokens
+    val isDemo: Boolean = true, // Demo coins vs real Unicity tokens
+    val iconUrl: String? = null // URL for icon (used for real tokens)
 ) {
     fun getBalanceInFiat(currency: String): Double {
         return when (currency) {
