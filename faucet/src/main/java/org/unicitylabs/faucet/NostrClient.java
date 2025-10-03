@@ -326,7 +326,7 @@ public class NostrClient {
                         }
                     } else if ("EOSE".equals(messageType)) {
                         if (!future.isDone()) {
-                            System.out.println("❌ No pubkey found for nametag");
+                            // EOSE received without finding the nametag
                             future.complete(null);
                             webSocket.close(1000, "Done");
                         }
