@@ -20,7 +20,7 @@ enum class SendState {
 }
 
 class SendViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = WalletRepository(application)
+    private val repository = WalletRepository.getInstance(application)
     
     private val _state = MutableStateFlow(SendState.READY_TO_SEND)
     val state: StateFlow<SendState> = _state.asStateFlow()

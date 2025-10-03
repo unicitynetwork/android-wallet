@@ -19,24 +19,35 @@ import org.unicitylabs.wallet.sdk.UnicityTokenData
 import org.unicitylabs.wallet.util.JsonMapper
 import java.util.UUID
 
-class WalletRepository(context: Context) {
-    private val sharedPreferences: SharedPreferences = 
+class WalletRepository private constructor(context: Context) {
+    private val sharedPreferences: SharedPreferences =
         context.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
     // Using shared JsonMapper.mapper
     private val unicitySdkService = UnicityJavaSdkService()
     private val identityManager = IdentityManager(context)
-    
+
     private val _wallet = MutableStateFlow<Wallet?>(null)
     val wallet: StateFlow<Wallet?> = _wallet.asStateFlow()
-    
+
     private val _tokens = MutableStateFlow<List<Token>>(emptyList())
     val tokens: StateFlow<List<Token>> = _tokens.asStateFlow()
-    
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-    
+
     companion object {
         private const val TAG = "WalletRepository"
+
+        @Volatile
+        private var INSTANCE: WalletRepository? = null
+
+        fun getInstance(context: Context): WalletRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: WalletRepository(context.applicationContext).also {
+                    INSTANCE = it
+                }
+            }
+        }
     }
     
     init {

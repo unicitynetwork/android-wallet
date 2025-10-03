@@ -807,8 +807,8 @@ class NostrP2PService(
                     iconUrl = iconUrl
                 )
 
-                // Save to wallet repository
-                val walletRepository = org.unicitylabs.wallet.data.repository.WalletRepository(context)
+                // Save to wallet repository (use singleton)
+                val walletRepository = org.unicitylabs.wallet.data.repository.WalletRepository.getInstance(context)
                 walletRepository.addToken(walletToken)
 
                 Log.i(TAG, "✅ Token received and saved: $amount $symbol")
