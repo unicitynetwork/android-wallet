@@ -603,13 +603,14 @@ class MainActivity : AppCompatActivity() {
                 tokens.forEach { token ->
                     Log.d("MainActivity", "Token: ${token.name} (${token.type})")
                 }
-                
+
+                // Always update the adapter so new tokens appear immediately
+                Log.d("MainActivity", "Updating Tokens adapter with ${tokens.size} tokens")
+                tokenAdapter.submitList(tokens.toList()) // toList() creates new instance to trigger DiffUtil
+
+                // Update visibility if we're on the tokens tab
                 if (currentTab == 1) {
-                    Log.d("MainActivity", "Updating Tokens tab with ${tokens.size} tokens")
-                    tokenAdapter.submitList(tokens)
                     binding.emptyStateContainer.visibility = if (tokens.isEmpty()) View.VISIBLE else View.GONE
-                } else {
-                    Log.d("MainActivity", "Not updating UI - wrong tab (currentTab=$currentTab)")
                 }
             }
         }
