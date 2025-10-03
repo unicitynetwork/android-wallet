@@ -137,14 +137,21 @@ class WalletRepository(context: Context) {
     }
     
     fun clearWallet() {
+        Log.d(TAG, "=== clearWallet called ===")
+        val beforeCount = _wallet.value?.tokens?.size ?: 0
+        Log.d(TAG, "Tokens before clear: $beforeCount")
+
         // Clear existing wallet data
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit().clear().commit() // Use commit() for immediate write
+        Log.d(TAG, "SharedPreferences cleared")
+
         // Note: We do NOT clear the BIP-39 identity here
         // The identity persists across wallet resets for recovery purposes
         // If you need to clear identity, use identityManager.clearIdentity() separately
-        
+
         // Create new empty wallet
         createNewWallet()
+        Log.d(TAG, "New empty wallet created with ${_wallet.value?.tokens?.size ?: 0} tokens")
     }
     
     suspend fun mintNewToken(name: String, data: String, amount: Long = 100): Result<Token> {
