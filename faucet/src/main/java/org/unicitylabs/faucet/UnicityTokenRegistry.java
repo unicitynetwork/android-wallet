@@ -25,6 +25,10 @@ public class UnicityTokenRegistry {
     private static UnicityTokenRegistry instance;
     private final Map<String, CoinDefinition> coinsById;
 
+    public static class IconEntry {
+        public String url;
+    }
+
     public static class CoinDefinition {
         public String network;
         public String assetKind;
@@ -32,8 +36,29 @@ public class UnicityTokenRegistry {
         public String symbol;
         public Integer decimals; // Can be null if not specified
         public String description;
-        public String icon;
+        public String icon; // Legacy field (deprecated)
+        public List<IconEntry> icons; // New icons array
         public String id;
+
+        /**
+         * Get the best icon URL (prefer PNG over SVG)
+         */
+        public String getIconUrl() {
+            // Try new icons array first
+            if (icons != null && !icons.isEmpty()) {
+                // Prefer PNG
+                for (IconEntry iconEntry : icons) {
+                    if (iconEntry.url.toLowerCase().contains(".png")) {
+                        return iconEntry.url;
+                    }
+                }
+                // Fall back to first icon
+                return icons.get(0).url;
+            }
+
+            // Fall back to legacy icon field
+            return icon;
+        }
 
         @Override
         public String toString() {
