@@ -795,8 +795,8 @@ class NostrP2PService(
                                         val coinDef = registry.getCoinDefinition(coinIdHex)
                                         if (coinDef != null) {
                                             symbol = coinDef.symbol
-                                            iconUrl = coinDef.icon
-                                            Log.d(TAG, "Found coin: ${coinDef.name} ($symbol) = $amount")
+                                            iconUrl = coinDef.getIconUrl()
+                                            Log.d(TAG, "Found coin: ${coinDef.name} ($symbol) = $amount, icon: $iconUrl")
                                         } else {
                                             Log.w(TAG, "Coin $coinIdHex not found in registry")
                                         }

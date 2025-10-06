@@ -71,7 +71,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                         totalAmount = tokensForCoin.sumOf { it.amount ?: 0L },
                         decimals = decimals,
                         tokenCount = tokensForCoin.size,
-                        iconUrl = coinDef?.icon ?: tokensForCoin.first().iconUrl,
+                        iconUrl = coinDef?.getIconUrl() ?: tokensForCoin.first().iconUrl,
                         priceUsd = priceData.priceUsd,
                         priceEur = priceData.priceEur,
                         change24h = priceData.change24h

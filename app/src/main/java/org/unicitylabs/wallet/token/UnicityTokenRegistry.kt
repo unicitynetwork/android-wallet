@@ -15,6 +15,13 @@ import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 /**
+ * Icon URL entry in the registry
+ */
+data class IconEntry(
+    val url: String
+)
+
+/**
  * Data class representing a token or coin definition in the registry
  */
 data class TokenDefinition(
@@ -24,9 +31,28 @@ data class TokenDefinition(
     val symbol: String? = null,
     val decimals: Int? = null, // Number of decimal places (e.g., 9 for SOL)
     val description: String,
-    val icon: String? = null,
+    val icon: String? = null,  // Legacy single icon field (deprecated)
+    val icons: List<IconEntry>? = null, // New icons array
     val id: String // Hex string: tokenType for NFTs, coinId for fungible
-)
+) {
+    /**
+     * Get the best icon URL for display (prefer PNG over SVG)
+     */
+    fun getIconUrl(): String? {
+        // Try new icons array first
+        if (!icons.isNullOrEmpty()) {
+            // Prefer PNG (usually second in array or contains ".png")
+            val pngIcon = icons.find { it.url.contains(".png", ignoreCase = true) }
+            if (pngIcon != null) return pngIcon.url
+
+            // Fall back to first icon (usually SVG)
+            return icons.first().url
+        }
+
+        // Fall back to legacy icon field
+        return icon
+    }
+}
 
 /**
  * Registry for Unicity token types and coin IDs
