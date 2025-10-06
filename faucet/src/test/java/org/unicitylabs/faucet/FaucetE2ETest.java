@@ -158,9 +158,11 @@ public class FaucetE2ETest {
         assertEquals("Resolved pubkey should match Alice's pubkey", aliceNostrPubKey, resolvedPubkey);
         System.out.println("✅ NametagResolver successfully looked up Alice's pubkey!");
 
-        // Transfer token to Alice's nametag
+        // Transfer token to Alice's nametag proxy address
         System.out.println("\n🔄 Transferring token to Alice's nametag: " + aliceNametag);
-        var transferInfo = tokenMinter.transferToNametag(token, aliceNametag).join();
+        var nametagTokenId = org.unicitylabs.sdk.token.TokenId.fromNameTag(aliceNametag);
+        var aliceProxyAddress = org.unicitylabs.sdk.address.ProxyAddress.create(nametagTokenId);
+        var transferInfo = tokenMinter.transferToProxyAddress(token, aliceProxyAddress).join();
         assertNotNull("Transfer info should be created", transferInfo);
         System.out.println("✅ Token transferred to Alice!");
 

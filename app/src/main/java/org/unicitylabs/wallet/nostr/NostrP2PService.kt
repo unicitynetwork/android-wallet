@@ -11,7 +11,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -706,131 +708,26 @@ class NostrP2PService(
                     return@launch
                 }
 
-                // Extract token JSON
-                val tokenJson = decryptedContent.substring("token_transfer:".length)
-                Log.d(TAG, "Received token JSON (${tokenJson.length} chars)")
-                Log.d(TAG, "Token JSON preview: ${tokenJson.take(500)}")
+                // Extract payload
+                val payload = decryptedContent.substring("token_transfer:".length)
+                Log.d(TAG, "Received token transfer payload (${payload.length} chars)")
 
-                // Parse to check if it's a demo crypto transfer or real Unicity token
-                val tokenJsonObj = try {
-                    JsonMapper.fromJson(tokenJson, Map::class.java) as Map<*, *>
+                // Parse payload
+                val payloadObj = try {
+                    JsonMapper.fromJson(payload, Map::class.java) as Map<*, *>
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to parse token JSON", e)
+                    Log.e(TAG, "Failed to parse payload", e)
                     return@launch
                 }
 
-                val transferType = tokenJsonObj["type"] as? String
-
-                if (transferType == "crypto_transfer") {
-                    // Handle demo crypto transfer
-                    handleDemoCryptoTransfer(tokenJsonObj)
-                    return@launch
+                // Check if this is proper transfer format with sourceToken and transferTx
+                if (payloadObj.containsKey("sourceToken") && payloadObj.containsKey("transferTx")) {
+                    // PROPER FORMAT: Transfer with finalization
+                    handleProperTokenTransfer(payloadObj)
+                } else {
+                    Log.e(TAG, "Invalid token transfer format - missing sourceToken or transferTx")
+                    Log.e(TAG, "Payload keys: ${payloadObj.keys}")
                 }
-
-                // Parse the Unicity SDK token (for real tokens)
-                val unicityToken = try {
-                    UnicityObjectMapper.JSON.readValue(tokenJson, org.unicitylabs.sdk.token.Token::class.java)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to parse Unicity token", e)
-                    return@launch
-                }
-
-                // Extract token metadata - using JSON parsing for simplicity
-                // The SDK Token is complex, so we parse the JSON to extract metadata
-                val registry = UnicityTokenRegistry.getInstance(context)
-                var amount: Long? = null
-                var coinIdHex: String? = null
-                var symbol: String? = null
-                var iconUrl: String? = null
-                var tokenTypeHex = "unknown"
-
-                try {
-                    // Token JSON already parsed above
-                    Log.d(TAG, "Token JSON keys: ${tokenJsonObj.keys}")
-
-                    // Extract token type from genesis transaction
-                    val genesis = tokenJsonObj["genesis"] as? Map<*, *>
-                    Log.d(TAG, "Genesis keys: ${genesis?.keys}")
-                    if (genesis != null) {
-                        val genesisData = genesis["data"] as? Map<*, *>
-                        Log.d(TAG, "Genesis data keys: ${genesisData?.keys}")
-                        if (genesisData != null) {
-                            // Token type
-                            val tokenType = genesisData["tokenType"] as? String
-                            if (tokenType != null) {
-                                tokenTypeHex = tokenType
-                                Log.d(TAG, "Token type: $tokenTypeHex")
-                            }
-
-                            // Try to find coins - format is array of [coinId, amount] pairs
-                            // Option 1: genesisData.coins (mint transaction)
-                            var coinsArray = genesisData["coins"] as? List<*>
-
-                            // Option 2: genesisData.data.coins (nested)
-                            if (coinsArray == null || coinsArray.isEmpty()) {
-                                val data = genesisData["data"] as? Map<*, *>
-                                coinsArray = data?.get("coins") as? List<*>
-                            }
-
-                            // Option 3: Current state data (for transferred tokens)
-                            if (coinsArray == null || coinsArray.isEmpty()) {
-                                val state = tokenJsonObj["state"] as? Map<*, *>
-                                val stateData = state?.get("data") as? Map<*, *>
-                                coinsArray = stateData?.get("coins") as? List<*>
-                            }
-
-                            Log.d(TAG, "Coins array: $coinsArray")
-                            if (coinsArray != null && coinsArray.isNotEmpty()) {
-                                // Get first coin entry [coinId, amount]
-                                val firstCoin = coinsArray[0] as? List<*>
-                                if (firstCoin != null && firstCoin.size >= 2) {
-                                    coinIdHex = firstCoin[0] as? String
-                                    amount = (firstCoin[1] as? String)?.toLongOrNull()
-                                        ?: (firstCoin[1] as? Number)?.toLong()
-
-                                    Log.d(TAG, "Coin ID: $coinIdHex, Amount: $amount")
-
-                                    // Look up coin metadata in registry
-                                    if (coinIdHex != null) {
-                                        val coinDef = registry.getCoinDefinition(coinIdHex)
-                                        if (coinDef != null) {
-                                            symbol = coinDef.symbol
-                                            iconUrl = coinDef.getIconUrl()
-                                            Log.d(TAG, "Found coin: ${coinDef.name} ($symbol) = $amount, icon: $iconUrl")
-                                        } else {
-                                            Log.w(TAG, "Coin $coinIdHex not found in registry")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to extract token metadata from JSON", e)
-                    e.printStackTrace()
-                }
-
-                // Create wallet Token model
-                val walletToken = org.unicitylabs.wallet.data.model.Token(
-                    name = symbol ?: "Token",
-                    type = tokenTypeHex,
-                    jsonData = tokenJson,
-                    sizeBytes = tokenJson.length,
-                    status = org.unicitylabs.wallet.data.model.TokenStatus.CONFIRMED,
-                    amount = amount,
-                    coinId = coinIdHex,
-                    symbol = symbol,
-                    iconUrl = iconUrl
-                )
-
-                // Save to wallet repository (use singleton)
-                val walletRepository = org.unicitylabs.wallet.data.repository.WalletRepository.getInstance(context)
-                walletRepository.addToken(walletToken)
-
-                Log.i(TAG, "✅ Token received and saved: $amount $symbol")
-
-                // Show notification to user
-                showTokenReceivedNotification(amount, symbol ?: "tokens")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling token transfer", e)
@@ -841,6 +738,60 @@ class NostrP2PService(
     private fun showTokenReceivedNotification(amount: Long?, symbol: String) {
         // TODO: Implement notification
         Log.i(TAG, "📬 New token received: $amount $symbol")
+    }
+
+    /**
+     * Handle proper token transfer with source token and transfer transaction
+     * Requires finalization with nametag for proxy address resolution
+     */
+    private fun handleProperTokenTransfer(payloadObj: Map<*, *>) {
+        scope.launch {
+            try {
+                Log.d(TAG, "Processing proper token transfer with finalization...")
+
+                // Extract source token and transfer transaction JSON strings
+                val sourceTokenJson = payloadObj["sourceToken"] as? String
+                val transferTxJson = payloadObj["transferTx"] as? String
+
+                if (sourceTokenJson == null || transferTxJson == null) {
+                    Log.e(TAG, "Missing source token or transfer transaction in payload")
+                    return@launch
+                }
+
+                // Parse source token
+                val sourceToken = try {
+                    UnicityObjectMapper.JSON.readValue(sourceTokenJson, org.unicitylabs.sdk.token.Token::class.java)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse source token", e)
+                    return@launch
+                }
+
+                // Parse transfer transaction
+                val transferTx = try {
+                    UnicityObjectMapper.JSON.readValue(transferTxJson, org.unicitylabs.sdk.transaction.Transaction::class.java) as org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse transfer transaction", e)
+                    return@launch
+                }
+
+                Log.d(TAG, "Source token type: ${sourceToken.type}")
+                Log.d(TAG, "Transfer recipient: ${transferTx.data.recipient}")
+
+                // Finalize the transfer
+                val finalizedToken = finalizeTransfer(sourceToken, transferTx)
+
+                if (finalizedToken != null) {
+                    // Save the finalized token
+                    saveReceivedToken(finalizedToken)
+                    Log.i(TAG, "✅ Token transfer completed and finalized successfully")
+                } else {
+                    Log.e(TAG, "Failed to finalize token transfer")
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling proper token transfer", e)
+            }
+        }
     }
 
     /**
@@ -881,6 +832,185 @@ class NostrP2PService(
     private fun showCryptoReceivedNotification(amount: Double, symbol: String) {
         // TODO: Implement notification
         Log.i(TAG, "📬 New crypto received: $amount $symbol")
+    }
+
+    /**
+     * Finalize a token transfer by resolving proxy address and creating proper ownership
+     * This is the critical step that gives the recipient actual ownership of the token
+     */
+    private suspend fun finalizeTransfer(
+        sourceToken: org.unicitylabs.sdk.token.Token<*>,
+        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>
+    ): org.unicitylabs.sdk.token.Token<*>? {
+        try {
+            // Get recipient address from transfer
+            val recipientAddress = transferTx.data.recipient
+            Log.d(TAG, "Recipient address: ${recipientAddress.address}")
+            Log.d(TAG, "Address scheme: ${recipientAddress.scheme}")
+
+            // Check if this is a proxy address
+            if (recipientAddress.scheme != org.unicitylabs.sdk.address.AddressScheme.PROXY) {
+                Log.d(TAG, "Transfer is not to proxy address, no finalization needed")
+                // For direct transfers, the token can be used as-is
+                return sourceToken
+            }
+
+            Log.d(TAG, "Transfer is to PROXY address - finalization required")
+
+            // Load user's nametag tokens
+            val nametagService = org.unicitylabs.wallet.nametag.NametagService(context)
+            val sharedPrefs = context.getSharedPreferences("UnicitywWalletPrefs", android.content.Context.MODE_PRIVATE)
+            val myNametag = sharedPrefs.getString("unicity_tag", "") ?: ""
+
+            if (myNametag.isEmpty()) {
+                Log.e(TAG, "No nametag configured for this wallet")
+                return null
+            }
+
+            val myNametagToken = nametagService.loadNametag(myNametag)
+            if (myNametagToken == null) {
+                Log.e(TAG, "Could not load my nametag token: $myNametag")
+                return null
+            }
+
+            // Check if this proxy address matches my nametag
+            val myProxyAddress = org.unicitylabs.sdk.address.ProxyAddress.create(myNametagToken.id)
+            if (myProxyAddress.address != recipientAddress.address) {
+                Log.e(TAG, "Transfer is not for my nametag!")
+                Log.e(TAG, "Expected: ${myProxyAddress.address}")
+                Log.e(TAG, "Got: ${recipientAddress.address}")
+                return null
+            }
+
+            Log.d(TAG, "✅ Transfer is for my nametag: $myNametag")
+
+            // Get identity to create signing service
+            val identityManager = org.unicitylabs.wallet.identity.IdentityManager(context)
+            val identity = identityManager.getCurrentIdentity()
+            if (identity == null) {
+                Log.e(TAG, "No wallet identity found")
+                return null
+            }
+
+            // Create signing service
+            val secret = hexToBytes(identity.privateKey)
+            val nonce = hexToBytes(identity.nonce)
+            val signingService = org.unicitylabs.sdk.signing.SigningService.createFromMaskedSecret(secret, nonce)
+
+            // CRITICAL: Create recipient predicate using the salt FROM the transfer transaction
+            val transferSalt = transferTx.data.salt
+            val recipientPredicate = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate.create(
+                sourceToken.id,     // TokenId from source token
+                sourceToken.type,   // TokenType from source token
+                signingService,
+                org.unicitylabs.sdk.hash.HashAlgorithm.SHA256,
+                transferSalt  // Use transfer's salt, not a new random one!
+            )
+
+            val recipientState = org.unicitylabs.sdk.token.TokenState(recipientPredicate, null)
+
+            Log.d(TAG, "Finalizing transfer with nametag token...")
+
+            // Get StateTransitionClient and trustBase
+            val client = org.unicitylabs.wallet.di.ServiceProvider.stateTransitionClient
+            val trustBase = org.unicitylabs.wallet.di.ServiceProvider.getRootTrustBase()
+
+            // Finalize the transaction with nametag for proxy resolution
+            val finalizedToken = withContext(Dispatchers.IO) {
+                client.finalizeTransaction(
+                    trustBase,
+                    sourceToken,
+                    recipientState,
+                    transferTx,
+                    listOf(myNametagToken)  // Include nametag for proxy resolution
+                )
+            }
+
+            Log.i(TAG, "✅ Token finalized successfully!")
+            return finalizedToken
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finalizing transfer", e)
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    /**
+     * Save a received and finalized token to the wallet
+     */
+    private suspend fun saveReceivedToken(token: org.unicitylabs.sdk.token.Token<*>) {
+        try {
+            // Serialize token
+            val tokenJson = UnicityObjectMapper.JSON.writeValueAsString(token)
+
+            // Extract metadata from token for wallet display
+            val registry = UnicityTokenRegistry.getInstance(context)
+            var amount: Long? = null
+            var coinIdHex: String? = null
+            var symbol: String? = null
+            var iconUrl: String? = null
+
+            // Parse genesis to extract coin data
+            val tokenJsonObj = JsonMapper.fromJson(tokenJson, Map::class.java) as Map<*, *>
+            val genesis = tokenJsonObj["genesis"] as? Map<*, *>
+            if (genesis != null) {
+                val genesisData = genesis["data"] as? Map<*, *>
+                if (genesisData != null) {
+                    val coinData = genesisData["coinData"] as? Map<*, *>
+                    if (coinData != null) {
+                        val coins = coinData["coins"] as? Map<*, *>
+                        if (coins != null && coins.isNotEmpty()) {
+                            val firstEntry = coins.entries.first()
+                            coinIdHex = firstEntry.key as? String
+                            amount = (firstEntry.value as? Number)?.toLong()
+
+                            if (coinIdHex != null) {
+                                val coinDef = registry.getCoinDefinition(coinIdHex)
+                                if (coinDef != null) {
+                                    symbol = coinDef.symbol
+                                    iconUrl = coinDef.getIconUrl()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Create wallet Token model
+            val walletToken = org.unicitylabs.wallet.data.model.Token(
+                name = symbol ?: "Token",
+                type = token.type.toString(),
+                jsonData = tokenJson,
+                sizeBytes = tokenJson.length,
+                status = org.unicitylabs.wallet.data.model.TokenStatus.CONFIRMED,
+                amount = amount,
+                coinId = coinIdHex,
+                symbol = symbol,
+                iconUrl = iconUrl
+            )
+
+            // Save to wallet repository
+            val walletRepository = org.unicitylabs.wallet.data.repository.WalletRepository.getInstance(context)
+            walletRepository.addToken(walletToken)
+
+            Log.i(TAG, "✅ Finalized token saved: $amount $symbol")
+
+            // Show notification
+            showTokenReceivedNotification(amount, symbol ?: "tokens")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving received token", e)
+        }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        for (i in 0 until len step 2) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+        }
+        return data
     }
 
     private fun bytesToHex(bytes: ByteArray): String {

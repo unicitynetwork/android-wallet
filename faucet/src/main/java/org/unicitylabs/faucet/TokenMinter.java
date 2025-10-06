@@ -202,18 +202,28 @@ public class TokenMinter {
     }
 
     /**
-     * Transfer token to a nametag
+     * Serialize transfer transaction to JSON
+     */
+    public String serializeTransaction(Transaction<TransferTransactionData> tx) throws Exception {
+        return UnicityObjectMapper.JSON.writeValueAsString(tx);
+    }
+
+    /**
+     * Transfer token to a proxy address
      * @param sourceToken Token to transfer
-     * @param recipientNametag Recipient's nametag
+     * @param recipientProxyAddress Recipient's proxy address
      * @return Transfer info containing the source token and transfer transaction
      */
-    public CompletableFuture<TransferInfo> transferToNametag(Token<?> sourceToken, String recipientNametag) {
+    public CompletableFuture<TransferInfo> transferToProxyAddress(
+        Token<?> sourceToken,
+        ProxyAddress recipientProxyAddress
+    ) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                System.out.println("🔄 Transferring token to nametag: " + recipientNametag);
+                System.out.println("🔄 Transferring token to proxy address...");
+                System.out.println("   Proxy: " + recipientProxyAddress.getAddress());
 
-                // Create ProxyAddress from nametag
-                var recipientAddress = ProxyAddress.create(recipientNametag);
+                var recipientAddress = recipientProxyAddress;
 
                 // Generate random salt for transfer
                 byte[] salt = new byte[32];

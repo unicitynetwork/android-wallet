@@ -90,28 +90,45 @@ public class FaucetCLI implements Callable<Integer> {
             return 1;
         }
 
-        // Step 2: Mint the token (includes submission to aggregator)
+        // Step 2: Mint token to faucet
+        System.out.println();
         TokenMinter minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey);
-        var token = minter.mintToken(
+        var mintedToken = minter.mintToken(
             config.tokenType,
             config.coinId,
-            tokenAmount // Use the multiplied amount
+            tokenAmount
         ).join();
 
-        // Step 3: Serialize token to JSON
-        String tokenJson = minter.serializeToken(token);
-
-        // Step 5: Send token via Nostr to recipient
+        // Step 3: Create ProxyAddress from nametag (deterministic from nametag string)
         System.out.println();
-        System.out.println("📨 Sending token to " + nametag + " via Nostr...");
+        System.out.println("🔍 Creating proxy address from nametag...");
+
+        org.unicitylabs.sdk.token.TokenId nametagTokenId = org.unicitylabs.sdk.token.TokenId.fromNameTag(nametag);
+        org.unicitylabs.sdk.address.ProxyAddress recipientProxyAddress = org.unicitylabs.sdk.address.ProxyAddress.create(nametagTokenId);
+
+        System.out.println("✅ Proxy address: " + recipientProxyAddress.getAddress());
+
+        // Step 4: Transfer token to the proxy address
+        TokenMinter.TransferInfo transferInfo = minter.transferToProxyAddress(
+            mintedToken,
+            recipientProxyAddress
+        ).join();
+
+        // Step 5: Serialize both source token and transfer transaction
+        String sourceTokenJson = minter.serializeToken(transferInfo.getSourceToken());
+        String transferTxJson = minter.serializeTransaction(transferInfo.getTransferTransaction());
+
+        // Step 6: Create transfer package
+        String transferPackage = createTransferPackage(sourceTokenJson, transferTxJson);
+
+        // Step 7: Send via Nostr to recipient's Nostr pubkey
+        System.out.println();
+        System.out.println("📨 Sending token transfer package to " + nametag + " via Nostr...");
+        System.out.println("   Nostr pubkey: " + recipientPubKey.substring(0, 16) + "...");
+        System.out.println("   Proxy address: " + recipientProxyAddress.getAddress());
 
         NostrClient nostrClient = new NostrClient(config.nostrRelay, faucetPrivateKey);
-
-        // Create transfer message with token JSON
-        String transferMessage = createTransferMessage(tokenJson, tokenAmount, config.coinId);
-
-        // Send encrypted message via Nostr
-        nostrClient.sendEncryptedMessage(recipientPubKey, transferMessage).join();
+        nostrClient.sendEncryptedMessage(recipientPubKey, transferPackage).join();
 
         System.out.println();
         System.out.println("╔══════════════════════════════════════╗");
@@ -134,11 +151,17 @@ public class FaucetCLI implements Callable<Integer> {
     }
 
     /**
-     * Create a transfer message with token JSON
+     * Create a transfer package with source token and transfer transaction
+     * Format: token_transfer:{"sourceToken":"...","transferTx":"..."}
      */
-    private String createTransferMessage(String tokenJson, long amount, String coinId) {
-        // Format: token_transfer:{tokenJson}
-        return "token_transfer:" + tokenJson;
+    private String createTransferPackage(String sourceTokenJson, String transferTxJson) {
+        // Create JSON payload with both source token and transfer transaction
+        String payload = String.format(
+            "{\"sourceToken\":%s,\"transferTx\":%s}",
+            sourceTokenJson,
+            transferTxJson
+        );
+        return "token_transfer:" + payload;
     }
 
     /**
