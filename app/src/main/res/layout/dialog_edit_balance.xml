@@ -44,6 +44,17 @@
 
         </LinearLayout>
 
+        <!-- Delete button -->
+        <ImageButton
+            android:id="@+id/btnDelete"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_delete"
+            android:contentDescription="Delete asset"
+            android:tint="@color/red_negative"
+            android:padding="12dp" />
+
     </LinearLayout>
 
     <!-- Balance input section -->
