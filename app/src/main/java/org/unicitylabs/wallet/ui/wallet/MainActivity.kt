@@ -82,13 +82,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: WalletViewModel by viewModels()
     private lateinit var tokenAdapter: TokenAdapter
-    private lateinit var cryptoAdapter: CryptoAdapter
+    private lateinit var assetAdapter: AssetAdapter
     private var nfcAdapter: NfcAdapter? = null
     private var realNfcTransceiver: RealNfcTransceiver? = null
     private var currentTransferringToken: Token? = null
-    private var currentTransferringCrypto: CryptoCurrency? = null
-    private var currentTab = 0 // 0 for Assets, 1 for Tokens
-    private var selectedCurrency = "USD"
+    private var currentTab = 0 // 0 for Assets (aggregated), 1 for Tokens (NFTs)
+    private var selectedCurrency = "USD" // Kept for future use
     
     companion object {
         private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 1001
@@ -547,20 +546,18 @@ class MainActivity : AppCompatActivity() {
                 shareToken(token)
             }
         )
-        
-        cryptoAdapter = CryptoAdapter(
-            onSendClick = { crypto ->
-                showCryptoSendAmountDialog(crypto)
+
+        assetAdapter = AssetAdapter(
+            onSendClick = { asset ->
+                // Show dialog to select which tokens to send for this asset
+                showAssetSendDialog(asset)
             },
-            currency = selectedCurrency,
-            onLongPress = { crypto ->
-                showEditBalanceDialog(crypto)
-            }
+            currency = selectedCurrency
         )
-        
+
         binding.rvTokens.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = cryptoAdapter // Start with crypto adapter
+            adapter = assetAdapter // Start with asset adapter (Assets tab is default)
         }
     }
     
@@ -594,13 +591,13 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateListDisplay() {
         if (currentTab == 0) {
-            // Show crypto assets
-            binding.rvTokens.adapter = cryptoAdapter
-            val cryptos = viewModel.cryptocurrencies.value
-            cryptoAdapter.submitList(cryptos)
-            binding.emptyStateContainer.visibility = if (cryptos.isEmpty()) View.VISIBLE else View.GONE
+            // Assets tab - show aggregated coins
+            binding.rvTokens.adapter = assetAdapter
+            val assets = viewModel.aggregatedAssets.value
+            assetAdapter.submitList(assets)
+            binding.emptyStateContainer.visibility = if (assets.isEmpty()) View.VISIBLE else View.GONE
         } else {
-            // Show Tokens
+            // Tokens tab - show individual NFT tokens
             binding.rvTokens.adapter = tokenAdapter
             val tokens = viewModel.tokens.value
             tokenAdapter.submitList(tokens)
@@ -609,30 +606,31 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateBalanceDisplay() {
-        val cryptos = viewModel.cryptocurrencies.value
-        val totalBalance = cryptos.sumOf { it.getBalanceInFiat(selectedCurrency) }
-        
+        val assets = viewModel.aggregatedAssets.value
+        val totalBalance = assets.sumOf { it.getTotalFiatValue(selectedCurrency) }
+
         val symbol = if (selectedCurrency == "EUR") "€" else "$"
         binding.balanceAmount.text = "$symbol${String.format("%,.2f", totalBalance)}"
         binding.selectedCurrency.text = selectedCurrency
-        
+
         // Calculate 24h change
-        val totalPreviousBalance = cryptos.sumOf { 
+        val totalPreviousBalance = assets.sumOf {
             val previousPrice = when (selectedCurrency) {
                 "EUR" -> it.priceEur / (1 + it.change24h / 100)
                 else -> it.priceUsd / (1 + it.change24h / 100)
             }
-            it.balance * previousPrice
+            it.getAmountAsDecimal() * previousPrice
         }
-        
+
         val changePercent = if (totalPreviousBalance > 0) {
             ((totalBalance - totalPreviousBalance) / totalPreviousBalance) * 100
         } else 0.0
-        
+
         val changeAmount = totalBalance - totalPreviousBalance
         val changeSign = if (changePercent >= 0) "+" else ""
-        
+
         binding.balanceChange.text = "$changeSign${String.format("%.2f", changePercent)}% ($changeSign$symbol${String.format("%.2f", changeAmount)})"
+        binding.balanceChange.visibility = View.VISIBLE
         binding.balanceChange.setTextColor(
             if (changePercent >= 0) getColor(R.color.green_positive) else getColor(R.color.red_negative)
         )
@@ -657,16 +655,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
+        // Observe aggregated assets for Assets tab
         lifecycleScope.launch {
-            viewModel.cryptocurrencies.collect { cryptos ->
+            viewModel.aggregatedAssets.collect { assets ->
                 if (currentTab == 0) {
-                    cryptoAdapter.submitList(cryptos)
-                    binding.emptyStateContainer.visibility = if (cryptos.isEmpty()) View.VISIBLE else View.GONE
+                    assetAdapter.submitList(assets)
+                    binding.emptyStateContainer.visibility = if (assets.isEmpty()) View.VISIBLE else View.GONE
                 }
                 updateBalanceDisplay()
             }
         }
-        
+
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
                 // Stop swipe refresh when loading is complete
@@ -1205,13 +1204,13 @@ class MainActivity : AppCompatActivity() {
     private fun showCurrencyDialog() {
         val currencies = arrayOf("USD", "EUR")
         val currentIndex = currencies.indexOf(selectedCurrency)
-        
+
         AlertDialog.Builder(this)
             .setTitle("Select Currency")
             .setSingleChoiceItems(currencies, currentIndex) { dialog, which ->
                 selectedCurrency = currencies[which]
                 binding.selectedCurrency.text = selectedCurrency
-                cryptoAdapter.updateCurrency(selectedCurrency)
+                assetAdapter.updateCurrency(selectedCurrency)
                 updateBalanceDisplay()
                 dialog.dismiss()
             }
@@ -1456,6 +1455,11 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
     
+    private fun showAssetSendDialog(asset: org.unicitylabs.wallet.model.AggregatedAsset) {
+        // For now, just show info - implement token selection later
+        Toast.makeText(this, "Send ${asset.symbol}: Select individual tokens from Tokens tab", Toast.LENGTH_LONG).show()
+    }
+
     private fun showCryptoSendAmountDialog(crypto: CryptoCurrency, selectedContact: Contact? = null) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_send_crypto, null)
         
@@ -2243,14 +2247,15 @@ class MainActivity : AppCompatActivity() {
     
     private fun cancelNfcTransfer() {
         Log.d("MainActivity", "User cancelled NFC transfer")
-        currentTransferringCrypto = null
+        // currentTransferringCrypto = null // Removed - no longer using demo cryptos
         disableNfcTransfer()
         hideNfcWaitingDialog()
         Toast.makeText(this, "Transfer cancelled", Toast.LENGTH_SHORT).show()
     }
 
+    // Removed startCryptoTransfer - demo crypto transfers no longer supported
     private fun startCryptoTransfer(crypto: CryptoCurrency, amount: Double) {
-        currentTransferringCrypto = crypto
+        // currentTransferringCrypto = crypto
         
         Log.d("MainActivity", "Starting NFC crypto transfer: EXACT amount = $amount ${crypto.symbol}")
         showNfcWaitingDialog(crypto, amount)
@@ -2258,7 +2263,7 @@ class MainActivity : AppCompatActivity() {
         val realNfcTransceiver = nfcAdapter?.let { RealNfcTransceiver(it) }
         if (realNfcTransceiver == null) {
             Toast.makeText(this, "NFC not available or enabled", Toast.LENGTH_SHORT).show()
-            currentTransferringCrypto = null
+            // currentTransferringCrypto = null
             return
         }
 
@@ -2269,7 +2274,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "✅ NFC crypto transfer completed")
                 runOnUiThread {
                     hideNfcWaitingDialog()
-                    currentTransferringCrypto = null
+                    // currentTransferringCrypto = null
                     val newBalance = crypto.balance - amount
                     Log.d("MainActivity", "Deducting from sender: ${crypto.balance} - $amount = $newBalance")
                     viewModel.updateCryptoBalance(crypto.id, newBalance)
@@ -2284,7 +2289,7 @@ class MainActivity : AppCompatActivity() {
                 Log.e("MainActivity", "NFC crypto transfer error: $error")
                 runOnUiThread {
                     hideNfcWaitingDialog()
-                    currentTransferringCrypto = null
+                    // currentTransferringCrypto = null
                     realNfcTransceiver.disableReaderMode(this) // Use transceiver's disable
                     Toast.makeText(this@MainActivity, "Crypto transfer failed: $error", Toast.LENGTH_SHORT).show()
                 }
@@ -2321,7 +2326,7 @@ class MainActivity : AppCompatActivity() {
             Log.d("MainActivity", "NFC crypto transfer started")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to enable NFC reader mode for crypto", e)
-            currentTransferringCrypto = null
+            // currentTransferringCrypto = null
             Toast.makeText(this, "Failed to enable NFC: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
