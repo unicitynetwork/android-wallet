@@ -28,7 +28,59 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     
     val tokens: StateFlow<List<Token>> = repository.tokens
     val isLoading: StateFlow<Boolean> = repository.isLoading
-    
+
+    // Aggregated assets by coinId for Assets tab with price data
+    val aggregatedAssets: StateFlow<List<org.unicitylabs.wallet.model.AggregatedAsset>> = repository.tokens
+        .map { tokenList ->
+            // Filter tokens that have coins
+            val tokensWithCoins = tokenList.filter { it.coinId != null && it.amount != null }
+
+            // Get token registry for decimals lookup
+            val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(getApplication())
+
+            // Group by coinId and aggregate
+            tokensWithCoins
+                .groupBy { it.coinId!! }
+                .map { (coinId, tokensForCoin) ->
+                    val symbol = tokensForCoin.first().symbol ?: "UNKNOWN"
+
+                    // Get coin definition from registry to retrieve decimals
+                    val coinDef = registry.getCoinDefinition(coinId)
+                    val decimals = coinDef?.decimals ?: 8 // Default to 8 if not specified
+
+                    // Map symbol to CoinGecko API ID
+                    val apiId = when (symbol.uppercase()) {
+                        "BTC" -> "bitcoin"
+                        "ETH" -> "ethereum"
+                        "SOL" -> "solana"
+                        "USDT" -> "tether"
+                        "USDC" -> "usd-coin"
+                        "EXAF" -> "efranc"
+                        "ENGN" -> "enaira"
+                        else -> symbol.lowercase()
+                    }
+
+                    // Get price from service (cached or default)
+                    val priceData = priceService.getCachedPrice(apiId)
+                        ?: org.unicitylabs.wallet.data.service.CryptoPriceService.CryptoPriceData(0.0, 0.0, 0.0)
+
+                    org.unicitylabs.wallet.model.AggregatedAsset(
+                        coinId = coinId,
+                        symbol = symbol,
+                        name = coinDef?.name ?: tokensForCoin.firstOrNull()?.name,
+                        totalAmount = tokensForCoin.sumOf { it.amount ?: 0L },
+                        decimals = decimals,
+                        tokenCount = tokensForCoin.size,
+                        iconUrl = coinDef?.icon ?: tokensForCoin.first().iconUrl,
+                        priceUsd = priceData.priceUsd,
+                        priceEur = priceData.priceEur,
+                        change24h = priceData.change24h
+                    )
+                }
+                .sortedByDescending { it.getTotalFiatValue("USD") } // Sort by USD value descending
+        }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
+
     private val _selectedToken = MutableStateFlow<Token?>(null)
     val selectedToken: StateFlow<Token?> = _selectedToken.asStateFlow()
     
@@ -75,8 +127,10 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
 
     init {
-        Log.d("WalletViewModel", "ViewModel initialized - loading saved balances")
-        loadSavedCryptocurrencies()
+        Log.d("WalletViewModel", "ViewModel initialized")
+        // Initialize with empty cryptocurrency list - only real Unicity tokens will be shown
+        _allCryptocurrencies.value = emptyList()
+        // Start price updates for bridged coins (BTC, ETH, SOL, etc.)
         startPriceUpdates()
     }
     
