@@ -31,9 +31,9 @@ public class FaucetCLI implements Callable<Integer> {
 
     @Option(
         names = {"-a", "--amount"},
-        description = "Token amount (uses default from config if not specified)"
+        description = "Token amount in human-readable units (e.g., 0.05 for SOL, uses default from config if not specified)"
     )
-    private Long amount;
+    private Double amount;
 
     @Option(
         names = {"-c", "--config"},
@@ -57,8 +57,21 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("   Coin ID: " + config.coinId);
         System.out.println();
 
-        // Determine amount
-        long tokenAmount = (amount != null) ? amount : config.defaultAmount;
+        // Determine user-friendly amount (e.g., "5" or "0.05" for SOL)
+        double userAmount = (amount != null) ? amount : config.defaultAmount;
+
+        // Load token registry to get decimals
+        UnicityTokenRegistry registry = UnicityTokenRegistry.getInstance();
+        int decimals = registry.getDecimals(config.coinId);
+
+        // Convert user amount to smallest units: userAmount * 10^decimals
+        long tokenAmount = (long) (userAmount * Math.pow(10, decimals));
+
+        System.out.println("💰 Minting tokens:");
+        System.out.println("   User amount: " + userAmount);
+        System.out.println("   Decimals: " + decimals);
+        System.out.println("   Actual amount (smallest units): " + tokenAmount);
+        System.out.println();
 
         // Derive private key from mnemonic
         byte[] faucetPrivateKey = mnemonicToPrivateKey(config.faucetMnemonic);
@@ -82,7 +95,7 @@ public class FaucetCLI implements Callable<Integer> {
         var token = minter.mintToken(
             config.tokenType,
             config.coinId,
-            tokenAmount
+            tokenAmount // Use the multiplied amount
         ).join();
 
         // Step 3: Serialize token to JSON
@@ -107,7 +120,11 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println();
         System.out.println("📊 Summary:");
         System.out.println("   Recipient: " + nametag);
-        System.out.println("   Amount: " + tokenAmount + " tokens");
+        System.out.println("   Amount: " + userAmount + " (= " + tokenAmount + " smallest units)");
+        UnicityTokenRegistry.CoinDefinition coinDef = registry.getCoinDefinition(config.coinId);
+        if (coinDef != null) {
+            System.out.println("   Coin: " + coinDef.name + " (" + coinDef.symbol + ")");
+        }
         System.out.println("   Delivery: Nostr relay");
         System.out.println();
 
