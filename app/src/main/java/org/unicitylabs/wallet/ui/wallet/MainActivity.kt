@@ -135,6 +135,42 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    // Crypto received receiver (for demo crypto transfers via Nostr)
+    private val cryptoReceivedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "org.unicitylabs.wallet.ACTION_CRYPTO_RECEIVED") {
+                val cryptoId = intent.getStringExtra("crypto_id") ?: return
+                val amount = intent.getDoubleExtra("amount", 0.0)
+                val symbol = intent.getStringExtra("crypto_symbol") ?: ""
+
+                Log.d("MainActivity", "Crypto received broadcast: $amount $symbol (id: $cryptoId)")
+
+                // Update the cryptocurrency balance
+                val currentCryptos = viewModel.cryptocurrencies.value ?: emptyList()
+                val crypto = currentCryptos.find { it.id == cryptoId }
+
+                if (crypto != null) {
+                    val newBalance = crypto.balance + amount
+                    Log.d("MainActivity", "Updating ${crypto.symbol} balance: ${crypto.balance} + $amount = $newBalance")
+                    viewModel.updateCryptoBalance(cryptoId, newBalance)
+
+                    runOnUiThread {
+                        // Format amount nicely
+                        val formattedAmount = if (amount % 1 == 0.0) {
+                            amount.toInt().toString()
+                        } else {
+                            String.format("%.8f", amount).trimEnd('0').trimEnd('.')
+                        }
+
+                        showSuccessDialog("Received $formattedAmount $symbol!")
+                    }
+                } else {
+                    Log.w("MainActivity", "Crypto $cryptoId not found in local wallet")
+                }
+            }
+        }
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -215,6 +251,12 @@ class MainActivity : AppCompatActivity() {
         LocalBroadcastManager.getInstance(this).registerReceiver(
             p2pStatusReceiver,
             IntentFilter("org.unicitylabs.nfcwalletdemo.UPDATE_P2P_STATUS")
+        )
+
+        // Register crypto received receiver
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            cryptoReceivedReceiver,
+            IntentFilter("org.unicitylabs.wallet.ACTION_CRYPTO_RECEIVED")
         )
     }
     
@@ -1532,7 +1574,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun showEditBalanceDialog(crypto: CryptoCurrency) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_edit_balance, null)
-        
+
         // Set up dialog elements
         val cryptoIcon = dialogView.findViewById<android.widget.ImageView>(R.id.cryptoIcon)
         val cryptoName = dialogView.findViewById<TextView>(R.id.cryptoName)
@@ -1540,28 +1582,36 @@ class MainActivity : AppCompatActivity() {
         val balanceInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.balanceInput)
         val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
         val btnSave = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSave)
-        
+        val btnDelete = dialogView.findViewById<android.widget.ImageButton>(R.id.btnDelete)
+
         // Set crypto info
         cryptoIcon.setImageResource(crypto.iconResId)
         cryptoName.text = crypto.name
         currentBalance.text = "Current: ${crypto.getFormattedBalance()} ${crypto.symbol}"
-        
+
         // Set current balance in input
         balanceInput.setText(crypto.getFormattedBalance())
-        
+
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .create()
-        
+
         // Set up button listeners
         btnCancel.setOnClickListener {
             dialog.dismiss()
         }
-        
+
+        btnDelete.setOnClickListener {
+            Log.d("MainActivity", "🔧 Hidden feature: Deleting ${crypto.symbol}")
+            viewModel.deleteCrypto(crypto.id)
+            dialog.dismiss()
+            Toast.makeText(this, "🔧 ${crypto.symbol} deleted", Toast.LENGTH_SHORT).show()
+        }
+
         btnSave.setOnClickListener {
             val inputText = balanceInput.text.toString()
             val newBalance = inputText.toDoubleOrNull()
-            
+
             if (newBalance != null && newBalance >= 0) {
                 Log.d("MainActivity", "🔧 Hidden feature: Updating ${crypto.symbol} balance from ${crypto.balance} to $newBalance")
                 viewModel.updateCryptoBalance(crypto.id, newBalance)
@@ -1571,7 +1621,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Invalid balance amount", Toast.LENGTH_SHORT).show()
             }
         }
-        
+
         dialog.show()
     }
     
@@ -2286,10 +2336,12 @@ class MainActivity : AppCompatActivity() {
             "price_usd" to crypto.priceUsd,
             "price_eur" to crypto.priceEur,
             "timestamp" to System.currentTimeMillis(),
-            "icon_res_id" to crypto.iconResId
+            "icon_res_id" to crypto.iconResId,
+            "is_demo" to crypto.isDemo,
+            "icon_url" to crypto.iconUrl
         )
         val jsonData = JsonMapper.toJson(transferData)
-        Log.d("MainActivity", "Created transfer JSON with amount: $amount")
+        Log.d("MainActivity", "Created transfer JSON with amount: $amount, isDemo: ${crypto.isDemo}")
         Log.d("MainActivity", "Transfer JSON: $jsonData")
         return jsonData
     }
@@ -3562,49 +3614,69 @@ class MainActivity : AppCompatActivity() {
     private fun sendTransferRequestToBackend(recipient: Contact, crypto: CryptoCurrency, amount: Double, message: String) {
         lifecycleScope.launch {
             try {
-                // Get sender's unicity tag from preferences
-                val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
-                val senderTag = sharedPrefs.getString("unicity_tag", "") ?: ""
-                
                 // Extract recipient's unicity tag
                 val recipientTag = recipient.getUnicityTag()
-                
+
                 if (recipientTag.isEmpty()) {
                     Toast.makeText(this@MainActivity, "Recipient does not have a valid @unicity tag", Toast.LENGTH_LONG).show()
                     return@launch
                 }
-                
-                // Send transfer request to backend
-                val result = transferApiService.createTransferRequest(
-                    senderTag = senderTag.ifEmpty { null },
-                    recipientTag = recipientTag,
-                    assetType = "crypto",
-                    assetName = crypto.symbol,
-                    amount = formatCryptoAmount(amount),
-                    message = message.ifEmpty { null }
+
+                Log.d("MainActivity", "Sending ${amount} ${crypto.symbol} to $recipientTag via Nostr")
+
+                // Show progress
+                Toast.makeText(this@MainActivity, "Sending ${crypto.symbol} to ${recipient.name}...", Toast.LENGTH_SHORT).show()
+
+                // Create crypto transfer data (simplified - will be replaced with SDK token)
+                val cryptoTransferData = createCryptoTransferData(crypto, amount)
+
+                // Get Nostr P2P service
+                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(this@MainActivity)
+
+                if (nostrService == null) {
+                    Toast.makeText(this@MainActivity, "Nostr service not initialized", Toast.LENGTH_LONG).show()
+                    Log.e("MainActivity", "NostrP2PService is null")
+                    return@launch
+                }
+
+                // Start Nostr service if not running
+                if (!nostrService.isRunning()) {
+                    nostrService.start()
+                    // Give it a moment to connect
+                    delay(2000)
+                }
+
+                // Send token via Nostr
+                val result = nostrService.sendTokenTransfer(
+                    recipientNametag = recipientTag,
+                    tokenJson = cryptoTransferData,
+                    amount = (amount * 100000000).toLong(), // Convert to smallest unit
+                    symbol = crypto.symbol
                 )
-                
-                result.onSuccess { transferRequest ->
-                    Toast.makeText(this@MainActivity, "Transfer request sent to ${recipient.name}", Toast.LENGTH_SHORT).show()
-                    Log.d("MainActivity", "Transfer request created: ${transferRequest.requestId}")
-                    
+
+                result.onSuccess { eventId ->
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Sent ${amount} ${crypto.symbol} to ${recipient.name}", Toast.LENGTH_SHORT).show()
+                        Log.d("MainActivity", "Token transfer sent via Nostr: $eventId")
+                    }
+
                     // Deduct balance immediately (optimistic update)
                     val currentBalance = crypto.balance
                     val newBalance = currentBalance - amount
                     viewModel.updateCryptoBalance(crypto.id, newBalance)
-                    
-                    // Store the transfer request ID and amount in case we need to revert
-                    val prefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
-                    prefs.edit()
-                        .putString("pending_transfer_${transferRequest.requestId}", "${crypto.id}:$amount")
-                        .apply()
+
+                    Log.d("MainActivity", "Balance updated: $currentBalance -> $newBalance ${crypto.symbol}")
                 }.onFailure { error ->
-                    Toast.makeText(this@MainActivity, "Failed to send transfer request: ${error.message}", Toast.LENGTH_LONG).show()
-                    Log.e("MainActivity", "Error creating transfer request", error)
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Failed to send: ${error.message}", Toast.LENGTH_LONG).show()
+                        Log.e("MainActivity", "Error sending token via Nostr", error)
+                    }
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Error sending transfer request: ${e.message}", Toast.LENGTH_LONG).show()
-                Log.e("MainActivity", "Error in sendTransferRequestToBackend", e)
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Error sending: ${e.message}", Toast.LENGTH_LONG).show()
+                    Log.e("MainActivity", "Error in sendTransferRequestToBackend", e)
+                }
             }
         }
     }
@@ -3626,6 +3698,7 @@ class MainActivity : AppCompatActivity() {
         stopTransferPolling()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(handshakeReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(p2pStatusReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(cryptoReceivedReceiver)
     }
     
     private fun showHandshakeDialog(fromTag: String, fromName: String) {

@@ -711,7 +711,23 @@ class NostrP2PService(
                 Log.d(TAG, "Received token JSON (${tokenJson.length} chars)")
                 Log.d(TAG, "Token JSON preview: ${tokenJson.take(500)}")
 
-                // Parse the Unicity SDK token
+                // Parse to check if it's a demo crypto transfer or real Unicity token
+                val tokenJsonObj = try {
+                    JsonMapper.fromJson(tokenJson, Map::class.java) as Map<*, *>
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse token JSON", e)
+                    return@launch
+                }
+
+                val transferType = tokenJsonObj["type"] as? String
+
+                if (transferType == "crypto_transfer") {
+                    // Handle demo crypto transfer
+                    handleDemoCryptoTransfer(tokenJsonObj)
+                    return@launch
+                }
+
+                // Parse the Unicity SDK token (for real tokens)
                 val unicityToken = try {
                     UnicityObjectMapper.JSON.readValue(tokenJson, org.unicitylabs.sdk.token.Token::class.java)
                 } catch (e: Exception) {
@@ -729,8 +745,7 @@ class NostrP2PService(
                 var tokenTypeHex = "unknown"
 
                 try {
-                    // Parse the token JSON to extract metadata
-                    val tokenJsonObj = JsonMapper.fromJson(tokenJson, Map::class.java) as Map<*, *>
+                    // Token JSON already parsed above
                     Log.d(TAG, "Token JSON keys: ${tokenJsonObj.keys}")
 
                     // Extract token type from genesis transaction
@@ -828,6 +843,46 @@ class NostrP2PService(
         Log.i(TAG, "📬 New token received: $amount $symbol")
     }
 
+    /**
+     * Handle receiving a demo crypto transfer (BTC, ETH, etc.)
+     * Updates the receiver's cryptocurrency balance
+     */
+    private fun handleDemoCryptoTransfer(transferData: Map<*, *>) {
+        try {
+            val cryptoId = transferData["crypto_id"] as? String ?: return
+            val cryptoSymbol = transferData["crypto_symbol"] as? String ?: return
+            val cryptoName = transferData["crypto_name"] as? String ?: return
+            val amount = (transferData["amount"] as? Number)?.toDouble() ?: return
+            val isDemo = transferData["is_demo"] as? Boolean ?: true
+
+            Log.d(TAG, "Received demo crypto transfer: $amount $cryptoSymbol (isDemo: $isDemo)")
+
+            // Broadcast intent to MainActivity to update the crypto balance
+            val intent = android.content.Intent("org.unicitylabs.wallet.ACTION_CRYPTO_RECEIVED")
+            intent.putExtra("crypto_id", cryptoId)
+            intent.putExtra("crypto_symbol", cryptoSymbol)
+            intent.putExtra("crypto_name", cryptoName)
+            intent.putExtra("amount", amount)
+            intent.putExtra("is_demo", isDemo)
+
+            androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context)
+                .sendBroadcast(intent)
+
+            Log.i(TAG, "✅ Demo crypto received: $amount $cryptoSymbol")
+
+            // Show notification
+            showCryptoReceivedNotification(amount, cryptoSymbol)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling demo crypto transfer", e)
+        }
+    }
+
+    private fun showCryptoReceivedNotification(amount: Double, symbol: String) {
+        // TODO: Implement notification
+        Log.i(TAG, "📬 New crypto received: $amount $symbol")
+    }
+
     private fun bytesToHex(bytes: ByteArray): String {
         return bytes.joinToString("") { "%02x".format(it) }
     }
@@ -835,6 +890,71 @@ class NostrP2PService(
     private fun handleFileMetadata(event: Event) {
         // TODO: Handle file metadata
         Log.d(TAG, "Received file metadata from ${event.pubkey}")
+    }
+
+    /**
+     * Send a token transfer to a recipient identified by their @unicity nametag
+     * This creates an encrypted Nostr event containing the token JSON
+     *
+     * @param recipientNametag The recipient's @unicity nametag (e.g., "alice@unicity")
+     * @param tokenJson The Unicity SDK token JSON to transfer
+     * @param amount Optional amount for display purposes
+     * @param symbol Optional symbol for display purposes
+     * @return Result indicating success or failure
+     */
+    suspend fun sendTokenTransfer(
+        recipientNametag: String,
+        tokenJson: String,
+        amount: Long? = null,
+        symbol: String? = null
+    ): Result<String> {
+        return try {
+            // Resolve recipient's Nostr public key from their nametag
+            val recipientPubkey = queryPubkeyByNametag(recipientNametag)
+                ?: return Result.failure(Exception("Could not find Nostr public key for nametag: $recipientNametag"))
+
+            Log.d(TAG, "Sending token transfer to $recipientNametag (pubkey: ${recipientPubkey.take(16)}...)")
+            Log.d(TAG, "Token size: ${tokenJson.length} bytes, amount: $amount $symbol")
+
+            // Create encrypted token transfer content
+            // Format: "token_transfer:<token_json>"
+            val content = "token_transfer:$tokenJson"
+
+            // Encrypt the content for the recipient
+            val recipientPubkeyBytes = Hex.decode(recipientPubkey)
+            val encryptedContent = keyManager.encryptMessage(content, recipientPubkeyBytes)
+
+            // Create token transfer event
+            val event = createEvent(
+                kind = KIND_TOKEN_TRANSFER,
+                content = encryptedContent,
+                tags = listOf(
+                    listOf("p", recipientPubkey), // Recipient pubkey
+                    listOf("nametag", recipientNametag), // Recipient nametag for easier lookup
+                    listOf("type", "token_transfer") // Event type
+                ).let { tags ->
+                    // Add optional amount/symbol tags if provided
+                    if (amount != null && symbol != null) {
+                        tags + listOf(
+                            listOf("amount", amount.toString()),
+                            listOf("symbol", symbol)
+                        )
+                    } else {
+                        tags
+                    }
+                }
+            )
+
+            // Publish to relays
+            publishEvent(event)
+
+            Log.i(TAG, "✅ Token transfer sent successfully to $recipientNametag (event ID: ${event.id})")
+            Result.success(event.id)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send token transfer to $recipientNametag", e)
+            Result.failure(e)
+        }
     }
 
     override fun broadcastLocation(latitude: Double, longitude: Double) {

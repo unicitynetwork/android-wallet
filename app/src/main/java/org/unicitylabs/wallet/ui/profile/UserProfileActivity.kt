@@ -30,6 +30,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.unicitylabs.sdk.address.DirectAddress
@@ -580,21 +581,30 @@ class UserProfileActivity : AppCompatActivity() {
                             if (nostrService != null) {
                                 // Start the service if not running
                                 if (!nostrService.isRunning()) {
+                                    Log.d("UserProfileActivity", "Starting Nostr service for binding publication...")
                                     nostrService.start()
-                                    // Wait a bit for connection
-                                    kotlinx.coroutines.delay(2000)
+                                    // Wait for connection to establish
+                                    kotlinx.coroutines.delay(3000)
+                                    Log.d("UserProfileActivity", "Nostr service connection delay complete")
                                 }
 
                                 val proxyAddress = nametagService.getProxyAddress(nametagToken)
+                                Log.d("UserProfileActivity", "Publishing nametag binding: $nametagString -> $proxyAddress")
                                 val published = nostrService.publishNametagBinding(
                                     nametagId = nametagString,
                                     unicityAddress = proxyAddress.toString()
                                 )
 
                                 if (published) {
-                                    Log.d("UserProfileActivity", "Nametag binding published to Nostr relay")
+                                    Log.d("UserProfileActivity", "✅ Nametag binding published successfully!")
+                                    runOnUiThread {
+                                        Toast.makeText(this, "Nametag binding published! You can now receive tokens.", Toast.LENGTH_LONG).show()
+                                    }
                                 } else {
-                                    Log.w("UserProfileActivity", "Failed to publish nametag binding to Nostr relay")
+                                    Log.w("UserProfileActivity", "❌ Failed to publish nametag binding")
+                                    runOnUiThread {
+                                        Toast.makeText(this, "Warning: Nametag binding may not have published", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             } else {
                                 Log.w("UserProfileActivity", "Nostr service not available, skipping nametag binding")
@@ -846,52 +856,75 @@ class UserProfileActivity : AppCompatActivity() {
     
     /**
      * Validates the nametag token status using StateTransitionClient
-     * Ensures the inclusion proof verification status is OK
+     * AND validates Nostr relay binding
      */
     private suspend fun validateNametagToken(nametagString: String) {
         try {
             // Load the nametag token from storage
             val nametagToken = nametagService.loadNametag(nametagString)
-            
+
             if (nametagToken == null) {
                 Log.w("UserProfileActivity", "Nametag token not found in storage: $nametagString")
                 return
             }
-            
+
             // Get the identity to retrieve the public key
             val identity = identityManager.getCurrentIdentity()
             if (identity == null) {
                 Log.e("UserProfileActivity", "No wallet identity found for validation")
                 return
             }
-            
+
             // Convert public key from hex to bytes
             val publicKeyBytes = hexToBytes(identity.publicKey)
-            
+
             // Get the state transition client
             val stateTransitionClient = ServiceProvider.stateTransitionClient
-            
-            // Check token status
+
+            // Check blockchain token status
             Log.d("UserProfileActivity", "Validating nametag token status for: $nametagString")
-            
+
             // Use withContext to run the blocking operation in IO dispatcher
-            val status = withContext(Dispatchers.IO) {
+            val blockchainStatus = withContext(Dispatchers.IO) {
                 val trustBase = ServiceProvider.getRootTrustBase()
                 val statusFuture = stateTransitionClient.getTokenStatus(nametagToken, publicKeyBytes, trustBase)
                 statusFuture.get(30, TimeUnit.SECONDS) // Wait up to 30 seconds for the result
             }
-            
-            Log.d("UserProfileActivity", "Nametag token status: $status")
-            
+
+            Log.d("UserProfileActivity", "Blockchain nametag token status: $blockchainStatus")
+
+            // Also check Nostr relay binding
+            val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+            var nostrBindingExists = false
+
+            if (nostrService != null) {
+                if (!nostrService.isRunning()) {
+                    nostrService.start()
+                    delay(2000) // Give it time to connect
+                }
+
+                val nostrPubkey = nostrService.queryPubkeyByNametag(nametagString)
+                nostrBindingExists = nostrPubkey != null
+                Log.d("UserProfileActivity", "Nostr binding exists for $nametagString: $nostrBindingExists (pubkey: ${nostrPubkey?.take(16)}...)")
+            }
+
             // Update UI based on validation status
             runOnUiThread {
-                when (status) {
+                when (blockchainStatus) {
                     InclusionProofVerificationStatus.OK -> {
                         binding.llNametagStatus.visibility = View.VISIBLE
                         binding.llNametagActions.visibility = View.VISIBLE
-                        binding.tvNametagStatus.text = "Nametag verified ✓"
+
+                        // Show both blockchain and Nostr status
+                        val statusText = if (nostrBindingExists) {
+                            "Nametag verified ✓ (Blockchain + Nostr)"
+                        } else {
+                            "Nametag verified ✓ (Blockchain only - Nostr binding missing)"
+                        }
+
+                        binding.tvNametagStatus.text = statusText
                         binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_info)
-                        Log.i("UserProfileActivity", "Nametag token is valid: $nametagString")
+                        Log.i("UserProfileActivity", "Nametag token is valid: $nametagString, Nostr: $nostrBindingExists")
                     }
                     InclusionProofVerificationStatus.NOT_AUTHENTICATED -> {
                         binding.llNametagStatus.visibility = View.VISIBLE
@@ -901,9 +934,17 @@ class UserProfileActivity : AppCompatActivity() {
                     }
                     InclusionProofVerificationStatus.PATH_NOT_INCLUDED -> {
                         binding.llNametagStatus.visibility = View.VISIBLE
-                        binding.tvNametagStatus.text = "Nametag not included in chain ⚠️"
+
+                        // If blockchain verification failed but Nostr binding exists, show that
+                        val statusText = if (nostrBindingExists) {
+                            "Nametag in Nostr only (not in blockchain) ⚠️"
+                        } else {
+                            "Nametag not included in chain ⚠️"
+                        }
+
+                        binding.tvNametagStatus.text = statusText
                         binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
-                        Log.w("UserProfileActivity", "Nametag token path not included: $nametagString")
+                        Log.w("UserProfileActivity", "Nametag token path not included: $nametagString, Nostr: $nostrBindingExists")
                     }
                     InclusionProofVerificationStatus.PATH_INVALID -> {
                         binding.llNametagStatus.visibility = View.VISIBLE
@@ -915,7 +956,7 @@ class UserProfileActivity : AppCompatActivity() {
                         binding.llNametagStatus.visibility = View.VISIBLE
                         binding.tvNametagStatus.text = "Unknown nametag status"
                         binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
-                        Log.e("UserProfileActivity", "Unknown nametag token status: $status")
+                        Log.e("UserProfileActivity", "Unknown nametag token status: $blockchainStatus")
                     }
                 }
             }

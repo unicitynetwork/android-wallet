@@ -357,7 +357,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     fun updateCryptoBalance(cryptoId: String, newBalance: Double) {
         val oldBalance = _allCryptocurrencies.value.find { it.id == cryptoId }?.balance ?: 0.0
         Log.d("WalletViewModel", "Updating crypto balance for $cryptoId: $oldBalance -> $newBalance")
-        
+
         _allCryptocurrencies.value = _allCryptocurrencies.value.map { crypto ->
             if (crypto.id == cryptoId) {
                 crypto.copy(balance = newBalance)
@@ -365,10 +365,20 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 crypto
             }
         }
-        
+
         saveCryptocurrencies() // Save after balance update
     }
-    
+
+    fun deleteCrypto(cryptoId: String) {
+        Log.d("WalletViewModel", "Deleting crypto: $cryptoId")
+
+        _allCryptocurrencies.value = _allCryptocurrencies.value.filter { crypto ->
+            crypto.id != cryptoId
+        }
+
+        saveCryptocurrencies() // Save after deletion
+    }
+
     fun addReceivedCrypto(cryptoSymbol: String, amount: Double): Boolean {
         Log.d("WalletViewModel", "addReceivedCrypto called with: $cryptoSymbol, amount = $amount")
         
