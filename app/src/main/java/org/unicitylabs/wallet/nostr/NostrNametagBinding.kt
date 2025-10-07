@@ -6,8 +6,8 @@ import org.spongycastle.util.encoders.Hex
 import org.unicitylabs.wallet.util.JsonMapper
 
 /**
- * Manages Nostr pubkey ↔ Unicity nametag bindings using replaceable events
- * Adapted from faucet's NostrNametagBinding.java for Android wallet
+ * Manages Unicity nametag → Nostr pubkey bindings using replaceable events
+ * One-directional: nametag resolves to pubkey (not reverse)
  */
 class NostrNametagBinding {
 
@@ -82,76 +82,15 @@ class NostrNametagBinding {
     }
 
     /**
-     * Create a filter to find nametag by Nostr pubkey
-     */
-    fun createPubkeyToNametagFilter(nostrPubkey: String): Map<String, Any> {
-        val filter = mutableMapOf<String, Any>()
-        filter["kinds"] = listOf(KIND_NAMETAG_BINDING)
-        filter["authors"] = listOf(nostrPubkey)
-        filter["#d"] = listOf(TAG_D_VALUE)  // Use #d tag to ensure we get the nametag binding
-        filter["limit"] = 1
-        return filter
-    }
-
-    /**
      * Create a filter to find Nostr pubkey by nametag
-     * IMPORTANT: Must use #t tag which is indexed by the relay
+     * This is the ONLY direction needed: nametag → pubkey
+     * Used by senders to find where to send the Nostr message
      */
     fun createNametagToPubkeyFilter(nametagId: String): Map<String, Any> {
         val filter = mutableMapOf<String, Any>()
         filter["kinds"] = listOf(KIND_NAMETAG_BINDING)
-        filter["#t"] = listOf(nametagId)  // Use #t tag which is commonly indexed by relays
+        filter["#t"] = listOf(nametagId)  // Query by nametag using indexed 't' tag
         filter["limit"] = 1
         return filter
-    }
-
-    /**
-     * Parse nametag from a binding event
-     */
-    fun parseNametagFromEvent(event: Event): String? {
-        if (event.kind != KIND_NAMETAG_BINDING) {
-            return null
-        }
-
-        // Look for nametag in tags
-        for (tag in event.tags) {
-            if (tag.size >= 2 && tag[0] == "nametag") {
-                return tag[1]
-            }
-        }
-
-        // Fallback to parsing from content
-        return try {
-            val contentData = JsonMapper.fromJson(event.content, Map::class.java) as Map<*, *>
-            contentData["nametag"] as? String
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse nametag from event content", e)
-            null
-        }
-    }
-
-    /**
-     * Parse Unicity address from a binding event
-     */
-    fun parseAddressFromEvent(event: Event): String? {
-        if (event.kind != KIND_NAMETAG_BINDING) {
-            return null
-        }
-
-        // Look for address in tags
-        for (tag in event.tags) {
-            if (tag.size >= 2 && tag[0] == "address") {
-                return tag[1]
-            }
-        }
-
-        // Fallback to parsing from content
-        return try {
-            val contentData = JsonMapper.fromJson(event.content, Map::class.java) as Map<*, *>
-            contentData["address"] as? String
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse address from event content", e)
-            null
-        }
     }
 }

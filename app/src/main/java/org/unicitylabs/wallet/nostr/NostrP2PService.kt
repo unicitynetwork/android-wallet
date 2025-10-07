@@ -1207,72 +1207,13 @@ class NostrP2PService(
     }
 
     /**
-     * Query nametag by Nostr pubkey
-     * Returns the nametag string if found, null otherwise
-     */
-    suspend fun queryNametagByPubkey(nostrPubkey: String): String? {
-        return try {
-            val bindingManager = NostrNametagBinding()
-            val filter = bindingManager.createPubkeyToNametagFilter(nostrPubkey)
-
-            Log.d(TAG, "Querying nametag for pubkey: ${nostrPubkey.take(16)}...")
-
-            // Subscribe and wait for result
-            val subscriptionId = "query-nametag-${System.currentTimeMillis()}"
-            var result: String? = null
-            val receivedEvent = kotlinx.coroutines.CompletableDeferred<Event?>()
-
-            // Add temporary listener for this query
-            val listener: (Event) -> Unit = { event ->
-                if (event.kind == NostrNametagBinding.KIND_NAMETAG_BINDING &&
-                    event.pubkey.equals(nostrPubkey, ignoreCase = true)) {
-                    receivedEvent.complete(event)
-                }
-            }
-
-            eventListeners.add(listener)
-
-            try {
-                // Send REQ message to all connected relays
-                val reqMessage = listOf("REQ", subscriptionId, filter)
-                val json = JsonMapper.toJson(reqMessage)
-                relayConnections.values.forEach { ws ->
-                    ws.send(json)
-                }
-
-                // Wait for response with timeout
-                kotlinx.coroutines.withTimeout(5000) {
-                    val event = receivedEvent.await()
-                    result = event?.let { bindingManager.parseNametagFromEvent(it) }
-                }
-
-                if (result != null) {
-                    Log.d(TAG, "Found nametag: $result")
-                } else {
-                    Log.d(TAG, "No nametag found for pubkey")
-                }
-
-                result
-            } finally {
-                // Clean up
-                eventListeners.remove(listener)
-                // Send CLOSE message
-                val closeMessage = listOf("CLOSE", subscriptionId)
-                val closeJson = JsonMapper.toJson(closeMessage)
-                relayConnections.values.forEach { ws ->
-                    ws.send(closeJson)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to query nametag by pubkey", e)
-            null
-        }
-    }
-
-    /**
      * Query Nostr pubkey by nametag
-     * Returns the pubkey (hex) if found, null otherwise
-     * IMPORTANT: Uses 't' tag for querying which is indexed by the relay
+     *
+     * Purpose: Find which Nostr pubkey to send the encrypted message to
+     * Note: Proxy address resolution (nametag → Unicity address) is done locally
+     *       via TokenId.fromNameTag() - no Nostr lookup needed for that!
+     *
+     * @return Nostr public key (hex) if binding exists, null otherwise
      */
     suspend fun queryPubkeyByNametag(nametagId: String): String? {
         return try {
@@ -1290,11 +1231,8 @@ class NostrP2PService(
             // Add temporary listener for this query
             val listener: (Event) -> Unit = { event ->
                 if (event.kind == NostrNametagBinding.KIND_NAMETAG_BINDING) {
-                    // Check if this event has the nametag we're looking for
-                    val eventNametag = bindingManager.parseNametagFromEvent(event)
-                    if (eventNametag == nametagId) {
-                        receivedEvent.complete(event)
-                    }
+                    // Relay filter already ensures this is for our nametag
+                    receivedEvent.complete(event)
                 }
             }
 
