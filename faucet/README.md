@@ -5,12 +5,13 @@ A standalone CLI application for minting Unicity tokens and sending them via Nos
 ## Overview
 
 This faucet application:
-1. Mints a Unicity token with configurable coin type and amount
-2. Submits the token to the Unicity aggregator
-3. Resolves the recipient's nametag to a Nostr public key
-4. Sends the token via encrypted Nostr message to the recipient
+1. Loads all supported coins dynamically from the Unicity registry
+2. Mints tokens with proper proxy address targeting
+3. Transfers tokens to recipient's nametag proxy address
+4. Sends complete transfer package (source token + transfer transaction) via Nostr
+5. Recipient wallet finalizes the transfer with cryptographic verification
 
-The wallet app will receive and process these tokens automatically through its Nostr P2P messaging system.
+The wallet app receives and finalizes these token transfers automatically through proper Unicity Protocol semantics.
 
 ## Configuration
 
@@ -18,25 +19,23 @@ Edit `src/main/resources/faucet-config.json`:
 
 ```json
 {
-  "tokenType": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509",
-  "coinId": "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93",
+  "registryUrl": "https://raw.githubusercontent.com/unicitynetwork/unicity-ids/refs/heads/main/unicity-ids.testnet.json",
   "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
   "aggregatorUrl": "https://goggregator-test.unicity.network",
   "faucetMnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-  "defaultAmount": 1000
+  "defaultAmount": 1000,
+  "defaultCoin": "solana"
 }
 ```
 
 ### Configuration Options
 
-- **tokenType**: Fixed token type hex (32 bytes) for Unicity testnet NFT container
-- **coinId**: Fixed coin ID hex (32 bytes) for fungible tokens (e.g., Solana testnet)
+- **registryUrl**: URL to unicity-ids registry JSON (defines all coins and token types dynamically)
 - **nostrRelay**: WebSocket URL of the Nostr relay for P2P messaging
 - **aggregatorUrl**: URL of the Unicity aggregator service
-- **faucetMnemonic**: BIP-39 mnemonic phrase for faucet identity - **KEEP SECURE!** (Default: "abandon abandon..." for testnet)
+- **faucetMnemonic**: BIP-39 mnemonic phrase for faucet identity - **KEEP SECURE!**
 - **defaultAmount**: Default token amount if not specified via CLI
-
-See [unicity-ids.testnet.json](https://github.com/unicitynetwork/unicity-ids/blob/main/unicity-ids.testnet.json) for the token registry with metadata.
+- **defaultCoin**: Default coin name (e.g., "solana", "bitcoin")
 
 ## Usage
 
@@ -49,179 +48,122 @@ cd faucet
 
 ### Run the Faucet
 
-Send a token to a nametag recipient:
-
 ```bash
-# Using default amount from config
+# Default coin (Solana) with default amount
 ./gradlew run --args="--nametag=alice"
 
-# Specify custom amount
-./gradlew run --args="--nametag=alice --amount=500"
+# Specify amount (uses proper decimals automatically)
+./gradlew run --args="--nametag=alice --amount=1.5"
 
-# Using the 'mint' task
-./gradlew mint --args="--nametag=bob --amount=1000"
+# Specify coin
+./gradlew run --args="--nametag=alice --amount=0.01 --coin=bitcoin"
+./gradlew run --args="--nametag=alice --amount=0.5 --coin=ethereum"
+./gradlew run --args="--nametag=alice --amount=100 --coin=tether"
+./gradlew run --args="--nametag=alice --amount=50 --coin=usd-coin"
+
+# Force refresh registry from GitHub
+./gradlew run --args="--nametag=alice --refresh"
 ```
 
 ### CLI Options
 
 ```
-Usage: faucet [-hV] -n=<nametag> [-a=<amount>] [-c=<configPath>]
+Usage: faucet [-hV] -n=<nametag> [-a=<amount>] [-c=<coin>] [--refresh] [--config=<configPath>]
 
 Options:
-  -n, --nametag=<nametag>   Recipient's nametag (e.g., 'alice')
-  -a, --amount=<amount>     Token amount (uses default from config if not specified)
-  -c, --config=<configPath> Path to config file (default: faucet-config.json in resources)
-  -h, --help               Show this help message and exit
-  -V, --version            Print version information and exit
+  -n, --nametag=<nametag>   Recipient's nametag (required)
+  -a, --amount=<amount>     Token amount in human-readable units (e.g., 0.05)
+  -c, --coin=<coin>         Coin to mint (e.g., 'bitcoin', 'ethereum', 'solana')
+      --refresh             Force refresh registry from GitHub (ignores cache)
+      --config=<path>       Path to config file
+  -h, --help                Show this help message and exit
+  -V, --version             Print version information and exit
 ```
+
+## Supported Coins
+
+All coins are loaded dynamically from the registry. Current coins:
+
+| Coin | Symbol | Decimals | CoinGecko ID |
+|------|--------|----------|--------------|
+| solana | SOL | 9 | solana |
+| bitcoin | BTC | 8 | bitcoin |
+| ethereum | ETH | 18 | ethereum |
+| tether | USDT | 6 | tether |
+| usd-coin | USDC | 6 | usd-coin |
+
+To add new coins, update the [unicity-ids.testnet.json](https://github.com/unicitynetwork/unicity-ids/blob/main/unicity-ids.testnet.json) registry.
 
 ## How It Works
 
-### 1. Nametag Resolution
-- Queries the Nostr relay for the recipient's nametag binding
-- Uses filter: `{"kinds": [30078], "#t": ["nametag"], "limit": 1}`
-- Retrieves the recipient's Nostr public key from the binding event
+### 1. Registry Loading
+- Fetches coin definitions from GitHub
+- Caches locally in `~/.unicity/registry-cache.json`
+- Cache valid for 24 hours
+- Use `--refresh` to force update
 
-### 2. Token Minting
-- Creates a Unicity token using the Java State Transition SDK
-- Token contains:
-  - Fixed token type (f8aa1383... - Unicity NFT container)
-  - Fixed coin ID (dee5f8ce... - Solana testnet)
-  - Amount specified via CLI or config
-  - Masked predicate for ownership
+### 2. Nametag Resolution
+- Queries Nostr relay: `{"kinds": [30078], "#t": ["nametag"]}`
+- Gets recipient's Nostr public key from binding
+- Creates proxy address: `ProxyAddress.create(TokenId.fromNameTag(nametag))`
 
-### 3. Token Transfer
-- Transfers the minted token to the recipient's nametag
-- Creates a transfer transaction commitment
-- Submits to aggregator and waits for inclusion proof
+### 3. Token Minting
+- Uses token type from registry (non-fungible "unicity")
+- Uses coin ID from registry
+- Applies correct decimals (e.g., 1.5 SOL → 1,500,000,000 units)
+- Mints to faucet's address first
 
-### 4. Nostr Message Delivery
-- Creates an encrypted Nostr event (kind 31113 - token transfer)
-- Uses simple hex encoding for message content
-- Signs the event with Schnorr signature (BIP-340)
-- Sends format: `token_transfer:{tokenJson}`
-- The wallet app receives and processes the token automatically
+### 4. Token Transfer to Proxy Address
+- Creates `TransferCommitment` to proxy address
+- Submits to aggregator
+- Waits for inclusion proof
+- Creates transfer transaction
 
-## Testing with Wallet App
+### 5. Nostr Message Delivery
+- Encrypts transfer package with NIP-04
+- Sends to recipient's Nostr pubkey
+- Format: `token_transfer:{"sourceToken":"...","transferTx":"..."}`
+- Wallet receives, verifies, and finalizes
 
-### Prerequisites
-1. Wallet app must be running with Nostr P2P service started
-2. Wallet user must have minted a nametag
-3. Nametag binding must be published to the Nostr relay
-4. Both faucet and wallet must use the same Nostr relay
+## Proper Transfer Flow
 
-### Test Flow
+Unlike simple token sending, this implements the full Unicity Protocol:
 
-1. **Mint nametag in wallet app**:
-   - Open wallet app
-   - Go to Profile → Nametag section
-   - Tap "Mint Nametag" and enter a unique name (e.g., "alice-test-123")
-   - Wait for minting and Nostr binding to complete
+1. **Faucet**: Mint → Transfer to ProxyAddress → Send transfer package via Nostr
+2. **Wallet**: Receive → Check proxy address → Load nametag token → Create recipient predicate with transfer's salt → Finalize with SDK → Save
 
-2. **Run the faucet**:
-   ```bash
-   cd faucet
-   ./gradlew run --args="--nametag=alice-test-123 --amount=1000"
-   ```
+This ensures:
+- ✅ Cryptographic ownership verification
+- ✅ Proxy address resolution with nametag tokens
+- ✅ Proper state transitions
+- ✅ Verifiable inclusion proofs
 
-3. **Verify in wallet app**:
-   - Token should appear in Tokens tab immediately
-   - Should display as "1000 SOL" with Solana icon
-   - New tokens appear at the top of the list
+## Registry Cache
 
-## Message Format
+**Location:** `~/.unicity/registry-cache.json`
 
-The faucet sends tokens in the following format via Nostr:
-
-```
-token_transfer:{tokenJson}
+**Clear cache:**
+```bash
+rm ~/.unicity/registry-cache.json
+# Or use --refresh flag
 ```
 
-Where `{tokenJson}` is the serialized Unicity token from the SDK's `CommitmentJsonSerializer`.
+## Testing
 
-The wallet app's `NostrP2PService` recognizes this format and automatically:
-1. Extracts the token JSON
-2. Deserializes the token
-3. Saves it to the wallet database
-4. Notifies the user
-
-## Security Considerations
-
-1. **Private Key Security**: The `faucetPrivateKey` in the config is sensitive. In production:
-   - Use environment variables
-   - Use secure key management
-   - Never commit real keys to version control
-
-2. **Message Encryption**: Currently uses simple hex encoding. For production:
-   - Implement proper NIP-04 encryption
-   - Use ECDH for shared secret derivation
-   - Add message authentication
-
-3. **Rate Limiting**: Consider adding:
-   - Rate limits per nametag
-   - Maximum amount limits
-   - Authentication/authorization
+Run E2E test:
+```bash
+./gradlew test --tests "FaucetE2ETest.testCompleteTokenTransferFlow"
+```
 
 ## Dependencies
 
-- Unicity Java SDK 1.2.0 (token minting, state transitions)
-- Jackson (JSON serialization)
-- OkHttp (WebSocket for Nostr relay)
-- Secp256k1 (Schnorr signatures)
-- Picocli (CLI argument parsing)
-
-## Troubleshooting
-
-### "Nametag not found in relay"
-- Ensure the nametag is minted in the wallet app (Profile → Nametag)
-- Check that the Nostr service started successfully after minting
-- Wait 2-3 seconds after minting for the binding to publish
-- Verify nametag spelling matches exactly
-
-### "Message rejected"
-- Check Nostr relay is running and accessible
-- Verify signature is valid (check private key)
-- Ensure recipient public key is correct
-
-### "Failed to submit token"
-- Verify aggregator URL is correct and accessible
-- Check network connectivity
-- Review aggregator logs for errors
-
-### "Connection timeout"
-- Increase timeout in `NostrClient` (default: 10 seconds)
-- Check Nostr relay is accepting connections
-- Verify firewall rules allow WebSocket connections
-
-## Development
-
-### Add New Coin Types
-
-Edit `faucet-config.json`:
-```json
-{
-  "coinId": "bitcoin-test",
-  "defaultAmount": 50000000
-}
-```
-
-### Custom Token Data
-
-Modify `TokenMinter.mintToken()` to include additional fields:
-```java
-Map<String, Object> tokenData = new HashMap<>();
-tokenData.put("coinId", coinId);
-tokenData.put("amount", amount);
-tokenData.put("customField", "customValue"); // Add custom fields
-```
-
-### Logging
-
-Adjust logging levels in `src/main/resources/logback.xml`:
-```xml
-<logger name="org.unicitylabs.sdk" level="DEBUG"/>
-```
+- Unicity Java SDK 1.2+ (state transitions, proxy addressing)
+- Jackson (JSON/CBOR serialization)
+- OkHttp (WebSocket for Nostr)
+- BouncyCastle (Schnorr signatures)
+- Picocli (CLI)
+- BitcoinJ (BIP-39 mnemonic)
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT License

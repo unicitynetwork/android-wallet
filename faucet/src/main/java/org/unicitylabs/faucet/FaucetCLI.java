@@ -42,6 +42,12 @@ public class FaucetCLI implements Callable<Integer> {
     private String coin;
 
     @Option(
+        names = {"--refresh"},
+        description = "Force refresh registry from GitHub (ignores cache)"
+    )
+    private boolean refresh;
+
+    @Option(
         names = {"--config"},
         description = "Path to config file (default: faucet-config.json in resources)"
     )
@@ -59,12 +65,27 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("✅ Configuration loaded");
         System.out.println("   Relay: " + config.nostrRelay);
         System.out.println("   Aggregator: " + config.aggregatorUrl);
-        System.out.println("   Token Type: " + config.tokenType);
         System.out.println("   Registry: " + config.registryUrl);
         System.out.println();
 
-        // Load token registry
-        UnicityTokenRegistry registry = UnicityTokenRegistry.getInstance();
+        // Clear cache if refresh flag is set
+        if (refresh) {
+            System.out.println("🔄 Refresh flag set - clearing registry cache...");
+            UnicityTokenRegistry.clearCache();
+        }
+
+        // Load token registry from configured URL
+        UnicityTokenRegistry registry = UnicityTokenRegistry.getInstance(config.registryUrl);
+
+        // Get token type from registry (non-fungible "unicity" asset)
+        String tokenTypeHex = registry.getUnicityTokenType();
+        if (tokenTypeHex == null) {
+            System.err.println("\n❌ Could not find Unicity token type in registry");
+            System.exit(1);
+            return 1;
+        }
+        System.out.println("📝 Token Type: " + tokenTypeHex);
+        System.out.println();
 
         // Determine which coin to mint
         String coinName = (coin != null) ? coin : config.defaultCoin;
@@ -89,8 +110,11 @@ public class FaucetCLI implements Callable<Integer> {
         double userAmount = (amount != null) ? amount : config.defaultAmount;
         int decimals = coinDef.decimals != null ? coinDef.decimals : 8;
 
-        // Convert user amount to smallest units: userAmount * 10^decimals
-        long tokenAmount = (long) (userAmount * Math.pow(10, decimals));
+        // Convert user amount to smallest units using BigDecimal for precision
+        // This avoids floating point errors (e.g., 0.0003 * 10^8 = 30000, not 29999)
+        java.math.BigDecimal userAmountDecimal = java.math.BigDecimal.valueOf(userAmount);
+        java.math.BigDecimal multiplier = java.math.BigDecimal.TEN.pow(decimals);
+        long tokenAmount = userAmountDecimal.multiply(multiplier).longValue();
 
         System.out.println("💰 Minting tokens:");
         System.out.println("   User amount: " + userAmount);
@@ -120,8 +144,8 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("🔨 Minting " + userAmount + " " + coinDef.symbol + "...");
         TokenMinter minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey);
         var mintedToken = minter.mintToken(
-            config.tokenType,
-            coinDef.id,  // Use coin ID from registry
+            tokenTypeHex,  // Token type from registry
+            coinDef.id,    // Coin ID from registry
             tokenAmount
         ).join();
 

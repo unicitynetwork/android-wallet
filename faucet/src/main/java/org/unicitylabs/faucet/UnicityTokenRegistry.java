@@ -13,22 +13,22 @@ import java.util.Map;
 
 /**
  * Registry for Unicity token/coin definitions
- * Caches metadata from GitHub unicitynetwork/unicity-ids repository
+ * Caches metadata from configurable registry URL
  */
 public class UnicityTokenRegistry {
 
-    private static final String REGISTRY_URL =
-        "https://raw.githubusercontent.com/unicitynetwork/unicity-ids/refs/heads/main/unicity-ids.testnet.json";
     private static final String CACHE_FILE = System.getProperty("user.home") + "/.unicity/registry-cache.json";
     private static final long CACHE_VALIDITY_HOURS = 24;
 
     private static UnicityTokenRegistry instance;
+    private static String registryUrl; // Configurable registry URL
     private final Map<String, CoinDefinition> coinsById;
 
     public static class IconEntry {
         public String url;
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public static class CoinDefinition {
         public String network;
         public String assetKind;
@@ -66,7 +66,8 @@ public class UnicityTokenRegistry {
         }
     }
 
-    private UnicityTokenRegistry() throws IOException {
+    private UnicityTokenRegistry(String url) throws IOException {
+        this.registryUrl = url;
         ObjectMapper mapper = new ObjectMapper();
         List<CoinDefinition> definitions;
 
@@ -79,11 +80,11 @@ public class UnicityTokenRegistry {
                 mapper.getTypeFactory().constructCollectionType(List.class, CoinDefinition.class)
             );
         } else {
-            // Fetch from GitHub
-            System.out.println("🌐 Fetching registry from GitHub...");
-            URL url = new URL(REGISTRY_URL);
+            // Fetch from configured URL
+            System.out.println("🌐 Fetching registry from: " + url);
+            URL registryURL = new URL(url);
             definitions = mapper.readValue(
-                url,
+                registryURL,
                 mapper.getTypeFactory().constructCollectionType(List.class, CoinDefinition.class)
             );
 
@@ -117,9 +118,41 @@ public class UnicityTokenRegistry {
         }
     }
 
+    /**
+     * Clear the registry cache file
+     */
+    public static synchronized void clearCache() {
+        File cacheFile = new File(CACHE_FILE);
+        if (cacheFile.exists()) {
+            boolean deleted = cacheFile.delete();
+            if (deleted) {
+                System.out.println("✅ Registry cache cleared: " + CACHE_FILE);
+            } else {
+                System.err.println("⚠️  Failed to delete cache file: " + CACHE_FILE);
+            }
+        } else {
+            System.out.println("ℹ️  No cache file to clear");
+        }
+        // Also clear in-memory instance to force reload
+        instance = null;
+    }
+
+    /**
+     * Initialize and get registry instance with config URL
+     */
+    public static synchronized UnicityTokenRegistry getInstance(String url) throws IOException {
+        if (instance == null) {
+            instance = new UnicityTokenRegistry(url);
+        }
+        return instance;
+    }
+
+    /**
+     * Get existing instance (must call getInstance(url) first)
+     */
     public static synchronized UnicityTokenRegistry getInstance() throws IOException {
         if (instance == null) {
-            instance = new UnicityTokenRegistry();
+            throw new IllegalStateException("Registry not initialized. Call getInstance(url) first.");
         }
         return instance;
     }
@@ -154,6 +187,18 @@ public class UnicityTokenRegistry {
             }
         }
         return fungible;
+    }
+
+    /**
+     * Get the Unicity token type (non-fungible "unicity" asset)
+     */
+    public String getUnicityTokenType() {
+        for (CoinDefinition def : coinsById.values()) {
+            if ("non-fungible".equals(def.assetKind) && "unicity".equalsIgnoreCase(def.name)) {
+                return def.id;
+            }
+        }
+        return null;
     }
 
     /**

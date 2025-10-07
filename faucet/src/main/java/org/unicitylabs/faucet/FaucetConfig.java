@@ -12,7 +12,6 @@ import java.io.InputStream;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FaucetConfig {
 
-    public String tokenType;      // Hex string for token type (32 bytes)
     public String registryUrl;    // URL to unicity-ids registry JSON
     public String nostrRelay;
     public String aggregatorUrl;

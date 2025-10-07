@@ -1,5 +1,4 @@
 {
-  "tokenType": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509",
   "registryUrl": "https://raw.githubusercontent.com/unicitynetwork/unicity-ids/refs/heads/main/unicity-ids.testnet.json",
   "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
   "aggregatorUrl": "https://goggregator-test.unicity.network",
@@ -7,8 +6,7 @@
   "defaultAmount": 1000,
   "defaultCoin": "solana",
   "notes": {
-    "tokenType": "Fixed token type hex for Unicity testnet (32 bytes)",
-    "registryUrl": "URL to unicity-ids registry JSON (supports all fungible coins dynamically)",
+    "registryUrl": "URL to unicity-ids registry JSON (defines token type and all coins)",
     "nostrRelay": "WebSocket URL of the Nostr relay for P2P messaging",
     "aggregatorUrl": "URL of the Unicity aggregator service",
     "faucetMnemonic": "BIP-39 mnemonic phrase for faucet identity. Keep this secure!",
