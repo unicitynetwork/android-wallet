@@ -48,17 +48,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     val coinDef = registry.getCoinDefinition(coinId)
                     val decimals = coinDef?.decimals ?: 8 // Default to 8 if not specified
 
-                    // Map symbol to CoinGecko API ID
-                    val apiId = when (symbol.uppercase()) {
-                        "BTC" -> "bitcoin"
-                        "ETH" -> "ethereum"
-                        "SOL" -> "solana"
-                        "USDT" -> "tether"
-                        "USDC" -> "usd-coin"
-                        "EXAF" -> "efranc"
-                        "ENGN" -> "enaira"
-                        else -> symbol.lowercase()
-                    }
+                    // Use coin name from registry directly as CoinGecko API ID
+                    // Registry names are already in correct format (lowercase with hyphens)
+                    val apiId = coinDef?.name ?: symbol.lowercase()
 
                     // Get price from service (cached or default)
                     val priceData = priceService.getCachedPrice(apiId)
