@@ -14,7 +14,7 @@ import org.unicitylabs.sdk.address.ProxyAddress
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.Token
@@ -28,6 +28,7 @@ import org.unicitylabs.sdk.util.InclusionProofUtils
 import org.unicitylabs.sdk.verification.VerificationException
 import org.unicitylabs.wallet.di.ServiceProvider
 import org.unicitylabs.wallet.identity.IdentityManager
+import org.unicitylabs.wallet.utils.WalletConstants
 import java.io.File
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -87,41 +88,20 @@ class NametagService(
                 return@withContext existingNametag
             }
             
-            // Generate cryptographic materials for the nametag
-            val nonce = ByteArray(32).apply {
-                SecureRandom().nextBytes(this)
-            }
-            
-            // Get the identity from IdentityManager
+            // Create deterministic token ID from nametag string
+            val nametagTokenId = TokenId.fromNameTag(nametagString)
+
+            // Use the same token type for all tokens (from WalletConstants)
             val identity = identityManager.getCurrentIdentity()
                 ?: throw IllegalStateException("No wallet identity found")
-            
-            // Convert hex strings to byte arrays
+
             val secret = hexToBytes(identity.privateKey)
-            
-            // Create signing service with identity credentials
-            val signingService = SigningService.createFromMaskedSecret(secret, nonce)
-            
-            
-            // Create token id and type for the nametag
-            val nametagTokenId = TokenId(ByteArray(32).apply {
-                SecureRandom().nextBytes(this)
-            })
-            val nametagTokenType = TokenType(ByteArray(32).apply {
-                SecureRandom().nextBytes(this)
-            })
+            val signingService = SigningService.createFromSecret(secret)
+            val nametagTokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
 
-            // Create predicate for the nametag (SDK 1.2 requires tokenId and tokenType)
-            val nametagPredicate = MaskedPredicate.create(
-                nametagTokenId,
-                nametagTokenType,
-                signingService,
-                HashAlgorithm.SHA256,
-                nonce
-            )
-
-            // Get the nametag address
-            val nametagAddress = nametagPredicate.getReference().toAddress()
+            // Get the wallet's direct address as the target for this nametag
+            val nametagAddress = identityManager.getWalletAddress()
+                ?: throw IllegalStateException("Failed to get wallet address")
 
             // Submit the mint commitment with retry logic
             var submitResponse: org.unicitylabs.sdk.api.SubmitCommitmentResponse? = null
@@ -201,8 +181,17 @@ class NametagService(
             // Create the genesis transaction
             val genesisTransaction = mintCommitment!!.toTransaction(inclusionProof)
 
-            // Create the nametag token
-            // Nametag tokens are proxy tokens that use the nametag predicate
+            // Create the nametag token's predicate using the mint transaction salt
+            val mintSalt = (mintCommitment.transactionData as NametagMintTransactionData<MintTransactionReason>).salt
+
+            val nametagPredicate = UnmaskedPredicate.create(
+                nametagTokenId,
+                nametagTokenType,
+                signingService,
+                HashAlgorithm.SHA256,
+                mintSalt  // Use the mint transaction's salt
+            )
+
             val trustBase = ServiceProvider.getRootTrustBase()
 
             val nametagToken = try {
@@ -218,9 +207,9 @@ class NametagService(
                 Log.e(TAG, "Full exception: ", e)
                 throw e
             }
-            
-            // Save the nametag to persistent storage
-            saveNametag(nametagString, nametagToken, nonce)
+
+            // Save the nametag to persistent storage (no nonce needed for UnmaskedPredicate)
+            saveNametag(nametagString, nametagToken)
             
             Log.d(TAG, "Nametag minted and saved successfully: $nametagString")
             return@withContext nametagToken
@@ -235,17 +224,15 @@ class NametagService(
      * Imports an existing nametag from JSON data
      * @param nametagString The nametag string
      * @param jsonData The JSON representation of the nametag token
-     * @param nonce The nonce used for the nametag predicate
      * @return The imported nametag token or null if import fails
      */
     suspend fun importNametag(
         nametagString: String,
-        jsonData: String,
-        nonce: ByteArray
+        jsonData: String
     ): Token<*>? = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Importing nametag: $nametagString")
-            
+
             // Check if jsonData is the wrapper format or direct token
             val token = try {
                 // First try to parse as wrapper format (from export)
@@ -262,9 +249,9 @@ class NametagService(
                 // If all else fails, try direct parse
                 UnicityObjectMapper.JSON.readValue(jsonData, Token::class.java)
             }
-            
-            // Save the imported nametag
-            saveNametag(nametagString, token, nonce)
+
+            // Save the imported nametag (no nonce needed for UnmaskedPredicate)
+            saveNametag(nametagString, token)
             
             Log.d(TAG, "Nametag imported successfully: $nametagString")
             return@withContext token
@@ -409,24 +396,23 @@ class NametagService(
         }
     }
     
-    private fun saveNametag(nametagString: String, token: Token<*>, nonce: ByteArray) {
+    private fun saveNametag(nametagString: String, token: Token<*>) {
         try {
             val file = getNametagFile(nametagString)
-            
-            // Create a .txf-compatible JSON structure that includes both token and nonce
+
+            // Create a .txf-compatible JSON structure
             // This format can be exported/imported as a .txf file
             val nametagData = mapOf(
                 "nametag" to nametagString,
                 "token" to UnicityObjectMapper.JSON.writeValueAsString(token),
-                "nonce" to nonce.encodeToString(),
                 "timestamp" to System.currentTimeMillis(),
                 "format" to "txf",
-                "version" to "1.0"
+                "version" to "2.0"  // Version 2.0 uses UnmaskedPredicate (no nonce)
             )
-            
+
             val jsonData = UnicityObjectMapper.JSON.writeValueAsString(nametagData)
             file.writeText(jsonData)
-            
+
             Log.d(TAG, "Nametag saved to file: ${file.absolutePath}")
         } catch (e: Exception) {
             Log.e(TAG, "Error saving nametag: ${e.message}", e)

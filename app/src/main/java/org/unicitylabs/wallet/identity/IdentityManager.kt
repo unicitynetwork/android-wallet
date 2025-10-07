@@ -100,6 +100,55 @@ class IdentityManager(private val context: Context) {
             null
         }
     }
+
+    /**
+     * Gets the wallet's direct address using UnmaskedPredicateReference
+     * This address is deterministically derived from the wallet identity
+     * and should be used as the target for ALL nametags
+     */
+    suspend fun getWalletAddress(): org.unicitylabs.sdk.address.DirectAddress? = withContext(Dispatchers.IO) {
+        val identity = getCurrentIdentity() ?: return@withContext null
+
+        val secret = hexToBytes(identity.privateKey)
+
+        // Use createFromSecret for UnmaskedPredicate (not createFromMaskedSecret)
+        val signingService = SigningService.createFromSecret(secret)
+
+        val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
+
+        // Create UnmaskedPredicateReference without TokenId - this is the wallet's identity
+        val predicateRef = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicateReference.create(
+            tokenType,
+            signingService,
+            HashAlgorithm.SHA256
+        )
+
+        // Return the direct address
+        predicateRef.toAddress()
+    }
+
+    /**
+     * Gets the wallet's canonical UnmaskedPredicate for a specific token
+     * Uses the wallet identity's signing service
+     * @param salt The salt from the transaction (must be provided by caller)
+     */
+    suspend fun getWalletPredicate(tokenId: TokenId, tokenType: TokenType, salt: ByteArray): UnmaskedPredicate? = withContext(Dispatchers.IO) {
+        val identity = getCurrentIdentity() ?: return@withContext null
+
+        val secret = hexToBytes(identity.privateKey)
+
+        // Use createFromSecret for UnmaskedPredicate (not createFromMaskedSecret)
+        val signingService = SigningService.createFromSecret(secret)
+
+        // Use the provided salt (from transaction)
+        UnmaskedPredicate.create(
+            tokenId,
+            tokenType,
+            signingService,
+            HashAlgorithm.SHA256,
+            salt
+        )
+    }
     
     /**
      * Gets the stored seed phrase (requires authentication)

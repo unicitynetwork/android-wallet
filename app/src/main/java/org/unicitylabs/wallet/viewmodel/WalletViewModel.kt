@@ -502,12 +502,16 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             val tokenType = org.unicitylabs.sdk.token.TokenType(hexStringToByteArray(tokenTypeHex))
             val tokenId = org.unicitylabs.sdk.token.TokenId(hexStringToByteArray(tokenIdHex))
 
-            val recipientPredicate = org.unicitylabs.sdk.predicate.embedded.MaskedPredicate.create(
+            // Create salt for UnmaskedPredicate
+            val salt = ByteArray(32)
+            java.security.SecureRandom().nextBytes(salt)
+
+            val recipientPredicate = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate.create(
                 tokenId,
                 tokenType,
                 recipientSigningService,
                 org.unicitylabs.sdk.hash.HashAlgorithm.SHA256,
-                recipientNonce
+                salt
             )
             
             val recipientAddress = recipientPredicate.getReference().toAddress().toString()

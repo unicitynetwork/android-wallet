@@ -912,19 +912,18 @@ class NostrP2PService(
                 return null
             }
 
-            // Create signing service
+            // Create signing service for UnmaskedPredicate
             val secret = hexToBytes(identity.privateKey)
-            val nonce = hexToBytes(identity.nonce)
-            val signingService = org.unicitylabs.sdk.signing.SigningService.createFromMaskedSecret(secret, nonce)
+            val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
 
             // CRITICAL: Create recipient predicate using the salt FROM the transfer transaction
             val transferSalt = transferTx.data.salt
             val recipientPredicate = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate.create(
-                sourceToken.id,     // TokenId from source token
-                sourceToken.type,   // TokenType from source token
+                sourceToken.id,     // Use TOKEN's ID (not random!)
+                sourceToken.type,   // Use TOKEN's type
                 signingService,
                 org.unicitylabs.sdk.hash.HashAlgorithm.SHA256,
-                transferSalt  // Use transfer's salt, not a new random one!
+                transferSalt  // Use TRANSACTION's salt (critical!)
             )
 
             val recipientState = org.unicitylabs.sdk.token.TokenState(recipientPredicate, null)

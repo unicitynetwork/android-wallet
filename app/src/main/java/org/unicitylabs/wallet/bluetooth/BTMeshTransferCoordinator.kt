@@ -1078,12 +1078,16 @@ object BTMeshTransferCoordinator {
             val tokenId = org.unicitylabs.sdk.token.TokenId(tokenIdBytes)
             val tokenType = org.unicitylabs.sdk.token.TokenType(tokenTypeBytes)
 
-            val predicate = org.unicitylabs.sdk.predicate.embedded.MaskedPredicate.create(
+            // Create salt for UnmaskedPredicate
+            val salt = ByteArray(32)
+            java.security.SecureRandom().nextBytes(salt)
+
+            val predicate = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate.create(
                 tokenId,
                 tokenType,
                 signingService,
                 org.unicitylabs.sdk.hash.HashAlgorithm.SHA256,
-                nonce
+                salt
             )
             
             predicate.getReference().toAddress().toString()

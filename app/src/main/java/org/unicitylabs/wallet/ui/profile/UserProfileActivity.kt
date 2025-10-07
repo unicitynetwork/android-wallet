@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenId
@@ -657,36 +657,9 @@ class UserProfileActivity : AppCompatActivity() {
     
     private suspend fun getWalletAddress(): DirectAddress? {
         return try {
-            // Get the identity from IdentityManager
-            val identity = identityManager.getCurrentIdentity()
-            if (identity == null) {
-                Log.e("UserProfileActivity", "No identity found")
-                return null
-            }
-            
-            // Convert hex strings to byte arrays
-            val secret = hexToBytes(identity.privateKey)
-            val nonce = hexToBytes(identity.nonce)
-            
-            // Create signing service and predicate
-            val signingService = SigningService.createFromMaskedSecret(secret, nonce)
-
-            // Use the chain's token type for the address
-            val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
-            val tokenId = TokenId(ByteArray(32).apply {
-                SecureRandom().nextBytes(this)
-            })
-
-            val predicate = MaskedPredicate.create(
-                tokenId,
-                tokenType,
-                signingService,
-                HashAlgorithm.SHA256,
-                nonce
-            )
-            
-            // Return the address
-            predicate.getReference().toAddress()
+            // Get the wallet's direct address from IdentityManager
+            // This uses UnmaskedPredicateReference without TokenId
+            identityManager.getWalletAddress()
         } catch (e: Exception) {
             Log.e("UserProfileActivity", "Error getting wallet address", e)
             null
@@ -758,14 +731,12 @@ class UserProfileActivity : AppCompatActivity() {
                 
                 lifecycleScope.launch {
                     try {
-                        // Parse the JSON to extract nametag data and nonce
+                        // Parse the JSON to extract nametag data
                         val nametagData = UnicityObjectMapper.JSON.readTree(jsonData)
                         val nametag = nametagData.get("nametag")?.asText()
-                        val nonceBase64 = nametagData.get("nonce")?.asText()
-                        
-                        if (nametag != null && nonceBase64 != null) {
-                            val nonce = android.util.Base64.decode(nonceBase64, android.util.Base64.NO_WRAP)
-                            val token = nametagService.importNametag(nametag, jsonData, nonce)
+
+                        if (nametag != null) {
+                            val token = nametagService.importNametag(nametag, jsonData)
                             
                             if (token != null) {
                                 runOnUiThread {
@@ -957,18 +928,16 @@ class UserProfileActivity : AppCompatActivity() {
             // Check blockchain token status
             Log.d("UserProfileActivity", "Validating nametag token status for: $nametagString")
 
-            // For nametag tokens, we need to extract the public key from the token's predicate
-            // The nametag token has a MaskedPredicate with its own public key
+            // For nametag tokens with UnmaskedPredicate, extract the public key from the predicate
             val tokenState = nametagToken.state
             val predicate = tokenState.predicate
 
-            // Extract the public key from the MaskedPredicate
-            val publicKeyBytes = if (predicate is MaskedPredicate) {
-                // MaskedPredicate stores its public key internally
-                // This is the key that was used when the nametag was minted
+            // Extract the public key from the predicate
+            val publicKeyBytes = if (predicate is UnmaskedPredicate) {
+                // UnmaskedPredicate stores its public key - this is the wallet's identity public key
                 predicate.publicKey
             } else {
-                // Fallback to wallet's public key if not a masked predicate (shouldn't happen for nametags)
+                // Fallback to wallet's public key for other predicate types
                 val identity = identityManager.getCurrentIdentity()
                 if (identity == null) {
                     Log.e("UserProfileActivity", "No wallet identity found for validation")

@@ -7,7 +7,7 @@ import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
+import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.Token
@@ -98,14 +98,19 @@ class UnicityJavaSdkService(
             )
             val coinData = TokenCoinData(coins)
             
-            // Create signing service and predicate (SDK 1.2 - tokenId/tokenType required)
+            // Create signing service and predicate using wallet identity
             val signingService = SigningService.createFromMaskedSecret(secret, nonce)
-            val predicate = MaskedPredicate.create(
+
+            // Create salt for UnmaskedPredicate nonce derivation
+            val predicateSalt = ByteArray(32)
+            random.nextBytes(predicateSalt)
+
+            val predicate = UnmaskedPredicate.create(
                 tokenId,
                 tokenType,
                 signingService,
                 HashAlgorithm.SHA256,
-                nonce
+                predicateSalt
             )
             
             // Get recipient address from predicate reference
