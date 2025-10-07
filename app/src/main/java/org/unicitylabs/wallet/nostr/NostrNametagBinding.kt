@@ -40,7 +40,9 @@ class NostrNametagBinding {
 
         // Create tags for the replaceable event
         val tags = mutableListOf<List<String>>()
-        tags.add(listOf("d", TAG_D_VALUE))  // Makes it replaceable by pubkey+d
+        // IMPORTANT: Use hashed nametag as d-tag to allow multiple nametags per pubkey
+        // Each nametag gets its own event: (pubkey, kind, d-tag) uniquely identifies the event
+        tags.add(listOf("d", hashedNametag))  // Unique per nametag - allows multiple bindings
         tags.add(listOf("nametag", hashedNametag))  // Store HASHED nametag for privacy
         tags.add(listOf("t", hashedNametag))  // IMPORTANT: Use 't' tag which is indexed by relay
         tags.add(listOf("address", unicityAddress))  // Store Unicity address

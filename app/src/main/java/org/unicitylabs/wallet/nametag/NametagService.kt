@@ -339,6 +339,55 @@ class NametagService(
             false
         }
     }
+
+    /**
+     * Lists all minted nametags stored locally
+     * @return List of nametag strings
+     */
+    suspend fun listAllNametags(): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val nametagDir = File(context.filesDir, "nametags")
+            if (!nametagDir.exists()) {
+                return@withContext emptyList()
+            }
+
+            val nametagFiles = nametagDir.listFiles { file ->
+                file.name.startsWith(NAMETAG_FILE_PREFIX) &&
+                file.name.endsWith(NAMETAG_FILE_SUFFIX)
+            } ?: return@withContext emptyList()
+
+            nametagFiles.mapNotNull { file ->
+                try {
+                    val jsonData = file.readText()
+                    val nametagData = UnicityObjectMapper.JSON.readTree(jsonData)
+                    nametagData.get("nametag")?.asText()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading nametag from file: ${file.name}", e)
+                    null
+                }
+            }.sorted()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error listing nametags: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Gets detailed information about all minted nametags
+     * @return Map of nametag string to token
+     */
+    suspend fun getAllNametagTokens(): Map<String, Token<*>> = withContext(Dispatchers.IO) {
+        val result = mutableMapOf<String, Token<*>>()
+        val nametags = listAllNametags()
+
+        nametags.forEach { nametag ->
+            loadNametag(nametag)?.let { token ->
+                result[nametag] = token
+            }
+        }
+
+        result
+    }
     
     /**
      * Exports a nametag as JSON in .txf format

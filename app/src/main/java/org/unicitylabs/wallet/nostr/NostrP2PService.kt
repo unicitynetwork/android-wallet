@@ -873,32 +873,36 @@ class NostrP2PService(
 
             Log.d(TAG, "Transfer is to PROXY address - finalization required")
 
-            // Load user's nametag tokens
+            // Load ALL user's nametag tokens and find which one matches
             val nametagService = org.unicitylabs.wallet.nametag.NametagService(context)
-            val sharedPrefs = context.getSharedPreferences("UnicitywWalletPrefs", android.content.Context.MODE_PRIVATE)
-            val myNametag = sharedPrefs.getString("unicity_tag", "") ?: ""
+            val allNametags = nametagService.getAllNametagTokens()
 
-            if (myNametag.isEmpty()) {
-                Log.e(TAG, "No nametag configured for this wallet")
+            if (allNametags.isEmpty()) {
+                Log.e(TAG, "No nametags configured for this wallet")
                 return null
             }
 
-            val myNametagToken = nametagService.loadNametag(myNametag)
-            if (myNametagToken == null) {
-                Log.e(TAG, "Could not load my nametag token: $myNametag")
-                return null
+            // Find which nametag this transfer is for by checking all proxy addresses
+            var matchedNametag: String? = null
+            var myNametagToken: org.unicitylabs.sdk.token.Token<*>? = null
+
+            for ((nametagString, nametagToken) in allNametags) {
+                val proxyAddress = org.unicitylabs.sdk.address.ProxyAddress.create(nametagToken.id)
+                if (proxyAddress.address == recipientAddress.address) {
+                    matchedNametag = nametagString
+                    myNametagToken = nametagToken
+                    break
+                }
             }
 
-            // Check if this proxy address matches my nametag
-            val myProxyAddress = org.unicitylabs.sdk.address.ProxyAddress.create(myNametagToken.id)
-            if (myProxyAddress.address != recipientAddress.address) {
-                Log.e(TAG, "Transfer is not for my nametag!")
-                Log.e(TAG, "Expected: ${myProxyAddress.address}")
+            if (myNametagToken == null || matchedNametag == null) {
+                Log.e(TAG, "Transfer is not for any of my nametags!")
                 Log.e(TAG, "Got: ${recipientAddress.address}")
+                Log.e(TAG, "My nametags: ${allNametags.keys.joinToString(", ")}")
                 return null
             }
 
-            Log.d(TAG, "✅ Transfer is for my nametag: $myNametag")
+            Log.d(TAG, "✅ Transfer is for my nametag: $matchedNametag")
 
             // Get identity to create signing service
             val identityManager = org.unicitylabs.wallet.identity.IdentityManager(context)

@@ -40,6 +40,7 @@ import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
+import org.unicitylabs.sdk.token.Token
 import org.unicitylabs.sdk.transaction.InclusionProofVerificationStatus
 import org.unicitylabs.wallet.databinding.ActivityUserProfileBinding
 import org.unicitylabs.wallet.di.ServiceProvider
@@ -135,20 +136,17 @@ class UserProfileActivity : AppCompatActivity() {
         val savedTag = sharedPrefs.getString("unicity_tag", "")
         val savedAgentStatus = sharedPrefs.getBoolean("is_agent", false)
         val savedAvailability = sharedPrefs.getBoolean("agent_available", true)
-        
+
         binding.etUnicityTag.setText(savedTag)
         binding.switchAgent.isChecked = savedAgentStatus
         isAgentMode = savedAgentStatus
-        
-        // Validate existing nametag if present
-        if (!savedTag.isNullOrEmpty()) {
-            val nametagString = savedTag.replace("@unicity", "").trim()
-            if (nametagString.isNotEmpty()) {
-                lifecycleScope.launch {
-                    validateNametagToken(nametagString)
-                }
-            }
+
+        // Load all available nametags and set up dropdown
+        lifecycleScope.launch {
+            setupNametagDropdown()
         }
+
+        // Note: Nametag validation happens in onResume() to avoid duplication
         
         // Show/hide availability switch based on agent mode
         binding.switchAvailability.visibility = if (savedAgentStatus) View.VISIBLE else View.GONE
@@ -552,13 +550,12 @@ class UserProfileActivity : AppCompatActivity() {
         try {
             // Check if nametag exists
             if (nametagService.hasNametag(nametagString)) {
-                // Nametag already exists
-                runOnUiThread {
-                    binding.llNametagStatus.visibility = View.VISIBLE
-                    binding.llNametagActions.visibility = View.VISIBLE
-                    binding.tvNametagStatus.text = "Nametag already minted"
-                    binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_info)
-                }
+                // Nametag already exists - validate its status
+                validateNametagToken(nametagString)
+
+                // Setup export/import buttons for existing nametag
+                setupNametagButtons(nametagString)
+                return
             } else {
                 // Show minting progress
                 runOnUiThread {
@@ -621,6 +618,11 @@ class UserProfileActivity : AppCompatActivity() {
                             binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_info)
 
                             Toast.makeText(this, "Nametag minted successfully!", Toast.LENGTH_LONG).show()
+
+                            // Refresh the nametag dropdown to include the new nametag
+                            lifecycleScope.launch {
+                                setupNametagDropdown()
+                            }
                         }
                     } else {
                         runOnUiThread {
@@ -834,12 +836,7 @@ class UserProfileActivity : AppCompatActivity() {
                     binding.tvNametagStatus.text = "Please create or restore your wallet first"
                     binding.ivNametagStatus.setImageResource(android.R.drawable.ic_dialog_alert)
                 } else {
-                    // First validate the nametag token if it exists
-                    val nametagString = savedTag.replace("@unicity", "").trim()
-                    if (nametagService.hasNametag(nametagString)) {
-                        validateNametagToken(nametagString)
-                    }
-                    // Then proceed with minting or checking
+                    // Check and validate the nametag
                     mintOrCheckNametag(savedTag)
                 }
             }
@@ -855,6 +852,92 @@ class UserProfileActivity : AppCompatActivity() {
     }
     
     /**
+     * Sets up the nametag dropdown with all available nametags
+     */
+    private suspend fun setupNametagDropdown() {
+        try {
+            val allNametags = nametagService.listAllNametags()
+
+            runOnUiThread {
+                // Cast the view to AutoCompleteTextView since we changed the layout
+                val autoCompleteView = binding.etUnicityTag as? android.widget.AutoCompleteTextView
+
+                if (autoCompleteView != null && allNametags.isNotEmpty()) {
+                    // Set up the adapter with existing nametags
+                    val adapter = android.widget.ArrayAdapter(
+                        this,
+                        android.R.layout.simple_dropdown_item_1line,
+                        allNametags
+                    )
+
+                    autoCompleteView.setAdapter(adapter)
+                    autoCompleteView.threshold = 0 // Show dropdown immediately
+
+                    // Handle selection from dropdown
+                    autoCompleteView.setOnItemClickListener { _, _, position, _ ->
+                        val selectedNametag = allNametags[position]
+                        lifecycleScope.launch {
+                            validateNametagToken(selectedNametag)
+                        }
+                    }
+
+                    // Show dropdown on focus
+                    autoCompleteView.setOnFocusChangeListener { view, hasFocus ->
+                        if (hasFocus && view is android.widget.AutoCompleteTextView) {
+                            view.showDropDown()
+                        }
+                    }
+
+                    // Show dropdown on click
+                    autoCompleteView.setOnClickListener {
+                        (it as? android.widget.AutoCompleteTextView)?.showDropDown()
+                    }
+
+                    // Add a helper text showing how many nametags are available
+                    val helperText = "You have ${allNametags.size} nametag(s) available"
+                    Toast.makeText(this, helperText, Toast.LENGTH_SHORT).show()
+
+                    Log.d("UserProfileActivity", "Loaded ${allNametags.size} nametags: $allNametags")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("UserProfileActivity", "Error loading nametags: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Recreates the Nostr binding for a nametag if it's missing
+     */
+    private suspend fun recreateNostrBinding(nametagString: String, nametagToken: Token<*>) {
+        try {
+            val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext) ?: return
+
+            // Ensure the service is started
+            if (!nostrService.isRunning()) {
+                nostrService.start()
+                delay(2000) // Give it time to connect
+            }
+
+            // Get the proxy address for the nametag
+            val proxyAddress = nametagService.getProxyAddress(nametagToken)
+
+            // Publish the nametag binding to Nostr
+            val published = nostrService.publishNametagBinding(
+                nametagId = nametagString,
+                unicityAddress = proxyAddress.toString()
+            )
+
+            if (published) {
+                Log.i("UserProfileActivity", "Successfully recreated Nostr binding for nametag: $nametagString")
+            } else {
+                Log.w("UserProfileActivity", "Failed to recreate Nostr binding for nametag: $nametagString")
+            }
+        } catch (e: Exception) {
+            Log.e("UserProfileActivity", "Failed to recreate Nostr binding: ${e.message}", e)
+        }
+    }
+
+    /**
      * Validates the nametag token status using StateTransitionClient
      * AND validates Nostr relay binding
      */
@@ -868,21 +951,33 @@ class UserProfileActivity : AppCompatActivity() {
                 return
             }
 
-            // Get the identity to retrieve the public key
-            val identity = identityManager.getCurrentIdentity()
-            if (identity == null) {
-                Log.e("UserProfileActivity", "No wallet identity found for validation")
-                return
-            }
-
-            // Convert public key from hex to bytes
-            val publicKeyBytes = hexToBytes(identity.publicKey)
-
             // Get the state transition client
             val stateTransitionClient = ServiceProvider.stateTransitionClient
 
             // Check blockchain token status
             Log.d("UserProfileActivity", "Validating nametag token status for: $nametagString")
+
+            // For nametag tokens, we need to extract the public key from the token's predicate
+            // The nametag token has a MaskedPredicate with its own public key
+            val tokenState = nametagToken.state
+            val predicate = tokenState.predicate
+
+            // Extract the public key from the MaskedPredicate
+            val publicKeyBytes = if (predicate is MaskedPredicate) {
+                // MaskedPredicate stores its public key internally
+                // This is the key that was used when the nametag was minted
+                predicate.publicKey
+            } else {
+                // Fallback to wallet's public key if not a masked predicate (shouldn't happen for nametags)
+                val identity = identityManager.getCurrentIdentity()
+                if (identity == null) {
+                    Log.e("UserProfileActivity", "No wallet identity found for validation")
+                    return
+                }
+                hexToBytes(identity.publicKey)
+            }
+
+            Log.d("UserProfileActivity", "Using public key from predicate for validation: ${publicKeyBytes.take(8).joinToString("") { "%02x".format(it) }}...")
 
             // Use withContext to run the blocking operation in IO dispatcher
             val blockchainStatus = withContext(Dispatchers.IO) {
@@ -906,6 +1001,18 @@ class UserProfileActivity : AppCompatActivity() {
                 val nostrPubkey = nostrService.queryPubkeyByNametag(nametagString)
                 nostrBindingExists = nostrPubkey != null
                 Log.d("UserProfileActivity", "Nostr binding exists for $nametagString: $nostrBindingExists (pubkey: ${nostrPubkey?.take(16)}...)")
+
+                // If Nostr binding is missing, recreate it (regardless of blockchain status)
+                // This allows users to receive tokens even if blockchain verification has temporary issues
+                if (!nostrBindingExists) {
+                    Log.w("UserProfileActivity", "Nostr binding missing for nametag, recreating...")
+                    recreateNostrBinding(nametagString, nametagToken)
+                    // Check again after recreation
+                    delay(1000)
+                    val updatedPubkey = nostrService.queryPubkeyByNametag(nametagString)
+                    nostrBindingExists = updatedPubkey != null
+                    Log.d("UserProfileActivity", "After recreation - Nostr binding exists: $nostrBindingExists")
+                }
             }
 
             // Update UI based on validation status

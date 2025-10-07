@@ -43,9 +43,10 @@
                     android:layout_marginBottom="16dp" />
 
                 <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilUnicityTag"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                     android:hint="Nametag (e.g., john)"
                     app:suffixText="@unicity"
                     app:boxCornerRadiusBottomEnd="8dp"
@@ -53,7 +54,7 @@
                     app:boxCornerRadiusTopEnd="8dp"
                     app:boxCornerRadiusTopStart="8dp">
 
-                    <com.google.android.material.textfield.TextInputEditText
+                    <AutoCompleteTextView
                         android:id="@+id/etUnicityTag"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

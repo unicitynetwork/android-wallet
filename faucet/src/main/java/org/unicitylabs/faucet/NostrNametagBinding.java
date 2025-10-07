@@ -35,7 +35,9 @@ public class NostrNametagBinding {
 
         // Create tags for the replaceable event
         List<List<String>> tags = new ArrayList<>();
-        tags.add(Arrays.asList("d", TAG_D_VALUE)); // Makes it replaceable by pubkey+d
+        // IMPORTANT: Use hashed nametag as d-tag to allow multiple nametags per pubkey
+        // Each nametag gets its own event: (pubkey, kind, d-tag) uniquely identifies the event
+        tags.add(Arrays.asList("d", hashedNametag)); // Unique per nametag - allows multiple bindings
         tags.add(Arrays.asList("nametag", hashedNametag)); // Store HASHED nametag for privacy
         tags.add(Arrays.asList("t", hashedNametag)); // Also use 't' tag which is commonly indexed
         tags.add(Arrays.asList("address", unicityAddress)); // Store Unicity address
