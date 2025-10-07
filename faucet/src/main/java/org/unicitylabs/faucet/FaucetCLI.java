@@ -153,15 +153,21 @@ public class FaucetCLI implements Callable<Integer> {
     /**
      * Create a transfer package with source token and transfer transaction
      * Format: token_transfer:{"sourceToken":"...","transferTx":"..."}
+     * The JSON strings are properly escaped and embedded as string values
      */
-    private String createTransferPackage(String sourceTokenJson, String transferTxJson) {
-        // Create JSON payload with both source token and transfer transaction
-        String payload = String.format(
-            "{\"sourceToken\":%s,\"transferTx\":%s}",
-            sourceTokenJson,
-            transferTxJson
-        );
-        return "token_transfer:" + payload;
+    private String createTransferPackage(String sourceTokenJson, String transferTxJson) throws Exception {
+        // Escape the JSON strings properly for embedding as string values
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        // Create a map with the JSON strings as values
+        java.util.Map<String, String> payload = new java.util.HashMap<>();
+        payload.put("sourceToken", sourceTokenJson);
+        payload.put("transferTx", transferTxJson);
+
+        // Serialize the map (this will properly escape the JSON string values)
+        String payloadJson = mapper.writeValueAsString(payload);
+
+        return "token_transfer:" + payloadJson;
     }
 
     /**
