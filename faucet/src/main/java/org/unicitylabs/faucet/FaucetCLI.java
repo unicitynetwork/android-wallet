@@ -116,6 +116,16 @@ public class FaucetCLI implements Callable<Integer> {
         java.math.BigDecimal multiplier = java.math.BigDecimal.TEN.pow(decimals);
         long tokenAmount = userAmountDecimal.multiply(multiplier).longValue();
 
+        // Validate amount is not zero or negative
+        if (tokenAmount <= 0) {
+            System.err.println("\n❌ Invalid amount: " + userAmount + " " + coinDef.symbol);
+            System.err.println("   After applying " + decimals + " decimals, the amount becomes " + tokenAmount);
+            System.err.println("   Minimum amount for " + coinDef.symbol + ": " +
+                java.math.BigDecimal.ONE.divide(multiplier) + " " + coinDef.symbol);
+            System.exit(1);
+            return 1;
+        }
+
         System.out.println("💰 Minting tokens:");
         System.out.println("   User amount: " + userAmount);
         System.out.println("   Decimals: " + decimals);
