@@ -43,6 +43,9 @@ dependencies {
     // BIP-39 for mnemonic phrase (pure Java)
     implementation("org.bitcoinj:bitcoinj-core:0.16.3")
 
+    // Phone number normalization for deterministic nametag hashing
+    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.51")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.awaitility:awaitility:4.2.0")

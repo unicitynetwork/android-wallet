@@ -178,6 +178,9 @@ dependencies {
     implementation("com.madgag.spongycastle:core:1.58.0.0")
     implementation("com.madgag.spongycastle:bcpkix-jdk15on:1.58.0.0")
 
+    // Phone number normalization for deterministic contact discovery
+    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.51")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:4.11.0")

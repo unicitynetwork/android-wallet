@@ -23,7 +23,11 @@ A fully functional Android wallet app for the Unicity Protocol, demonstrating re
 ### Wallet Features
 - **BIP-39 Seed Phrases**: Industry-standard 12-word recovery phrases
 - **Identity Management**: Persistent wallet identity with secure storage
-- **Nametag System**: Human-readable addresses (e.g., @alice) for easy transfers
+- **Privacy-Preserving Nametag System**:
+  - Human-readable addresses (e.g., @alice) with hashed storage on Nostr
+  - Phone numbers as nametags (e.g., +14155552671) with E.164 normalization
+  - All nametags are SHA-256 hashed for privacy before publishing
+  - Deterministic hashing ensures consistent resolution across devices
 - **Token Import/Export**: .txf file format for backup and sharing
 - **Google Drive Backup**: Optional cloud backup for wallet recovery
 

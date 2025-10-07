@@ -1,9 +1,11 @@
 package org.unicitylabs.wallet.nostr
 
+import android.content.Context
 import android.util.Log
 import org.spongycastle.crypto.digests.SHA256Digest
 import org.spongycastle.util.encoders.Hex
 import org.unicitylabs.wallet.util.JsonMapper
+import org.unicitylabs.wallet.utils.NametagUtils
 
 /**
  * Manages Unicity nametag → Nostr pubkey bindings using replaceable events
@@ -22,25 +24,30 @@ class NostrNametagBinding {
     /**
      * Create a binding event that maps a Nostr pubkey to a Unicity nametag
      * This is a replaceable event - newer events automatically replace older ones
+     * Nametags are hashed for privacy (including phone numbers)
      */
     fun createBindingEvent(
         publicKeyHex: String,
         nametagId: String,
         unicityAddress: String,
-        keyManager: NostrKeyManager
+        keyManager: NostrKeyManager,
+        context: Context? = null
     ): Event {
         val createdAt = System.currentTimeMillis() / 1000
+
+        // Hash the nametag for privacy (works for both regular nametags and phone numbers)
+        val hashedNametag = NametagUtils.hashNametag(nametagId, context)
 
         // Create tags for the replaceable event
         val tags = mutableListOf<List<String>>()
         tags.add(listOf("d", TAG_D_VALUE))  // Makes it replaceable by pubkey+d
-        tags.add(listOf("nametag", nametagId))  // For querying by nametag
-        tags.add(listOf("t", nametagId))  // IMPORTANT: Use 't' tag which is indexed by relay
+        tags.add(listOf("nametag", hashedNametag))  // Store HASHED nametag for privacy
+        tags.add(listOf("t", hashedNametag))  // IMPORTANT: Use 't' tag which is indexed by relay
         tags.add(listOf("address", unicityAddress))  // Store Unicity address
 
-        // Create content with binding information
+        // Create content with binding information (don't include raw nametag for privacy)
         val contentData = mapOf(
-            "nametag" to nametagId,
+            "nametag_hash" to hashedNametag,  // Only store hash
             "address" to unicityAddress,
             "verified" to System.currentTimeMillis()
         )
@@ -85,11 +92,15 @@ class NostrNametagBinding {
      * Create a filter to find Nostr pubkey by nametag
      * This is the ONLY direction needed: nametag → pubkey
      * Used by senders to find where to send the Nostr message
+     * Nametags are hashed before querying for privacy
      */
-    fun createNametagToPubkeyFilter(nametagId: String): Map<String, Any> {
+    fun createNametagToPubkeyFilter(nametagId: String, context: Context? = null): Map<String, Any> {
+        // Hash the nametag for querying (works for both regular nametags and phone numbers)
+        val hashedNametag = NametagUtils.hashNametag(nametagId, context)
+
         val filter = mutableMapOf<String, Any>()
         filter["kinds"] = listOf(KIND_NAMETAG_BINDING)
-        filter["#t"] = listOf(nametagId)  // Query by nametag using indexed 't' tag
+        filter["#t"] = listOf(hashedNametag)  // Query by HASHED nametag using indexed 't' tag
         filter["limit"] = 1
         return filter
     }

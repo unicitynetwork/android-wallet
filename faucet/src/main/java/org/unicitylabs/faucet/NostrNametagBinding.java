@@ -24,21 +24,25 @@ public class NostrNametagBinding {
     /**
      * Create a binding event that maps a Nostr pubkey to a Unicity nametag
      * This is a replaceable event - newer events automatically replace older ones
+     * Nametags are hashed for privacy (including phone numbers)
      */
     public NostrEvent createBindingEvent(String publicKeyHex, byte[] privateKey,
                                          String nametagId, String unicityAddress) throws Exception {
         long createdAt = System.currentTimeMillis() / 1000;
 
+        // Hash the nametag for privacy (works for both regular nametags and phone numbers)
+        String hashedNametag = NametagUtils.hashNametag(nametagId);
+
         // Create tags for the replaceable event
         List<List<String>> tags = new ArrayList<>();
         tags.add(Arrays.asList("d", TAG_D_VALUE)); // Makes it replaceable by pubkey+d
-        tags.add(Arrays.asList("nametag", nametagId)); // For querying by nametag
-        tags.add(Arrays.asList("t", nametagId)); // Also use 't' tag which is commonly indexed
+        tags.add(Arrays.asList("nametag", hashedNametag)); // Store HASHED nametag for privacy
+        tags.add(Arrays.asList("t", hashedNametag)); // Also use 't' tag which is commonly indexed
         tags.add(Arrays.asList("address", unicityAddress)); // Store Unicity address
 
-        // Create content with binding information
+        // Create content with binding information (don't include raw nametag for privacy)
         Map<String, Object> contentData = new LinkedHashMap<>();
-        contentData.put("nametag", nametagId);
+        contentData.put("nametag_hash", hashedNametag); // Only store hash
         contentData.put("address", unicityAddress);
         contentData.put("verified", System.currentTimeMillis());
         String content = jsonMapper.writeValueAsString(contentData);
@@ -94,13 +98,17 @@ public class NostrNametagBinding {
 
     /**
      * Create a filter to find Nostr pubkey by nametag
+     * Nametags are hashed before querying for privacy
      */
     public Map<String, Object> createNametagToPubkeyFilter(String nametagId) {
+        // Hash the nametag for querying (works for both regular nametags and phone numbers)
+        String hashedNametag = NametagUtils.hashNametag(nametagId);
+
         Map<String, Object> filter = new HashMap<>();
         filter.put("kinds", Arrays.asList(KIND_NAMETAG_BINDING));
 
         // Use #t tag which is commonly indexed by relays for topics
-        filter.put("#t", Arrays.asList(nametagId));
+        filter.put("#t", Arrays.asList(hashedNametag)); // Query by HASHED nametag
 
         filter.put("limit", 1);
 

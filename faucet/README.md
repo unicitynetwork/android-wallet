@@ -7,11 +7,18 @@ A standalone CLI application for minting Unicity tokens and sending them via Nos
 This faucet application:
 1. Loads all supported coins dynamically from the Unicity registry
 2. Mints tokens with proper proxy address targeting
-3. Transfers tokens to recipient's nametag proxy address
-4. Sends complete transfer package (source token + transfer transaction) via Nostr
-5. Recipient wallet finalizes the transfer with cryptographic verification
+3. Transfers tokens to recipient's nametag proxy address (supports phone numbers as nametags)
+4. Uses privacy-preserving SHA-256 hashed nametags for Nostr lookups
+5. Sends complete transfer package (source token + transfer transaction) via Nostr
+6. Recipient wallet finalizes the transfer with cryptographic verification
 
 The wallet app receives and finalizes these token transfers automatically through proper Unicity Protocol semantics.
+
+### Privacy-Preserving Nametag System
+- **Hashed Storage**: All nametags are SHA-256 hashed before Nostr queries
+- **Phone Number Support**: Send tokens to phone numbers (e.g., +14155552671)
+- **E.164 Normalization**: Phone numbers are normalized to ensure consistent hashing
+- **Privacy by Default**: Raw nametags are never exposed on the network
 
 ## Configuration
 
@@ -52,6 +59,10 @@ cd faucet
 # Default coin (Solana) with default amount
 ./gradlew run --args="--nametag=alice"
 
+# Send to a phone number (automatically normalized and hashed)
+./gradlew run --args="--nametag=+14155552671"
+./gradlew run --args="--nametag=4155552671"  # Works without country code
+
 # Specify amount (uses proper decimals automatically)
 ./gradlew run --args="--nametag=alice --amount=1.5"
 
@@ -60,6 +71,9 @@ cd faucet
 ./gradlew run --args="--nametag=alice --amount=0.5 --coin=ethereum"
 ./gradlew run --args="--nametag=alice --amount=100 --coin=tether"
 ./gradlew run --args="--nametag=alice --amount=50 --coin=usd-coin"
+
+# Send Bitcoin to a phone number
+./gradlew run --args="--nametag=+14155552671 --amount=0.001 --coin=bitcoin"
 
 # Force refresh registry from GitHub
 ./gradlew run --args="--nametag=alice --refresh"
