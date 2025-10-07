@@ -291,8 +291,8 @@ class NostrP2PService(
     private fun handleIncomingEvent(eventData: Map<*, *>) {
         val event = parseEvent(eventData)
 
-        // Notify listeners
-        eventListeners.forEach { listener ->
+        // Notify listeners (use toList() to avoid ConcurrentModificationException)
+        eventListeners.toList().forEach { listener ->
             try {
                 listener(event)
             } catch (e: Exception) {
@@ -748,48 +748,64 @@ class NostrP2PService(
         scope.launch {
             try {
                 Log.d(TAG, "Processing proper token transfer with finalization...")
+                Log.d(TAG, "Payload keys: ${payloadObj.keys}")
 
                 // Extract source token and transfer transaction JSON strings
                 val sourceTokenJson = payloadObj["sourceToken"] as? String
                 val transferTxJson = payloadObj["transferTx"] as? String
 
+                Log.d(TAG, "sourceTokenJson length: ${sourceTokenJson?.length}")
+                Log.d(TAG, "transferTxJson length: ${transferTxJson?.length}")
+
                 if (sourceTokenJson == null || transferTxJson == null) {
                     Log.e(TAG, "Missing source token or transfer transaction in payload")
+                    Log.e(TAG, "Payload structure: ${payloadObj}")
                     return@launch
                 }
 
-                // Parse source token
+                Log.d(TAG, "Parsing source token...")
+                // Parse source token using UnicityObjectMapper
                 val sourceToken = try {
                     UnicityObjectMapper.JSON.readValue(sourceTokenJson, org.unicitylabs.sdk.token.Token::class.java)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse source token", e)
+                    Log.e(TAG, "Token JSON preview: ${sourceTokenJson.take(500)}")
+                    e.printStackTrace()
                     return@launch
                 }
 
-                // Parse transfer transaction
+                Log.d(TAG, "Parsing transfer transaction...")
+                // Parse transfer transaction with proper type reference
                 val transferTx = try {
-                    UnicityObjectMapper.JSON.readValue(transferTxJson, org.unicitylabs.sdk.transaction.Transaction::class.java) as org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>
+                    val typeRef = object : com.fasterxml.jackson.core.type.TypeReference<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>>() {}
+                    UnicityObjectMapper.JSON.readValue(transferTxJson, typeRef)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse transfer transaction", e)
+                    Log.e(TAG, "Tx JSON preview: ${transferTxJson.take(500)}")
+                    e.printStackTrace()
                     return@launch
                 }
 
+                Log.d(TAG, "✅ Parsed successfully!")
                 Log.d(TAG, "Source token type: ${sourceToken.type}")
                 Log.d(TAG, "Transfer recipient: ${transferTx.data.recipient}")
 
                 // Finalize the transfer
+                Log.d(TAG, "Starting finalization...")
                 val finalizedToken = finalizeTransfer(sourceToken, transferTx)
 
                 if (finalizedToken != null) {
+                    Log.d(TAG, "✅ Finalization successful, saving token...")
                     // Save the finalized token
                     saveReceivedToken(finalizedToken)
                     Log.i(TAG, "✅ Token transfer completed and finalized successfully")
                 } else {
-                    Log.e(TAG, "Failed to finalize token transfer")
+                    Log.e(TAG, "❌ Failed to finalize token transfer - finalizeTransfer returned null")
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error handling proper token transfer", e)
+                Log.e(TAG, "❌ Error handling proper token transfer", e)
+                e.printStackTrace()
             }
         }
     }
@@ -953,29 +969,53 @@ class NostrP2PService(
 
             // Parse genesis to extract coin data
             val tokenJsonObj = JsonMapper.fromJson(tokenJson, Map::class.java) as Map<*, *>
+            Log.d(TAG, "Token JSON keys: ${tokenJsonObj.keys}")
+
             val genesis = tokenJsonObj["genesis"] as? Map<*, *>
+            Log.d(TAG, "Genesis keys: ${genesis?.keys}")
+
             if (genesis != null) {
                 val genesisData = genesis["data"] as? Map<*, *>
+                Log.d(TAG, "Genesis data keys: ${genesisData?.keys}")
+
                 if (genesisData != null) {
-                    val coinData = genesisData["coinData"] as? Map<*, *>
-                    if (coinData != null) {
-                        val coins = coinData["coins"] as? Map<*, *>
-                        if (coins != null && coins.isNotEmpty()) {
-                            val firstEntry = coins.entries.first()
-                            coinIdHex = firstEntry.key as? String
-                            amount = (firstEntry.value as? Number)?.toLong()
+                    // Coins are directly in genesis.data.coins as an array: [["coinId", "amount"]]
+                    val coinsArray = genesisData["coins"] as? List<*>
+                    Log.d(TAG, "Coins array: $coinsArray")
+
+                    if (coinsArray != null && coinsArray.isNotEmpty()) {
+                        // Each entry is [coinId, amount]
+                        val firstCoin = coinsArray[0] as? List<*>
+                        if (firstCoin != null && firstCoin.size >= 2) {
+                            coinIdHex = firstCoin[0] as? String
+                            amount = when (val amountValue = firstCoin[1]) {
+                                is String -> amountValue.toLongOrNull()
+                                is Number -> amountValue.toLong()
+                                else -> null
+                            }
+
+                            Log.d(TAG, "Extracted: coinId=$coinIdHex, amount=$amount")
 
                             if (coinIdHex != null) {
                                 val coinDef = registry.getCoinDefinition(coinIdHex)
                                 if (coinDef != null) {
                                     symbol = coinDef.symbol
                                     iconUrl = coinDef.getIconUrl()
+                                    Log.d(TAG, "Found coin definition: ${coinDef.name} ($symbol)")
+                                } else {
+                                    Log.w(TAG, "Coin definition not found in registry for: $coinIdHex")
                                 }
                             }
+                        } else {
+                            Log.w(TAG, "Invalid coin entry format: $firstCoin")
                         }
+                    } else {
+                        Log.w(TAG, "No coins found in genesis data")
                     }
                 }
             }
+
+            Log.d(TAG, "Final metadata: symbol=$symbol, amount=$amount, coinId=$coinIdHex")
 
             // Create wallet Token model
             val walletToken = org.unicitylabs.wallet.data.model.Token(
