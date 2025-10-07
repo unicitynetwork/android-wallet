@@ -132,6 +132,31 @@ public class UnicityTokenRegistry {
     }
 
     /**
+     * Get coin definition by name (e.g., "solana", "bitcoin")
+     */
+    public CoinDefinition getCoinByName(String name) {
+        for (CoinDefinition coin : coinsById.values()) {
+            if (coin.name != null && coin.name.equalsIgnoreCase(name)) {
+                return coin;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get all fungible coins
+     */
+    public List<CoinDefinition> getFungibleCoins() {
+        List<CoinDefinition> fungible = new java.util.ArrayList<>();
+        for (CoinDefinition coin : coinsById.values()) {
+            if ("fungible".equals(coin.assetKind)) {
+                fungible.add(coin);
+            }
+        }
+        return fungible;
+    }
+
+    /**
      * Get decimals for a coin, returns 8 as default if not found
      */
     public int getDecimals(String coinIdHex) {

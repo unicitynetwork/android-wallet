@@ -12,12 +12,13 @@ import java.io.InputStream;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FaucetConfig {
 
-    public String tokenType;  // Hex string for token type (32 bytes)
-    public String coinId;     // Hex string for coin ID (32 bytes)
+    public String tokenType;      // Hex string for token type (32 bytes)
+    public String registryUrl;    // URL to unicity-ids registry JSON
     public String nostrRelay;
     public String aggregatorUrl;
-    public String faucetMnemonic;  // BIP-39 mnemonic phrase
+    public String faucetMnemonic; // BIP-39 mnemonic phrase
     public int defaultAmount;
+    public String defaultCoin;    // Default coin name (e.g., "solana", "bitcoin")
 
     /**
      * Load configuration from resources

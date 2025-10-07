@@ -36,7 +36,13 @@ public class FaucetCLI implements Callable<Integer> {
     private Double amount;
 
     @Option(
-        names = {"-c", "--config"},
+        names = {"-c", "--coin"},
+        description = "Coin to mint (e.g., 'solana', 'bitcoin', 'ethereum', 'tether', 'usd-coin', uses default from config if not specified)"
+    )
+    private String coin;
+
+    @Option(
+        names = {"--config"},
         description = "Path to config file (default: faucet-config.json in resources)"
     )
     private String configPath;
@@ -54,15 +60,34 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("   Relay: " + config.nostrRelay);
         System.out.println("   Aggregator: " + config.aggregatorUrl);
         System.out.println("   Token Type: " + config.tokenType);
-        System.out.println("   Coin ID: " + config.coinId);
+        System.out.println("   Registry: " + config.registryUrl);
         System.out.println();
 
-        // Determine user-friendly amount (e.g., "5" or "0.05" for SOL)
-        double userAmount = (amount != null) ? amount : config.defaultAmount;
-
-        // Load token registry to get decimals
+        // Load token registry
         UnicityTokenRegistry registry = UnicityTokenRegistry.getInstance();
-        int decimals = registry.getDecimals(config.coinId);
+
+        // Determine which coin to mint
+        String coinName = (coin != null) ? coin : config.defaultCoin;
+
+        // Find the coin definition by name
+        UnicityTokenRegistry.CoinDefinition coinDef = registry.getCoinByName(coinName);
+        if (coinDef == null) {
+            System.err.println("\n❌ Coin not found: " + coinName);
+            System.err.println("\n📋 Available coins:");
+            for (UnicityTokenRegistry.CoinDefinition c : registry.getFungibleCoins()) {
+                System.err.println("   - " + c.name + " (" + c.symbol + ") - " + c.decimals + " decimals");
+            }
+            System.exit(1);
+            return 1;
+        }
+
+        System.out.println("💎 Coin: " + coinDef.name + " (" + coinDef.symbol + ")");
+        System.out.println("   Decimals: " + coinDef.decimals);
+        System.out.println();
+
+        // Determine user-friendly amount
+        double userAmount = (amount != null) ? amount : config.defaultAmount;
+        int decimals = coinDef.decimals != null ? coinDef.decimals : 8;
 
         // Convert user amount to smallest units: userAmount * 10^decimals
         long tokenAmount = (long) (userAmount * Math.pow(10, decimals));
@@ -92,10 +117,11 @@ public class FaucetCLI implements Callable<Integer> {
 
         // Step 2: Mint token to faucet
         System.out.println();
+        System.out.println("🔨 Minting " + userAmount + " " + coinDef.symbol + "...");
         TokenMinter minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey);
         var mintedToken = minter.mintToken(
             config.tokenType,
-            config.coinId,
+            coinDef.id,  // Use coin ID from registry
             tokenAmount
         ).join();
 
@@ -137,11 +163,9 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println();
         System.out.println("📊 Summary:");
         System.out.println("   Recipient: " + nametag);
-        System.out.println("   Amount: " + userAmount + " (= " + tokenAmount + " smallest units)");
-        UnicityTokenRegistry.CoinDefinition coinDef = registry.getCoinDefinition(config.coinId);
-        if (coinDef != null) {
-            System.out.println("   Coin: " + coinDef.name + " (" + coinDef.symbol + ")");
-        }
+        System.out.println("   Coin: " + coinDef.name + " (" + coinDef.symbol + ")");
+        System.out.println("   Amount: " + userAmount + " " + coinDef.symbol);
+        System.out.println("   Smallest units: " + tokenAmount);
         System.out.println("   Delivery: Nostr relay");
         System.out.println();
 

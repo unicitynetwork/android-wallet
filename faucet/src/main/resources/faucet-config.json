@@ -1,16 +1,18 @@
 {
   "tokenType": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509",
-  "coinId": "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93",
+  "registryUrl": "https://raw.githubusercontent.com/unicitynetwork/unicity-ids/refs/heads/main/unicity-ids.testnet.json",
   "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
   "aggregatorUrl": "https://goggregator-test.unicity.network",
   "faucetMnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
   "defaultAmount": 1000,
+  "defaultCoin": "solana",
   "notes": {
-    "tokenType": "Fixed token type hex for solana-test tokens (32 bytes)",
-    "coinId": "Fixed coin ID hex for solana tokens (32 bytes)",
+    "tokenType": "Fixed token type hex for Unicity testnet (32 bytes)",
+    "registryUrl": "URL to unicity-ids registry JSON (supports all fungible coins dynamically)",
     "nostrRelay": "WebSocket URL of the Nostr relay for P2P messaging",
     "aggregatorUrl": "URL of the Unicity aggregator service",
     "faucetMnemonic": "BIP-39 mnemonic phrase for faucet identity. Keep this secure!",
-    "defaultAmount": "Default token amount if not specified via CLI"
+    "defaultAmount": "Default token amount if not specified via CLI",
+    "defaultCoin": "Default coin name (e.g., 'solana', 'bitcoin', 'ethereum') if not specified"
   }
 }
