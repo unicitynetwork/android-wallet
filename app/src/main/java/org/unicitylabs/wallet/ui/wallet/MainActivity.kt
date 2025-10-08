@@ -1455,6 +1455,17 @@ class MainActivity : AppCompatActivity() {
     private fun showCryptoSelectionForRecipient(recipient: Contact) {
         val assets = viewModel.aggregatedAssets.value
 
+        if (assets.isEmpty()) {
+            Toast.makeText(this, "No assets available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // If only one asset, skip picker and go to next step
+        if (assets.size == 1) {
+            showAssetSendAmountDialog(assets[0], recipient)
+            return
+        }
+
         // Create custom dialog
         val dialogView = layoutInflater.inflate(R.layout.dialog_select_asset, null)
         val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvAssets)
@@ -1492,6 +1503,12 @@ class MainActivity : AppCompatActivity() {
 
         if (tokensForCoin.isEmpty()) {
             Toast.makeText(this, "No tokens available for ${asset.symbol}", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // If only one token, skip picker and transfer immediately
+        if (tokensForCoin.size == 1) {
+            sendTokenViaNostr(tokensForCoin[0], selectedContact, asset)
             return
         }
 
