@@ -8,6 +8,7 @@ enum class TokenStatus {
     PENDING,      // Offline transfer received but not submitted to network
     SUBMITTED,    // Submitted to network, waiting for confirmation
     CONFIRMED,    // Confirmed on network
+    TRANSFERRED,  // Token sent to another wallet (archived)
     FAILED        // Network submission failed
 }
 

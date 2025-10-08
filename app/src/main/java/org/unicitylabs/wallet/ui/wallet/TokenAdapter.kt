@@ -360,6 +360,11 @@ class TokenAdapter(
                         binding.btnManualSubmit.visibility = View.GONE
                         binding.btnCancel.visibility = View.GONE
                     }
+                    TokenStatus.TRANSFERRED -> {
+                        binding.btnSend.visibility = View.GONE
+                        binding.btnManualSubmit.visibility = View.GONE
+                        binding.btnCancel.visibility = View.GONE
+                    }
                 }
             }
             
@@ -414,6 +419,14 @@ class TokenAdapter(
                 TokenStatus.CONFIRMED -> {
                     binding.tvTokenStatus.visibility = View.GONE
                     binding.ivStatusIcon.visibility = View.GONE
+                }
+                TokenStatus.TRANSFERRED -> {
+                    binding.tvTokenStatus.visibility = View.VISIBLE
+                    binding.ivStatusIcon.visibility = View.VISIBLE
+                    binding.tvTokenStatus.text = "Transferred"
+                    binding.tvTokenStatus.setTextColor(binding.root.context.getColor(android.R.color.darker_gray))
+                    binding.ivStatusIcon.setImageResource(android.R.drawable.ic_menu_send)
+                    binding.ivStatusIcon.setColorFilter(binding.root.context.getColor(android.R.color.darker_gray))
                 }
             }
         }
