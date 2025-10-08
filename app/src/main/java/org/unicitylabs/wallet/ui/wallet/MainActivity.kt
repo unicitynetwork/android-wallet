@@ -194,7 +194,7 @@ class MainActivity : AppCompatActivity() {
         setupTabLayout()
         setupSwipeRefresh()
         setupSuccessDialog()
-        setupTestTrigger()
+        // setupTestTrigger()  // Disabled - causes Bluetooth TEST_DEVICE errors
         setupTransferApprovalListener()
 
         // Collect history flows to keep them active

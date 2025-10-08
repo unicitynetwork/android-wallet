@@ -92,8 +92,8 @@ object BTMeshTransferCoordinator {
         scope.launch {
             delay(500) // Small delay to let everything initialize
             logd( "Verifying event stream connection...")
-            // Test that we can send a message
-            BluetoothMeshManager.sendMessage("TEST_DEVICE", "COORDINATOR_INIT_TEST")
+            // Test message disabled - causes errors with fake device
+            // BluetoothMeshManager.sendMessage("TEST_DEVICE", "COORDINATOR_INIT_TEST")
         }
         
         logd( "BTMeshTransferCoordinator initialized - event handlers active")
