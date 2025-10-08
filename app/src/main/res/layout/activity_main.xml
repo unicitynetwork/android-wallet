@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/app_background_gradient"
     tools:context=".ui.wallet.MainActivity">
 
     <!-- Swipe Refresh Layout -->
@@ -17,18 +18,20 @@
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true">
+            android:fillViewport="true"
+            android:background="@android:color/transparent">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:background="@android:color/transparent">
 
-    <!-- Top Section with Gradient Background -->
+    <!-- Top Section -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/topSection"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/app_background_gradient"
+        android:background="@android:color/transparent"
         android:paddingTop="16dp"
         android:paddingBottom="24dp"
         app:layout_constraintTop_toTopOf="parent">
@@ -330,29 +333,32 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- Content Section (White Background) -->
+    <!-- Content Section (Transparent - blends with gradient) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/app_background"
+        android:background="@android:color/transparent"
         android:paddingTop="16dp"
         app:layout_constraintTop_toBottomOf="@id/topSection">
 
         <!-- Tab Layout -->
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tabLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:background="@drawable/tab_background"
-            android:paddingVertical="4dp"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginHorizontal="24dp"
+            android:background="@android:color/transparent"
             app:tabMode="fixed"
             app:tabGravity="fill"
-            app:tabIndicatorHeight="2dp"
-            app:tabIndicatorColor="#4169E1"
-            app:tabSelectedTextColor="@color/tab_text_selected_color"
-            app:tabTextColor="@color/tab_text_color"
-            app:layout_constraintTop_toTopOf="parent">
+            app:tabIndicatorHeight="0dp"
+            app:tabIndicatorColor="@android:color/transparent"
+            app:tabSelectedTextColor="#000000"
+            app:tabTextColor="#FFFFFF"
+            app:tabRippleColor="@android:color/transparent"
+            app:tabBackground="@drawable/tab_selector_background"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
             <com.google.android.material.tabs.TabItem
                 android:layout_width="wrap_content"
@@ -422,10 +428,28 @@
         android:layout_width="match_parent"
         android:layout_height="70dp"
         android:orientation="horizontal"
-        android:background="#FFFFFF"
+        android:background="#09090B"
         android:elevation="8dp"
         android:paddingVertical="8dp"
         android:layout_gravity="bottom">
+
+        <LinearLayout
+            android:id="@+id/navUnicity"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/ic_home"
+                android:scaleType="fitCenter" />
+
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/navIncoming"
@@ -451,26 +475,8 @@
                 android:layout_height="wrap_content"
                 android:text="Incoming"
                 android:textSize="11sp"
-                android:textColor="#666666"
+                android:textColor="#CCCCCC"
                 android:layout_marginTop="4dp" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/navUnicity"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:src="@drawable/unicity_logo"
-                android:scaleType="fitCenter" />
 
         </LinearLayout>
 
@@ -497,8 +503,26 @@
                 android:layout_height="wrap_content"
                 android:text="Outgoing"
                 android:textSize="11sp"
-                android:textColor="#666666"
+                android:textColor="#CCCCCC"
                 android:layout_marginTop="4dp" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navChat"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/ic_chat"
+                android:scaleType="fitCenter" />
 
         </LinearLayout>
 
@@ -513,11 +537,10 @@
             android:focusable="true">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/ic_settings"
-                android:scaleType="fitCenter"
-                app:tint="#666666" />
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/ic_profile"
+                android:scaleType="fitCenter" />
 
         </LinearLayout>
 

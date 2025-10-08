@@ -486,7 +486,11 @@ class MainActivity : AppCompatActivity() {
         binding.navOutgoing.setOnClickListener {
             showOutgoingHistory()
         }
-        
+
+        binding.navChat.setOnClickListener {
+            Toast.makeText(this, "Coming soon!", Toast.LENGTH_SHORT).show()
+        }
+
         // Setup QR scanner button
         binding.btnScanQr.setOnClickListener {
             scanQRCode()
