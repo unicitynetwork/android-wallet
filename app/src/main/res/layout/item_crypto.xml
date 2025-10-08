@@ -3,7 +3,11 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    style="@style/Card.Unicity">
+    android:layout_marginHorizontal="0dp"
+    android:layout_marginVertical="4dp"
+    app:cardCornerRadius="0dp"
+    app:cardElevation="0dp"
+    app:cardBackgroundColor="@android:color/transparent">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -22,15 +26,15 @@
 
             <ImageView
                 android:id="@+id/cryptoIcon"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:src="@drawable/ic_bitcoin" />
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="16dp"
+                android:layout_marginStart="12dp"
                 android:orientation="vertical">
 
                 <TextView
@@ -38,7 +42,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Bitcoin"
-                    android:textColor="#000000"
+                    android:textColor="@android:color/white"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -47,8 +51,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="BTC · 1.0"
-                    android:textColor="#808080"
-                    android:textSize="14sp"
+                    android:textColor="#CCCCCC"
+                    android:textSize="13sp"
                     android:layout_marginTop="4dp" />
 
             </LinearLayout>
@@ -64,7 +68,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="$16,351.57"
-                    android:textColor="#000000"
+                    android:textColor="@android:color/white"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -74,7 +78,7 @@
                     android:layout_height="wrap_content"
                     android:text="+3.7%"
                     android:textColor="#4CAF50"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
                     android:layout_marginTop="4dp" />
 
             </LinearLayout>
@@ -86,7 +90,7 @@
                 android:layout_gravity="center_vertical"
                 android:layout_marginStart="8dp"
                 android:src="@drawable/ic_chevron_right"
-                app:tint="#808080" />
+                app:tint="#CCCCCC" />
 
         </LinearLayout>
 
@@ -117,7 +121,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Asset Details"
-                        android:textColor="#000000"
+                        android:textColor="@android:color/white"
                         android:textSize="14sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -127,7 +131,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Price: $43,251.57"
-                        android:textColor="#666666"
+                        android:textColor="#CCCCCC"
                         android:textSize="14sp"
                         android:layout_marginBottom="4dp" />
 
@@ -136,7 +140,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Market Cap: $847.2B"
-                        android:textColor="#666666"
+                        android:textColor="#CCCCCC"
                         android:textSize="14sp"
                         android:layout_marginBottom="4dp" />
 
@@ -145,7 +149,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="24h Volume: $28.4B"
-                        android:textColor="#666666"
+                        android:textColor="#CCCCCC"
                         android:textSize="14sp" />
 
                 </LinearLayout>
