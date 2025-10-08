@@ -20,14 +20,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:padding="16dp"
+            android:paddingVertical="10dp"
+            android:paddingHorizontal="16dp"
             android:background="?attr/selectableItemBackground"
             android:gravity="center_vertical">
 
             <ImageView
                 android:id="@+id/cryptoIcon"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
                 android:src="@drawable/ic_bitcoin" />
 
             <LinearLayout
