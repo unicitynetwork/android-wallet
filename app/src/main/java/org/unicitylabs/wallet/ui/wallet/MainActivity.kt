@@ -1542,10 +1542,9 @@ class MainActivity : AppCompatActivity() {
     private fun sendTokenViaNostr(token: Token, recipient: Contact, asset: org.unicitylabs.wallet.model.AggregatedAsset) {
         lifecycleScope.launch {
             try {
-                Toast.makeText(this@MainActivity, "Initiating transfer to ${recipient.name}...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Sending to ${recipient.name}...", Toast.LENGTH_SHORT).show()
 
                 // Step 1: Extract recipient nametag from contact
-                // Remove both @ prefix and @unicity suffix (only for display)
                 val recipientNametag = recipient.address
                     ?.removePrefix("@")
                     ?.removeSuffix("@unicity")
@@ -1558,7 +1557,7 @@ class MainActivity : AppCompatActivity() {
 
                 Log.d("MainActivity", "Starting transfer to nametag: $recipientNametag")
 
-                // Step 2: Query recipient's Nostr pubkey via NostrP2PService
+                // Step 2: Query recipient's Nostr pubkey
                 val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
                 if (nostrService == null) {
                     Toast.makeText(this@MainActivity, "Nostr service not available", Toast.LENGTH_LONG).show()
@@ -1572,7 +1571,7 @@ class MainActivity : AppCompatActivity() {
 
                 val recipientPubkey = nostrService.queryPubkeyByNametag(recipientNametag)
                 if (recipientPubkey == null) {
-                    Toast.makeText(this@MainActivity, "Recipient nametag not found on Nostr", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Recipient not found", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
@@ -1584,13 +1583,12 @@ class MainActivity : AppCompatActivity() {
 
                 Log.d("MainActivity", "Recipient proxy address: ${recipientProxyAddress.address}")
 
-                // Step 4: Parse the token JSON to SDK Token object
+                // Step 4: Parse token and create transfer
                 val sourceToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
                     token.jsonData,
                     org.unicitylabs.sdk.token.Token::class.java
                 )
 
-                // Step 5: Create transfer commitment
                 val identityManager = org.unicitylabs.wallet.identity.IdentityManager(this@MainActivity)
                 val identity = identityManager.getCurrentIdentity()
                 if (identity == null) {
@@ -1601,25 +1599,20 @@ class MainActivity : AppCompatActivity() {
                 val secret = hexStringToByteArray(identity.privateKey)
                 val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
 
-                // Generate random salt for transfer
                 val salt = ByteArray(32)
                 java.security.SecureRandom().nextBytes(salt)
 
-                Toast.makeText(this@MainActivity, "Creating transfer commitment...", Toast.LENGTH_SHORT).show()
-
+                // Step 5-7: Create transfer, submit, wait for proof (no toasts - fast)
                 val transferCommitment = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     org.unicitylabs.sdk.transaction.TransferCommitment.create(
                         sourceToken,
                         recipientProxyAddress,
                         salt,
-                        null,  // No custom data hash
-                        null,  // No additional tokens
+                        null,
+                        null,
                         signingService
                     )
                 }
-
-                //Step 6: Submit commitment to aggregator
-                Toast.makeText(this@MainActivity, "Submitting to blockchain...", Toast.LENGTH_SHORT).show()
 
                 val client = org.unicitylabs.wallet.di.ServiceProvider.stateTransitionClient
                 val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -1627,14 +1620,9 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (response.status != org.unicitylabs.sdk.api.SubmitCommitmentStatus.SUCCESS) {
-                    Toast.makeText(this@MainActivity, "Failed to submit transfer: ${response.status}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Transfer failed: ${response.status}", Toast.LENGTH_LONG).show()
                     return@launch
                 }
-
-                Log.d("MainActivity", "Transfer commitment submitted successfully")
-
-                // Step 7: Wait for inclusion proof
-                Toast.makeText(this@MainActivity, "Waiting for blockchain confirmation...", Toast.LENGTH_SHORT).show()
 
                 val inclusionProof = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val trustBase = org.unicitylabs.wallet.di.ServiceProvider.getRootTrustBase()
@@ -1645,12 +1633,8 @@ class MainActivity : AppCompatActivity() {
                     ).get(30, java.util.concurrent.TimeUnit.SECONDS)
                 }
 
-                Log.d("MainActivity", "Inclusion proof received")
-
-                // Step 8: Create transfer transaction
+                // Step 8-9: Create transfer package
                 val transferTransaction = transferCommitment.toTransaction(inclusionProof)
-
-                // Step 9: Create transfer package for Nostr
                 val sourceTokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(sourceToken)
                 val transferTxJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(transferTransaction)
 
@@ -1663,21 +1647,17 @@ class MainActivity : AppCompatActivity() {
 
                 Log.d("MainActivity", "Transfer package created (${transferPackage.length} chars)")
 
-                // Step 10: Send via Nostr to recipient's pubkey
-                Toast.makeText(this@MainActivity, "Sending to recipient via Nostr...", Toast.LENGTH_SHORT).show()
-
-                // Send the encrypted message directly to recipient's pubkey
+                // Step 10: Send via Nostr
                 val sent = nostrService.sendDirectMessage(recipientPubkey, transferPackage)
 
                 if (sent) {
-                    Toast.makeText(this@MainActivity, "✅ Transfer sent successfully!", Toast.LENGTH_LONG).show()
-                    Log.i("MainActivity", "Transfer completed successfully to $recipientNametag")
+                    Toast.makeText(this@MainActivity, "✅ Sent to ${recipient.name}!", Toast.LENGTH_SHORT).show()
+                    Log.i("MainActivity", "Transfer completed to $recipientNametag")
 
-                    // Mark token as TRANSFERRED so it's archived and not shown in active wallet
                     viewModel.markTokenAsTransferred(token)
-                    Log.d("MainActivity", "Token marked as TRANSFERRED and archived")
+                    Log.d("MainActivity", "Token archived")
                 } else {
-                    Toast.makeText(this@MainActivity, "Failed to send transfer via Nostr", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Failed to send", Toast.LENGTH_LONG).show()
                 }
 
             } catch (e: Exception) {
