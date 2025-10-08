@@ -261,8 +261,16 @@ class TokenAdapter(
         fun bind(token: Token, isExpanded: Boolean, isTransferring: Boolean) {
             // Basic token info - show amount and symbol if available
             android.util.Log.d("TokenAdapter", "Binding token: name=${token.name}, amount=${token.amount}, symbol=${token.symbol}, iconUrl=${token.iconUrl}")
-            binding.tvTokenName.text = if (token.amount != null && token.symbol != null) {
-                "${token.amount} ${token.symbol}"
+
+            // Format amount with decimals like in Assets tab
+            binding.tvTokenName.text = if (token.amount != null && token.symbol != null && token.coinId != null) {
+                // Get decimals from registry
+                val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(binding.root.context)
+                val coinDef = registry.getCoinDefinition(token.coinId)
+                val decimals = coinDef?.decimals ?: 8
+                val value = token.amount.toDouble() / Math.pow(10.0, decimals.toDouble())
+                val formattedAmount = String.format("%.${Math.min(decimals, 8)}f", value).trimEnd('0').trimEnd('.')
+                "$formattedAmount ${token.symbol}"
             } else {
                 token.name
             }
