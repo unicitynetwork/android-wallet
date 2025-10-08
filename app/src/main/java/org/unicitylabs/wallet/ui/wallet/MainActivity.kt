@@ -351,11 +351,11 @@ class MainActivity : AppCompatActivity() {
         val isAgent = sharedPrefs.getBoolean("is_agent", false)
         val isAvailable = sharedPrefs.getBoolean("agent_available", true)
         val p2pService = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance()
-        
+
         when {
             !isAgent -> {
-                // Not an agent - default black icon
-                binding.btnLocation.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.BLACK))
+                // Not an agent - default white icon
+                binding.btnLocation.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE))
             }
             isAgent && isAvailable && p2pService != null -> {
                 // Agent available with P2P running - green icon
@@ -456,22 +456,35 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupUI() {
-        // Setup bottom navigation
-        binding.navUnicity.setOnClickListener {
-            // Open User Profile when Unicity icon is tapped
+        // Update nametag display
+        updateNametagDisplay()
+
+        // Setup wallet header click (open profile selection dialog in future)
+        binding.walletHeader.setOnClickListener {
+            // TODO: Show wallet/nametag selection dialog
             startActivity(Intent(this, org.unicitylabs.wallet.ui.profile.UserProfileActivity::class.java))
         }
-        
+
+        // Setup bottom navigation
+        binding.navProfile.setOnClickListener {
+            // Open User Profile
+            startActivity(Intent(this, org.unicitylabs.wallet.ui.profile.UserProfileActivity::class.java))
+        }
+
+        binding.navUnicity.setOnClickListener {
+            // Unicity home - refresh/scroll to top
+            binding.swipeRefreshLayout.isRefreshing = true
+            lifecycleScope.launch {
+                viewModel.refreshTokens()
+            }
+        }
+
         binding.navIncoming.setOnClickListener {
             showIncomingHistory()
         }
 
         binding.navOutgoing.setOnClickListener {
             showOutgoingHistory()
-        }
-        
-        binding.navSettings.setOnClickListener {
-            showSettingsDialog()
         }
         
         // Setup QR scanner button
@@ -529,10 +542,7 @@ class MainActivity : AppCompatActivity() {
             showMineDialog()
         }
         
-        // Setup currency selector
-        binding.currencySelector.setOnClickListener {
-            showCurrencyDialog()
-        }
+        // Currency selector removed - now in header dropdown
         
         updateBalanceDisplay()
     }
@@ -613,13 +623,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    private fun updateNametagDisplay() {
+        val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val unicityTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+
+        if (unicityTag.isNotEmpty()) {
+            binding.walletNametag.text = "@$unicityTag"
+        } else {
+            binding.walletNametag.text = "@unicity"
+        }
+    }
+
     private fun updateBalanceDisplay() {
         val assets = viewModel.aggregatedAssets.value
         val totalBalance = assets.sumOf { it.getTotalFiatValue(selectedCurrency) }
 
         val symbol = if (selectedCurrency == "EUR") "€" else "$"
-        binding.balanceAmount.text = "$symbol${String.format("%,.2f", totalBalance)}"
-        binding.selectedCurrency.text = selectedCurrency
+        binding.balanceAmount.text = "$symbol${String.format("%,.1f", totalBalance)}"
 
         // Calculate 24h change
         val totalPreviousBalance = assets.sumOf {
@@ -635,10 +655,10 @@ class MainActivity : AppCompatActivity() {
         } else 0.0
 
         val changeAmount = totalBalance - totalPreviousBalance
-        val changeSign = if (changePercent >= 0) "+" else ""
+        val changeSign = if (changePercent >= 0) "" else ""
 
-        binding.balanceChange.text = "$changeSign${String.format("%.2f", changePercent)}% ($changeSign$symbol${String.format("%.2f", changeAmount)})"
-        binding.balanceChange.visibility = View.VISIBLE
+        // Single line format: "$-520.9 -0.65%"
+        binding.balanceChange.text = "$symbol${changeSign}${String.format("%.1f", changeAmount)} ${changeSign}${String.format("%.2f", changePercent)}%"
         binding.balanceChange.setTextColor(
             if (changePercent >= 0) getColor(R.color.green_positive) else getColor(R.color.red_negative)
         )
@@ -1217,7 +1237,6 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Select Currency")
             .setSingleChoiceItems(currencies, currentIndex) { dialog, which ->
                 selectedCurrency = currencies[which]
-                binding.selectedCurrency.text = selectedCurrency
                 assetAdapter.updateCurrency(selectedCurrency)
                 updateBalanceDisplay()
                 dialog.dismiss()
@@ -2263,15 +2282,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupTestTrigger() {
-        // Add long-press listener to balance card for testing success dialog
-        binding.balanceCard.setOnLongClickListener {
-            Log.d("MainActivity", "Long press detected on balance card - triggering test success dialog")
+        // Add long-press listener to balance amount for testing success dialog
+        binding.balanceAmount.setOnLongClickListener {
+            Log.d("MainActivity", "Long press detected on balance - triggering test success dialog")
             showSuccessDialog("Excellent, you've sent 1.5 BTC!")
             true
         }
-        
-        // Long press on currency selector to test BT mesh
-        binding.currencySelector.setOnLongClickListener {
+
+        // Long press on wallet header to test BT mesh
+        binding.walletHeader.setOnLongClickListener {
             testBluetoothMesh()
             true
         }

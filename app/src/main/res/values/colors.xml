@@ -88,6 +88,13 @@
     
     <!-- App Background -->
     <color name="app_background">#F5F5FA</color>
+
+    <!-- Mockup Design Colors -->
+    <color name="mockup_dark_green_top">#3D5A27</color>
+    <color name="mockup_dark_green_bottom">#2B4019</color>
+    <color name="mockup_balance_section_bg">#3D5A27</color>
+    <color name="mockup_action_button_bg">#E8F5E9</color>
+    <color name="mockup_action_button_icon">#000000</color>
     
     <!-- Signal Strength Colors -->
     <color name="signal_excellent">#4CAF50</color>

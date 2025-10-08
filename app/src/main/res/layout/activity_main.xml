@@ -4,7 +4,6 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/app_background"
     tools:context=".ui.wallet.MainActivity">
 
     <!-- Swipe Refresh Layout -->
@@ -12,7 +11,7 @@
         android:id="@+id/swipeRefreshLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginBottom="80dp">
+        android:layout_marginBottom="70dp">
 
         <!-- Scrollable Content -->
         <androidx.core.widget.NestedScrollView
@@ -24,381 +23,392 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-    <!-- Balance Card -->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/balanceCard"
+    <!-- Top Section with Gradient Background -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/topSection"
         android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:layout_margin="16dp"
-        android:layout_marginTop="32dp"
-        app:cardCornerRadius="24dp"
-        app:cardElevation="8dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/app_background_gradient"
+        android:paddingTop="16dp"
+        android:paddingBottom="24dp"
         app:layout_constraintTop_toTopOf="parent">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@drawable/balance_card_background">
+        <!-- Wallet Nametag Header -->
+        <LinearLayout
+            android:id="@+id/walletHeader"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginStart="24dp"
+            android:layout_marginTop="8dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <ImageView
+                android:id="@+id/walletIcon"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/unicity_logo"
+                android:scaleType="fitCenter" />
 
             <TextView
-                android:id="@+id/balanceLabel"
+                android:id="@+id/walletNametag"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Your balance"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:layout_marginTop="24dp"
-                android:layout_marginStart="24dp"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintStart_toStartOf="parent" />
+                android:text="@unicityName"
+                android:textColor="@android:color/white"
+                android:textSize="15sp"
+                android:layout_marginStart="10dp" />
+
+            <ImageView
+                android:id="@+id/walletDropdown"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:src="@drawable/ic_dropdown"
+                android:layout_marginStart="6dp"
+                app:tint="@android:color/white" />
+
+        </LinearLayout>
+
+        <!-- Settings Button (Top Right Corner) -->
+        <ImageButton
+            android:id="@+id/btnOverflowMenu"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_settings"
+            android:padding="4dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="8dp"
+            app:tint="@android:color/white"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- QR Scanner Button (Below Settings) -->
+        <ImageButton
+            android:id="@+id/btnScanQr"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_qr_code_scanner"
+            android:padding="4dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="6dp"
+            app:tint="@android:color/white"
+            app:layout_constraintTop_toBottomOf="@id/btnOverflowMenu"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- Location Button (Below QR) -->
+        <ImageButton
+            android:id="@+id/btnLocation"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_location_on"
+            android:padding="4dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="6dp"
+            app:tint="@android:color/white"
+            app:layout_constraintTop_toBottomOf="@id/btnScanQr"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- Balance Display (No Card) -->
+        <TextView
+            android:id="@+id/balanceAmount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="$50,450.8"
+            android:textColor="#FFFFFF"
+            android:textSize="48sp"
+            android:textStyle="bold"
+            android:layout_marginTop="20dp"
+            android:layout_marginStart="24dp"
+            app:layout_constraintTop_toBottomOf="@id/walletHeader"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- Balance Change -->
+        <TextView
+            android:id="@+id/balanceChange"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="$-520.9 -0.65%"
+            android:textColor="#F44336"
+            android:textSize="16sp"
+            android:layout_marginTop="6dp"
+            android:layout_marginStart="24dp"
+            app:layout_constraintTop_toBottomOf="@id/balanceAmount"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- Action Buttons (Circular) -->
+        <LinearLayout
+            android:id="@+id/actionButtons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            app:layout_constraintTop_toBottomOf="@id/balanceChange">
 
             <LinearLayout
-                android:id="@+id/currencySelector"
-                android:layout_width="wrap_content"
+                android:id="@+id/receiveButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:background="@drawable/currency_selector_bg"
-                android:padding="4dp"
-                android:layout_marginStart="8dp"
-                app:layout_constraintTop_toTopOf="@id/balanceLabel"
-                app:layout_constraintBottom_toBottomOf="@id/balanceLabel"
-                app:layout_constraintStart_toEndOf="@id/balanceLabel">
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless">
+
+                <FrameLayout
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/circular_action_button_bg">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_receive_new"
+                        android:layout_gravity="center"
+                        app:tint="@color/mockup_action_button_icon" />
+
+                </FrameLayout>
 
                 <TextView
-                    android:id="@+id/selectedCurrency"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="USD"
-                    android:textColor="#FFFFFF"
-                    android:textSize="11sp"
-                    android:paddingHorizontal="8dp" />
-
-                <ImageView
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:src="@drawable/ic_dropdown"
-                    android:layout_gravity="center_vertical" />
+                    android:text="Receive"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/white"
+                    android:layout_marginTop="8dp" />
 
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/balanceAmount"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:id="@+id/transferButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="$0.00"
-                android:textColor="#FFFFFF"
-                android:textSize="36sp"
-                android:textStyle="bold"
-                android:layout_marginTop="16dp"
-                android:layout_marginStart="24dp"
-                app:layout_constraintTop_toBottomOf="@id/balanceLabel"
-                app:layout_constraintStart_toStartOf="parent" />
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless">
 
-            <TextView
-                android:id="@+id/balanceChange"
-                android:layout_width="wrap_content"
+                <FrameLayout
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/circular_action_button_bg">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_transfer"
+                        android:layout_gravity="center"
+                        app:tint="@color/mockup_action_button_icon" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Send"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/white"
+                    android:layout_marginTop="8dp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/buyButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="0.00% (+$0)"
-                android:textColor="#4CAF50"
-                android:textSize="14sp"
-                android:layout_marginTop="8dp"
-                android:layout_marginStart="24dp"
-                app:layout_constraintTop_toBottomOf="@id/balanceAmount"
-                app:layout_constraintStart_toStartOf="parent" />
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless">
 
-            <!-- Three dots menu button -->
-            <ImageButton
-                android:id="@+id/btnOverflowMenu"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_more_vert"
-                android:padding="8dp"
-                android:layout_marginEnd="16dp"
-                android:layout_marginTop="16dp"
-                app:tint="@android:color/white"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintEnd_toEndOf="parent" />
+                <FrameLayout
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/circular_action_button_bg">
 
-            <!-- Decorative logo/pattern -->
-            <ImageView
-                android:id="@+id/cardPattern"
-                android:layout_width="60dp"
-                android:layout_height="60dp"
-                android:src="@drawable/ic_unicity_pattern"
-                android:alpha="0.3"
-                android:layout_marginEnd="16dp"
-                android:layout_marginTop="16dp"
-                app:layout_constraintTop_toBottomOf="@id/btnOverflowMenu"
-                app:layout_constraintEnd_toEndOf="parent" />
-                
-            <!-- Location Button -->
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/btnLocation"
-                android:layout_width="wrap_content"
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_buy_sell"
+                        android:layout_gravity="center"
+                        app:tint="@color/mockup_action_button_icon" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Buy"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/white"
+                    android:layout_marginTop="8dp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/depositButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginBottom="16dp"
-                app:fabSize="mini"
-                app:backgroundTint="#FFFFFF"
-                app:tint="#000000"
-                android:src="@drawable/ic_location_on"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintStart_toStartOf="parent" />
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless">
 
-            <!-- QR Scanner Button -->
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/btnScanQr"
-                android:layout_width="wrap_content"
+                <FrameLayout
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/circular_action_button_bg">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_deposit"
+                        android:layout_gravity="center"
+                        app:tint="@color/mockup_action_button_icon" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Deposit"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/white"
+                    android:layout_marginTop="8dp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/mineButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:layout_marginBottom="16dp"
-                app:fabSize="mini"
-                app:backgroundTint="#FFFFFF"
-                app:tint="#000000"
-                android:src="@drawable/ic_qr_code_scanner"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent" />
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless">
 
-        </androidx.constraintlayout.widget.ConstraintLayout>
+                <FrameLayout
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/circular_action_button_bg">
 
-    </com.google.android.material.card.MaterialCardView>
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/fm"
+                        android:layout_gravity="center"
+                        app:tint="@color/mockup_action_button_icon" />
 
-    <!-- Action Buttons -->
-    <LinearLayout
-        android:id="@+id/actionButtons"
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Mine"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/white"
+                    android:layout_marginTop="8dp" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Content Section (White Background) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="24dp"
-        app:layout_constraintTop_toBottomOf="@id/balanceCard">
+        android:background="@color/app_background"
+        android:paddingTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/topSection">
 
-        <LinearLayout
-            android:id="@+id/buyButton"
-            android:layout_width="0dp"
+        <!-- Tab Layout -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayout"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/action_button_bg"
-            android:padding="12dp"
-            android:layout_marginEnd="4dp"
-            android:clickable="true"
-            android:focusable="true">
+            android:layout_marginHorizontal="16dp"
+            android:background="@drawable/tab_background"
+            android:paddingVertical="4dp"
+            app:tabMode="fixed"
+            app:tabGravity="fill"
+            app:tabIndicatorHeight="2dp"
+            app:tabIndicatorColor="#4169E1"
+            app:tabSelectedTextColor="@color/tab_text_selected_color"
+            app:tabTextColor="@color/tab_text_color"
+            app:layout_constraintTop_toTopOf="parent">
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_buy_sell" />
-
-            <TextView
+            <com.google.android.material.tabs.TabItem
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Buy/Sell"
-                android:textSize="10sp"
-                android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp"
-                android:singleLine="true"
-                android:maxLines="1" />
+                android:text="Assets" />
 
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/receiveButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/action_button_bg"
-            android:padding="12dp"
-            android:layout_marginHorizontal="4dp"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_receive_new"
-                app:tint="#9370DB" />
-
-            <TextView
+            <com.google.android.material.tabs.TabItem
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Receive"
-                android:textSize="10sp"
-                android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp"
-                android:singleLine="true"
-                android:maxLines="1" />
+                android:text="Tokens" />
 
-        </LinearLayout>
+        </com.google.android.material.tabs.TabLayout>
 
-        <LinearLayout
-            android:id="@+id/depositButton"
-            android:layout_width="0dp"
+        <!-- Token List -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvTokens"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/action_button_bg"
-            android:padding="12dp"
-            android:layout_marginHorizontal="4dp"
-            android:clickable="true"
-            android:focusable="true">
+            android:layout_marginTop="16dp"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="24dp"
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="false"
+            android:overScrollMode="never"
+            app:layout_constraintTop_toBottomOf="@id/tabLayout" />
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_deposit"
-                app:tint="#4CAF50" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Deposit"
-                android:textSize="10sp"
-                android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp"
-                android:singleLine="true"
-                android:maxLines="1" />
-
-        </LinearLayout>
-
+        <!-- Empty State -->
         <LinearLayout
-            android:id="@+id/transferButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/action_button_bg"
-            android:padding="12dp"
-            android:layout_marginHorizontal="4dp"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_transfer"
-                app:tint="#4169E1" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Send"
-                android:textSize="10sp"
-                android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp"
-                android:singleLine="true"
-                android:maxLines="1" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/mineButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/action_button_bg"
-            android:padding="12dp"
-            android:layout_marginStart="4dp"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/fm" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Mine"
-                android:textSize="10sp"
-                android:textColor="@color/button_text_color"
-                android:layout_marginTop="8dp"
-                android:singleLine="true"
-                android:maxLines="1" />
-
-        </LinearLayout>
-
-    </LinearLayout>
-
-    <!-- Tab Layout -->
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tabLayout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:layout_marginHorizontal="16dp"
-        android:background="@drawable/tab_background"
-        android:paddingVertical="4dp"
-        app:tabMode="fixed"
-        app:tabGravity="fill"
-        app:tabIndicatorHeight="2dp"
-        app:tabIndicatorColor="#4169E1"
-        app:tabSelectedTextColor="@color/tab_text_selected_color"
-        app:tabTextColor="@color/tab_text_color"
-        app:layout_constraintTop_toBottomOf="@id/actionButtons">
-
-        <com.google.android.material.tabs.TabItem
+            android:id="@+id/emptyStateContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Assets" />
+            android:orientation="vertical"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginTop="48dp"
+            app:layout_constraintTop_toBottomOf="@id/tabLayout"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
-        <com.google.android.material.tabs.TabItem
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Tokens" />
+            <ImageView
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:src="@drawable/ic_empty_wallet"
+                android:alpha="0.3" />
 
-    </com.google.android.material.tabs.TabLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="No tokens yet"
+                android:textSize="18sp"
+                android:textColor="#808080"
+                android:layout_marginTop="16dp" />
 
-    <!-- Token List -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvTokens"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:paddingHorizontal="16dp"
-        android:paddingBottom="24dp"
-        android:clipToPadding="false"
-        android:nestedScrollingEnabled="false"
-        android:overScrollMode="never"
-        app:layout_constraintTop_toBottomOf="@id/tabLayout" />
+        </LinearLayout>
 
-    <!-- Empty State -->
-    <LinearLayout
-        android:id="@+id/emptyStateContainer"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/rvTokens"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <ImageView
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:src="@drawable/ic_empty_wallet"
-            android:alpha="0.3" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="No tokens yet"
-            android:textSize="18sp"
-            android:textColor="#808080"
-            android:layout_marginTop="16dp" />
-
-    </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -410,12 +420,41 @@
     <LinearLayout
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
-        android:layout_height="80dp"
+        android:layout_height="70dp"
         android:orientation="horizontal"
         android:background="#FFFFFF"
         android:elevation="8dp"
-        android:paddingVertical="12dp"
+        android:paddingVertical="8dp"
         android:layout_gravity="bottom">
+
+        <LinearLayout
+            android:id="@+id/navIncoming"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@android:drawable/ic_menu_upload"
+                android:rotation="180"
+                android:scaleType="fitCenter"
+                app:tint="#4CAF50" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Incoming"
+                android:textSize="11sp"
+                android:textColor="#666666"
+                android:layout_marginTop="4dp" />
+
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/navUnicity"
@@ -428,30 +467,10 @@
             android:focusable="true">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:src="@drawable/unicity_logo"
                 android:scaleType="fitCenter" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/navIncoming"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@android:drawable/ic_menu_upload"
-                android:rotation="180"
-                android:scaleType="fitCenter"
-                app:tint="#4CAF50" />
 
         </LinearLayout>
 
@@ -461,21 +480,30 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:gravity="center"
+            android:orientation="vertical"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:focusable="true">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:src="@android:drawable/ic_menu_upload"
                 android:scaleType="fitCenter"
                 app:tint="#FF9800" />
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Outgoing"
+                android:textSize="11sp"
+                android:textColor="#666666"
+                android:layout_marginTop="4dp" />
+
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/navSettings"
+            android:id="@+id/navProfile"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
