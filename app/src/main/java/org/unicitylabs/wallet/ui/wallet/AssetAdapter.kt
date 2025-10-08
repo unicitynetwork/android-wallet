@@ -87,8 +87,11 @@ class AssetAdapter(
                 cryptoIcon.setImageResource(R.drawable.ic_coin_placeholder)
             }
 
-            cryptoName.text = asset.name ?: asset.symbol
-            cryptoBalance.text = "${asset.getFormattedAmount()} ${asset.symbol}"
+            // Capitalize first letter of name
+            cryptoName.text = (asset.name ?: asset.symbol).replaceFirstChar { it.uppercase() }
+
+            // Format as "SYMBOL · amount"
+            cryptoBalance.text = "${asset.symbol} · ${asset.getFormattedAmount()}"
 
             // Show fiat value
             cryptoTotalValue.text = asset.getFormattedFiatValue(currency)
