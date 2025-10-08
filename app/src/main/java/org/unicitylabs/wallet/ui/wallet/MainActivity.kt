@@ -1497,32 +1497,22 @@ class MainActivity : AppCompatActivity() {
     private fun showIncomingHistory() {
         val incoming = viewModel.incomingHistory.value
         if (incoming.isEmpty()) {
-            Toast.makeText(this, "No incoming transactions", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No received transactions", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // Get aggregated assets to find decimals
-        val aggregatedMap = viewModel.aggregatedAssets.value.associateBy { it.coinId }
-
-        val items = incoming.map { token ->
-            val dateFormatter = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
-            val date = dateFormatter.format(java.util.Date(token.timestamp))
-
-            // Format amount with proper decimals
-            val asset = token.coinId?.let { aggregatedMap[it] }
-            val amount = if (asset != null) {
-                val value = (token.amount ?: 0).toDouble() / Math.pow(10.0, asset.decimals.toDouble())
-                String.format("%.${Math.min(asset.decimals, 8)}f", value).trimEnd('0').trimEnd('.')
-            } else {
-                token.amount.toString()
-            }
-
-            "$date - Received $amount ${token.symbol}"
+        // Create simple RecyclerView programmatically
+        val recyclerView = androidx.recyclerview.widget.RecyclerView(this).apply {
+            layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MainActivity)
+            setPadding(0, 16, 0, 16)
         }
+
+        val adapter = TokenHistoryAdapter(incoming, viewModel.aggregatedAssets.value)
+        recyclerView.adapter = adapter
 
         AlertDialog.Builder(this)
             .setTitle("Received (${incoming.size})")
-            .setItems(items.toTypedArray(), null)
+            .setView(recyclerView)
             .setPositiveButton("Close", null)
             .show()
     }
@@ -1534,26 +1524,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val aggregatedMap = viewModel.aggregatedAssets.value.associateBy { it.coinId }
-
-        val items = outgoing.map { token ->
-            val dateFormatter = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
-            val date = dateFormatter.format(java.util.Date(token.timestamp))
-
-            val asset = token.coinId?.let { aggregatedMap[it] }
-            val amount = if (asset != null) {
-                val value = (token.amount ?: 0).toDouble() / Math.pow(10.0, asset.decimals.toDouble())
-                String.format("%.${Math.min(asset.decimals, 8)}f", value).trimEnd('0').trimEnd('.')
-            } else {
-                token.amount.toString()
-            }
-
-            "$date - Sent $amount ${token.symbol}"
+        val recyclerView = androidx.recyclerview.widget.RecyclerView(this).apply {
+            layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MainActivity)
+            setPadding(0, 16, 0, 16)
         }
+
+        val adapter = TokenHistoryAdapter(outgoing, viewModel.aggregatedAssets.value, isSent = true)
+        recyclerView.adapter = adapter
 
         AlertDialog.Builder(this)
             .setTitle("Sent (${outgoing.size})")
-            .setItems(items.toTypedArray(), null)
+            .setView(recyclerView)
             .setPositiveButton("Close", null)
             .show()
     }
