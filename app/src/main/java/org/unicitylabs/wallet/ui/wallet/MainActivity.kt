@@ -196,6 +196,14 @@ class MainActivity : AppCompatActivity() {
         setupSuccessDialog()
         setupTestTrigger()
         setupTransferApprovalListener()
+
+        // Collect history flows to keep them active
+        lifecycleScope.launch {
+            viewModel.incomingHistory.collect { /* Keep flow active */ }
+        }
+        lifecycleScope.launch {
+            viewModel.outgoingHistory.collect { /* Keep flow active */ }
+        }
         
         // Request Bluetooth permissions on first launch
         val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
@@ -454,12 +462,12 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, org.unicitylabs.wallet.ui.profile.UserProfileActivity::class.java))
         }
         
-        binding.navTawasal.setOnClickListener {
-            // Navigation handled without toast feedback
+        binding.navIncoming.setOnClickListener {
+            showIncomingHistory()
         }
-        
-        binding.navSphere.setOnClickListener {
-            // Navigation handled without toast feedback
+
+        binding.navOutgoing.setOnClickListener {
+            showOutgoingHistory()
         }
         
         binding.navSettings.setOnClickListener {
@@ -1483,6 +1491,70 @@ class MainActivity : AppCompatActivity() {
                 sendTokenViaNostr(selectedToken, selectedContact, asset)
             }
             .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showIncomingHistory() {
+        val incoming = viewModel.incomingHistory.value
+        if (incoming.isEmpty()) {
+            Toast.makeText(this, "No incoming transactions", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Get aggregated assets to find decimals
+        val aggregatedMap = viewModel.aggregatedAssets.value.associateBy { it.coinId }
+
+        val items = incoming.map { token ->
+            val dateFormatter = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
+            val date = dateFormatter.format(java.util.Date(token.timestamp))
+
+            // Format amount with proper decimals
+            val asset = token.coinId?.let { aggregatedMap[it] }
+            val amount = if (asset != null) {
+                val value = (token.amount ?: 0).toDouble() / Math.pow(10.0, asset.decimals.toDouble())
+                String.format("%.${Math.min(asset.decimals, 8)}f", value).trimEnd('0').trimEnd('.')
+            } else {
+                token.amount.toString()
+            }
+
+            "$date - Received $amount ${token.symbol}"
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Received (${incoming.size})")
+            .setItems(items.toTypedArray(), null)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    private fun showOutgoingHistory() {
+        val outgoing = viewModel.outgoingHistory.value
+        if (outgoing.isEmpty()) {
+            Toast.makeText(this, "No sent transactions", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val aggregatedMap = viewModel.aggregatedAssets.value.associateBy { it.coinId }
+
+        val items = outgoing.map { token ->
+            val dateFormatter = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
+            val date = dateFormatter.format(java.util.Date(token.timestamp))
+
+            val asset = token.coinId?.let { aggregatedMap[it] }
+            val amount = if (asset != null) {
+                val value = (token.amount ?: 0).toDouble() / Math.pow(10.0, asset.decimals.toDouble())
+                String.format("%.${Math.min(asset.decimals, 8)}f", value).trimEnd('0').trimEnd('.')
+            } else {
+                token.amount.toString()
+            }
+
+            "$date - Sent $amount ${token.symbol}"
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Sent (${outgoing.size})")
+            .setItems(items.toTypedArray(), null)
+            .setPositiveButton("Close", null)
             .show()
     }
 

@@ -26,8 +26,31 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     private val priceService = CryptoPriceService(application)
     private var priceUpdateJob: Job? = null
     
+    // Active tokens (exclude transferred tokens - they're in history only)
     val tokens: StateFlow<List<Token>> = repository.tokens
+        .map { tokenList ->
+            tokenList.filter { it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED }
+        }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
+
     val isLoading: StateFlow<Boolean> = repository.isLoading
+
+    // Outgoing transaction history (transferred tokens)
+    val outgoingHistory: StateFlow<List<Token>> = repository.tokens
+        .map { tokenList ->
+            tokenList.filter { it.status == org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED }
+        }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Incoming transaction history (all received tokens, sorted by timestamp)
+    val incomingHistory: StateFlow<List<Token>> = repository.tokens
+        .map { tokenList ->
+            // All tokens that are not transferred (incoming), sorted by timestamp
+            tokenList.filter {
+                it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED
+            }.sortedByDescending { it.timestamp }
+        }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
      * Gets all tokens for a specific coinId

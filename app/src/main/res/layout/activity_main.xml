@@ -436,7 +436,7 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/navTawasal"
+            android:id="@+id/navIncoming"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
@@ -448,13 +448,15 @@
             <ImageView
                 android:layout_width="32dp"
                 android:layout_height="32dp"
-                android:src="@drawable/tawasal"
-                android:scaleType="fitCenter" />
+                android:src="@android:drawable/ic_menu_upload"
+                android:rotation="180"
+                android:scaleType="fitCenter"
+                app:tint="#4CAF50" />
 
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/navSphere"
+            android:id="@+id/navOutgoing"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
@@ -466,8 +468,9 @@
             <ImageView
                 android:layout_width="32dp"
                 android:layout_height="32dp"
-                android:src="@drawable/ic_sphere"
-                android:scaleType="fitCenter" />
+                android:src="@android:drawable/ic_menu_upload"
+                android:scaleType="fitCenter"
+                app:tint="#FF9800" />
 
         </LinearLayout>
 
