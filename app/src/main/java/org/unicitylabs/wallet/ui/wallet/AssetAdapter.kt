@@ -80,11 +80,11 @@ class AssetAdapter(
                 iconManager.loadIcon(
                     url = asset.iconUrl,
                     imageView = cryptoIcon,
-                    placeholder = R.drawable.ic_coin_placeholder,
-                    error = R.drawable.ic_coin_placeholder
+                    placeholder = R.drawable.unicity_logo,
+                    error = R.drawable.unicity_logo
                 )
             } else {
-                cryptoIcon.setImageResource(R.drawable.ic_coin_placeholder)
+                cryptoIcon.setImageResource(R.drawable.unicity_logo)
             }
 
             // Capitalize first letter of name
