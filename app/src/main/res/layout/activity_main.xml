@@ -452,12 +452,11 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/navIncoming"
+            android:id="@+id/navHistory"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:gravity="center"
-            android:orientation="vertical"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:focusable="true">
@@ -465,46 +464,8 @@
             <ImageView
                 android:layout_width="28dp"
                 android:layout_height="28dp"
-                android:src="@android:drawable/ic_menu_upload"
-                android:rotation="180"
-                android:scaleType="fitCenter"
-                app:tint="#4CAF50" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Incoming"
-                android:textSize="11sp"
-                android:textColor="#CCCCCC"
-                android:layout_marginTop="4dp" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/navOutgoing"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:src="@android:drawable/ic_menu_upload"
-                android:scaleType="fitCenter"
-                app:tint="#FF9800" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Outgoing"
-                android:textSize="11sp"
-                android:textColor="#CCCCCC"
-                android:layout_marginTop="4dp" />
+                android:src="@drawable/ic_history"
+                android:scaleType="fitCenter" />
 
         </LinearLayout>
 

@@ -479,12 +479,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.navIncoming.setOnClickListener {
-            showIncomingHistory()
-        }
-
-        binding.navOutgoing.setOnClickListener {
-            showOutgoingHistory()
+        binding.navHistory.setOnClickListener {
+            showTransactionHistory()
         }
 
         binding.navChat.setOnClickListener {
@@ -1517,6 +1513,33 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showTransactionHistory() {
+        val incoming = viewModel.incomingHistory.value
+        val outgoing = viewModel.outgoingHistory.value
+
+        if (incoming.isEmpty() && outgoing.isEmpty()) {
+            Toast.makeText(this, "No transactions yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Combine and sort by timestamp (most recent first)
+        val allTransactions = (incoming + outgoing).sortedByDescending { it.timestamp }
+
+        val recyclerView = androidx.recyclerview.widget.RecyclerView(this).apply {
+            layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MainActivity)
+            setPadding(0, 16, 0, 16)
+        }
+
+        val adapter = TokenHistoryAdapter(allTransactions, viewModel.aggregatedAssets.value, isSent = false)
+        recyclerView.adapter = adapter
+
+        AlertDialog.Builder(this)
+            .setTitle("Transaction History (${allTransactions.size})")
+            .setView(recyclerView)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
     private fun showIncomingHistory() {
         val incoming = viewModel.incomingHistory.value
         if (incoming.isEmpty()) {
@@ -1524,7 +1547,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Create simple RecyclerView programmatically
         val recyclerView = androidx.recyclerview.widget.RecyclerView(this).apply {
             layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MainActivity)
             setPadding(0, 16, 0, 16)
