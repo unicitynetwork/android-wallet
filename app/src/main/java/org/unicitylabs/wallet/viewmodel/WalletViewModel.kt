@@ -29,6 +29,14 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     val tokens: StateFlow<List<Token>> = repository.tokens
     val isLoading: StateFlow<Boolean> = repository.isLoading
 
+    /**
+     * Gets all tokens for a specific coinId
+     * Used for selecting which token to send when user picks an aggregated asset
+     */
+    fun getTokensByCoinId(coinId: String): List<Token> {
+        return tokens.value.filter { it.coinId == coinId }
+    }
+
     // Aggregated assets by coinId for Assets tab with price data
     val aggregatedAssets: StateFlow<List<org.unicitylabs.wallet.model.AggregatedAsset>> = repository.tokens
         .map { tokenList ->

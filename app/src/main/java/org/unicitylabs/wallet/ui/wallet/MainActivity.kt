@@ -499,9 +499,9 @@ class MainActivity : AppCompatActivity() {
         
         binding.transferButton.setOnClickListener {
             if (currentTab == 0) {
-                // For crypto assets
-                val cryptos = viewModel.cryptocurrencies.value
-                if (cryptos.isNotEmpty()) {
+                // For aggregated assets
+                val assets = viewModel.aggregatedAssets.value
+                if (assets.isNotEmpty()) {
                     showSendDialog()
                 } else {
                     Toast.makeText(this, "No assets to transfer", Toast.LENGTH_SHORT).show()
@@ -1426,38 +1426,69 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showCryptoSelectionForRecipient(recipient: Contact) {
-        val cryptos = viewModel.cryptocurrencies.value
-        
+        val assets = viewModel.aggregatedAssets.value
+
         // Create custom dialog
         val dialogView = layoutInflater.inflate(R.layout.dialog_select_asset, null)
         val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvAssets)
         val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
-        
+
         // Setup RecyclerView
         recyclerView.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-        
+
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
-            .setTitle("Select Asset to Send")
             .create()
-        
-        val adapter = AssetDialogAdapter(cryptos) { selectedAsset ->
+
+        val adapter = AggregatedAssetDialogAdapter(assets) { selectedAsset ->
             dialog.dismiss()
-            showCryptoSendAmountDialog(selectedAsset, recipient)
+            showAssetSendAmountDialog(selectedAsset, recipient)
         }
-        
+
         recyclerView.adapter = adapter
-        
+
         btnCancel.setOnClickListener {
             dialog.dismiss()
         }
-        
+
         dialog.show()
     }
     
     private fun showAssetSendDialog(asset: org.unicitylabs.wallet.model.AggregatedAsset) {
         // For now, just show info - implement token selection later
         Toast.makeText(this, "Send ${asset.symbol}: Select individual tokens from Tokens tab", Toast.LENGTH_LONG).show()
+    }
+
+    private fun showAssetSendAmountDialog(asset: org.unicitylabs.wallet.model.AggregatedAsset, selectedContact: Contact) {
+        // Get all tokens for this coinId
+        val tokensForCoin = viewModel.getTokensByCoinId(asset.coinId)
+
+        if (tokensForCoin.isEmpty()) {
+            Toast.makeText(this, "No tokens available for ${asset.symbol}", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Show token selection dialog
+        val tokenDescriptions = tokensForCoin.mapIndexed { index, token ->
+            val amount = token.amount ?: 0
+            val formattedAmount = amount.toDouble() / Math.pow(10.0, asset.decimals.toDouble())
+            "Token #${index + 1}: $formattedAmount ${asset.symbol}"
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Select Token to Send")
+            .setItems(tokenDescriptions.toTypedArray()) { dialog, which ->
+                val selectedToken = tokensForCoin[which]
+                // Proceed with transfer
+                sendTokenViaNostr(selectedToken, selectedContact, asset)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun sendTokenViaNostr(token: Token, recipient: Contact, asset: org.unicitylabs.wallet.model.AggregatedAsset) {
+        // TODO: Implement the actual Nostr transfer
+        Toast.makeText(this, "Transferring token to ${recipient.name} via Nostr...", Toast.LENGTH_SHORT).show()
     }
 
     private fun showCryptoSendAmountDialog(crypto: CryptoCurrency, selectedContact: Contact? = null) {
