@@ -177,9 +177,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         
         sdkService = UnicityJavaSdkService()
-        
-        // Initialize BT Mesh components
-        initializeBTMesh()
+
+        // Initialize BT Mesh components - DISABLED, focusing on Nostr P2P transfers
+        // initializeBTMesh()
         
         setupActionBar()
         // Initialize ServiceProvider with application context for trustbase loading
