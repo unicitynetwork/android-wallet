@@ -1522,6 +1522,30 @@ class MainActivity : AppCompatActivity() {
         // Initially hide split info
         tvSplitInfo.visibility = View.GONE
 
+        // Quick amount buttons
+        val btn25 = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn25Percent)
+        val btn50 = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn50Percent)
+        val btn75 = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn75Percent)
+        val btnMax = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnMax)
+
+        val balanceDecimal = asset.getAmountAsDecimal()
+
+        btn25.setOnClickListener {
+            etAmount.setText((balanceDecimal * 0.25).toString())
+        }
+
+        btn50.setOnClickListener {
+            etAmount.setText((balanceDecimal * 0.50).toString())
+        }
+
+        btn75.setOnClickListener {
+            etAmount.setText((balanceDecimal * 0.75).toString())
+        }
+
+        btnMax.setOnClickListener {
+            etAmount.setText(balanceDecimal.toString())
+        }
+
         val dialog = AlertDialog.Builder(this)
             .setTitle("Send ${asset.symbol} to ${selectedContact.name}")
             .setView(dialogView)
