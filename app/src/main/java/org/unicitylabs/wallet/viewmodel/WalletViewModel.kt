@@ -21,7 +21,7 @@ import org.unicitylabs.wallet.data.service.CryptoPriceService
 import org.unicitylabs.wallet.model.CryptoCurrency
 
 class WalletViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = WalletRepository.getInstance(application)
+    val repository = WalletRepository.getInstance(application)
     private val prefs = application.getSharedPreferences("crypto_balances", android.content.Context.MODE_PRIVATE)
     private val priceService = CryptoPriceService(application)
     private var priceUpdateJob: Job? = null
@@ -666,7 +666,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val prices = priceService.fetchPrices(forceRefresh = true)
                 val currentCryptos = _allCryptocurrencies.value
-                
+
                 if (currentCryptos.isNotEmpty()) {
                     _allCryptocurrencies.value = currentCryptos.map { crypto ->
                         val priceData = prices[crypto.id]
@@ -684,6 +684,119 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 }
             } catch (e: Exception) {
                 Log.e("WalletViewModel", "Error refreshing prices: ${e.message}")
+            }
+        }
+    }
+
+    // Helper methods for token splitting operations
+    fun addNewTokenFromSplit(sdkToken: org.unicitylabs.sdk.token.Token<*>) {
+        viewModelScope.launch {
+            try {
+                // Convert SDK token to wallet token format
+                val tokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(sdkToken)
+
+                // Extract coin info
+                val coinsOpt = sdkToken.getCoins()
+                if (!coinsOpt.isPresent) {
+                    Log.e("WalletViewModel", "Split token has no coins!")
+                    return@launch
+                }
+
+                val coinData = coinsOpt.get()
+                val firstCoin = coinData.coins.entries.firstOrNull()
+                if (firstCoin == null) {
+                    Log.e("WalletViewModel", "Split token has no coin entries!")
+                    return@launch
+                }
+
+                val coinIdBytes = firstCoin.key.bytes
+                val coinIdHex = coinIdBytes.joinToString("") { "%02x".format(it) }
+                val amount = firstCoin.value.toLong()
+
+                // Use actual SDK token ID (not random nonsense)
+                val tokenIdHex = sdkToken.id.bytes.joinToString("") { "%02x".format(it) }
+
+                // Get symbol and icon from registry
+                val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(getApplication())
+                val coinDef = registry.getCoinDefinition(coinIdHex)
+                val symbol = coinDef?.symbol ?: "UNKNOWN"
+                val iconUrl = coinDef?.getIconUrl()
+
+                val walletToken = org.unicitylabs.wallet.data.model.Token(
+                    id = tokenIdHex, // Use actual token ID from SDK
+                    name = symbol,
+                    type = "FUNGIBLE",
+                    coinId = coinIdHex,
+                    amount = amount,
+                    symbol = symbol,
+                    iconUrl = iconUrl,
+                    jsonData = tokenJson,
+                    status = org.unicitylabs.wallet.data.model.TokenStatus.CONFIRMED
+                )
+
+                repository.addToken(walletToken)
+                Log.d("WalletViewModel", "Added split token: $symbol (${amount}) - ${walletToken.id}")
+            } catch (e: Exception) {
+                Log.e("WalletViewModel", "Error adding split token", e)
+            }
+        }
+    }
+
+    fun removeTokenAfterSplit(sdkToken: org.unicitylabs.sdk.token.Token<*>) {
+        viewModelScope.launch {
+            try {
+                // Find and remove the token from repository
+                // Find token by matching SDK token ID
+                val allTokens = tokens.value
+                val tokenToRemove = allTokens.find { walletToken ->
+                    try {
+                        walletToken.jsonData?.let { jsonData ->
+                            val walletSdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
+                                jsonData,
+                                org.unicitylabs.sdk.token.Token::class.java
+                            )
+                            walletSdkToken.id == sdkToken.id
+                        } ?: false
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+
+                tokenToRemove?.let { token ->
+                    repository.removeToken(token.id)
+                    Log.d("WalletViewModel", "Removed token after split: ${token.id}")
+                }
+            } catch (e: Exception) {
+                Log.e("WalletViewModel", "Error removing split token", e)
+            }
+        }
+    }
+
+    fun removeTokenAfterTransfer(sdkToken: org.unicitylabs.sdk.token.Token<*>) {
+        viewModelScope.launch {
+            try {
+                // Find and mark the token as transferred
+                val allTokens = tokens.value
+                val tokenToRemove = allTokens.find { walletToken ->
+                    try {
+                        walletToken.jsonData?.let { jsonData ->
+                            val walletSdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
+                                jsonData,
+                                org.unicitylabs.sdk.token.Token::class.java
+                            )
+                            walletSdkToken.id == sdkToken.id
+                        } ?: false
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+
+                tokenToRemove?.let { token ->
+                    repository.removeToken(token.id)
+                    Log.d("WalletViewModel", "Removed token after transfer: ${token.id}")
+                }
+            } catch (e: Exception) {
+                Log.e("WalletViewModel", "Error marking token as transferred", e)
             }
         }
     }

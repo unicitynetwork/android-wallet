@@ -70,6 +70,7 @@ import org.unicitylabs.wallet.nfc.HybridNfcBluetoothClient
 import org.unicitylabs.wallet.nfc.RealNfcTransceiver
 import org.unicitylabs.wallet.nfc.SimpleNfcTransceiver
 import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
+import org.unicitylabs.wallet.transfer.toHexString
 import org.unicitylabs.wallet.ui.bluetooth.PeerSelectionDialog
 import org.unicitylabs.wallet.ui.bluetooth.TransferApprovalDialog
 import org.unicitylabs.wallet.ui.scanner.PortraitCaptureActivity
@@ -1506,28 +1507,111 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // If only one token, skip picker and transfer immediately
-        if (tokensForCoin.size == 1) {
-            sendTokenViaNostr(tokensForCoin[0], selectedContact, asset)
-            return
-        }
+        // Create amount input dialog
+        val dialogView = layoutInflater.inflate(R.layout.dialog_amount_input, null)
+        val etAmount = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etAmount)
+        val tilAmount = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.tilAmount)
+        val tvBalance = dialogView.findViewById<TextView>(R.id.tvBalance)
+        val tvSplitInfo = dialogView.findViewById<TextView>(R.id.tvSplitInfo)
 
-        // Show token selection dialog
-        val tokenDescriptions = tokensForCoin.mapIndexed { index, token ->
-            val amount = token.amount ?: 0
-            val formattedAmount = amount.toDouble() / Math.pow(10.0, asset.decimals.toDouble())
-            "Token #${index + 1}: $formattedAmount ${asset.symbol}"
-        }
+        // Show available balance
+        val totalBalance = asset.totalAmount
+        val formattedBalance = totalBalance / Math.pow(10.0, asset.decimals.toDouble())
+        tvBalance.text = "Available: $formattedBalance ${asset.symbol}"
+        tilAmount.hint = "Amount to send (${asset.symbol})"
 
-        AlertDialog.Builder(this)
-            .setTitle("Select Token to Send")
-            .setItems(tokenDescriptions.toTypedArray()) { dialog, which ->
-                val selectedToken = tokensForCoin[which]
-                // Proceed with transfer
-                sendTokenViaNostr(selectedToken, selectedContact, asset)
+        // Initially hide split info
+        tvSplitInfo.visibility = View.GONE
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Send ${asset.symbol} to ${selectedContact.name}")
+            .setView(dialogView)
+            .setPositiveButton("Send") { _, _ ->
+                val amountStr = etAmount.text.toString()
+                if (amountStr.isNotEmpty()) {
+                    try {
+                        val amount = amountStr.toDouble()
+                        val amountInSmallestUnit = (amount * Math.pow(10.0, asset.decimals.toDouble())).toLong()
+
+                        if (amountInSmallestUnit <= 0L) {
+                            Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
+                            return@setPositiveButton
+                        }
+
+                        if (amountInSmallestUnit > totalBalance.toLong()) {
+                            Toast.makeText(this, "Insufficient balance", Toast.LENGTH_SHORT).show()
+                            return@setPositiveButton
+                        }
+
+                        // Proceed with split-aware transfer
+                        sendTokensWithSplitting(
+                            tokensForCoin = tokensForCoin,
+                            targetAmount = java.math.BigInteger.valueOf(amountInSmallestUnit),
+                            asset = asset,
+                            recipient = selectedContact
+                        )
+                    } catch (e: NumberFormatException) {
+                        Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        // Add text watcher to show split preview
+        etAmount.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val amountStr = s?.toString() ?: ""
+                if (amountStr.isNotEmpty()) {
+                    try {
+                        val amount = amountStr.toDouble()
+                        val amountInSmallestUnit = (amount * Math.pow(10.0, asset.decimals.toDouble())).toLong()
+
+                        // Preview split plan
+                        val calculator = org.unicitylabs.wallet.transfer.TokenSplitCalculator()
+                        val coinId = org.unicitylabs.sdk.token.fungible.CoinId(hexStringToByteArray(asset.coinId))
+
+                        // Convert wallet tokens to SDK tokens for calculation
+                        val sdkTokens = tokensForCoin.mapNotNull { token ->
+                            try {
+                                org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
+                                    token.jsonData,
+                                    org.unicitylabs.sdk.token.Token::class.java
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+
+                        val plan = calculator.calculateOptimalSplit(
+                            sdkTokens,
+                            java.math.BigInteger.valueOf(amountInSmallestUnit),
+                            coinId
+                        )
+
+                        if (plan != null) {
+                            if (plan.requiresSplit) {
+                                tvSplitInfo.text = "ℹ️ Will split 1 token to send exact amount"
+                                tvSplitInfo.visibility = View.VISIBLE
+                            } else {
+                                tvSplitInfo.text = "✅ Exact match found (${plan.tokensToTransferDirectly.size} token${if(plan.tokensToTransferDirectly.size > 1) "s" else ""})"
+                                tvSplitInfo.visibility = View.VISIBLE
+                            }
+                        } else {
+                            tvSplitInfo.visibility = View.GONE
+                        }
+                    } catch (e: Exception) {
+                        tvSplitInfo.visibility = View.GONE
+                    }
+                } else {
+                    tvSplitInfo.visibility = View.GONE
+                }
+            }
+        })
+
+        dialog.show()
     }
 
     private fun showTransactionHistory() {
@@ -1598,6 +1682,235 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Sent (${outgoing.size})")
             .setView(recyclerView)
             .setPositiveButton("Close", null)
+            .show()
+    }
+
+    private fun sendTokensWithSplitting(
+        tokensForCoin: List<Token>,
+        targetAmount: java.math.BigInteger,
+        asset: org.unicitylabs.wallet.model.AggregatedAsset,
+        recipient: Contact
+    ) {
+        lifecycleScope.launch {
+            try {
+                // Show progress dialog
+                val progressDialog = android.app.ProgressDialog(this@MainActivity).apply {
+                    setTitle("Processing Transfer")
+                    setMessage("Calculating optimal transfer strategy...")
+                    setCancelable(false)
+                    show()
+                }
+
+                // Step 1: Calculate optimal split plan
+                val calculator = org.unicitylabs.wallet.transfer.TokenSplitCalculator()
+
+                Log.d("MainActivity", "=== Starting split calculation ===")
+                Log.d("MainActivity", "Target amount: $targetAmount")
+                Log.d("MainActivity", "Asset coinId (hex string): ${asset.coinId}")
+                Log.d("MainActivity", "Available tokens: ${tokensForCoin.size}")
+
+                // Convert hex string coinId to bytes (not UTF-8 bytes of the string!)
+                val coinId = org.unicitylabs.sdk.token.fungible.CoinId(hexStringToByteArray(asset.coinId))
+                Log.d("MainActivity", "CoinId bytes: ${coinId.bytes.joinToString { it.toString() }}")
+
+                // Convert wallet tokens to SDK tokens
+                val sdkTokens = tokensForCoin.mapNotNull { token ->
+                    try {
+                        val sdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
+                            token.jsonData,
+                            org.unicitylabs.sdk.token.Token::class.java
+                        )
+                        Log.d("MainActivity", "Parsed SDK token: id=${sdkToken.id.toHexString().take(8)}...")
+                        val coins = sdkToken.getCoins()
+                        if (coins.isPresent) {
+                            Log.d("MainActivity", "Token has coins: ${coins.get().coins}")
+                        } else {
+                            Log.d("MainActivity", "Token has NO coins!")
+                        }
+                        sdkToken
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Failed to parse token: ${e.message}", e)
+                        null
+                    }
+                }
+
+                Log.d("MainActivity", "Successfully parsed ${sdkTokens.size} SDK tokens")
+
+                val splitPlan = calculator.calculateOptimalSplit(sdkTokens, targetAmount, coinId)
+
+                if (splitPlan == null) {
+                    progressDialog.dismiss()
+                    Log.e("MainActivity", "Split calculator returned null!")
+                    Toast.makeText(this@MainActivity, "Cannot create transfer plan. Check logs for details.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                Log.d("MainActivity", "Split plan created: ${splitPlan.describe()}")
+
+                // Show split confirmation if needed
+                if (splitPlan.requiresSplit) {
+                    progressDialog.setMessage("Token split required. Confirming...")
+                    val confirmed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        showSplitConfirmationDialog(splitPlan, asset)
+                    }
+                    if (!confirmed) {
+                        progressDialog.dismiss()
+                        return@launch
+                    }
+                }
+
+                // Step 2: Extract recipient nametag
+                val recipientNametag = recipient.address
+                    ?.removePrefix("@")
+                    ?.removeSuffix("@unicity")
+                    ?.trim()
+
+                if (recipientNametag.isNullOrEmpty()) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Invalid recipient nametag", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                // Step 3: Create recipient proxy address
+                val recipientTokenId = org.unicitylabs.sdk.token.TokenId.fromNameTag(recipientNametag)
+                val recipientProxyAddress = org.unicitylabs.sdk.address.ProxyAddress.create(recipientTokenId)
+
+                // Step 4: Get signing service
+                val identityManager = org.unicitylabs.wallet.identity.IdentityManager(this@MainActivity)
+                val identity = identityManager.getCurrentIdentity()
+                if (identity == null) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Wallet identity not found", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val secret = hexStringToByteArray(identity.privateKey)
+                val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
+
+                // Step 5: Execute split if needed
+                val tokensToTransfer = mutableListOf<org.unicitylabs.sdk.token.Token<*>>()
+
+                if (splitPlan.requiresSplit) {
+                    progressDialog.setMessage("Executing token split...")
+
+                    val executor = org.unicitylabs.wallet.transfer.TokenSplitExecutor(
+                        org.unicitylabs.wallet.di.ServiceProvider.stateTransitionClient,
+                        org.unicitylabs.wallet.di.ServiceProvider.getRootTrustBase(),
+                        viewModel.repository
+                    )
+
+                    val splitResult = executor.executeSplitPlan(
+                        splitPlan,
+                        recipientProxyAddress,
+                        signingService,
+                        secret
+                    )
+
+                    tokensToTransfer.addAll(splitResult.tokensForRecipient)
+
+                    // Update local wallet with new sender tokens
+                    splitResult.tokensKeptBySender.forEach { newToken ->
+                        viewModel.addNewTokenFromSplit(newToken)
+                    }
+
+                    // Remove burned tokens from wallet
+                    splitResult.burnedTokens.forEach { burnedToken ->
+                        viewModel.removeTokenAfterSplit(burnedToken)
+                    }
+                } else {
+                    // No split needed, just transfer directly
+                    tokensToTransfer.addAll(splitPlan.tokensToTransferDirectly)
+                }
+
+                // Step 6: Send tokens via Nostr
+                progressDialog.setMessage("Sending tokens to recipient...")
+
+                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                if (nostrService == null) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Nostr service not available", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                if (!nostrService.isRunning()) {
+                    nostrService.start()
+                    kotlinx.coroutines.delay(2000)
+                }
+
+                val recipientPubkey = nostrService.queryPubkeyByNametag(recipientNametag)
+                if (recipientPubkey == null) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Recipient not found", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                // Send each token via Nostr
+                // Split tokens are already minted with correct recipient addresses - no need to transfer again!
+                var successCount = 0
+                for (tokenToSend in tokensToTransfer) {
+                    try {
+                        Log.d("MainActivity", "Sending split token ${tokenToSend.id.toHexString().take(8)}... via Nostr")
+
+                        // Serialize token and send via Nostr (no on-chain transfer needed - already minted for recipient)
+                        val tokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(tokenToSend)
+
+                        val result = nostrService.sendTokenTransfer(
+                            recipientNametag = recipientNametag,
+                            tokenJson = tokenJson,
+                            amount = tokenToSend.getCoins().map { coinData ->
+                                coinData.coins.values.firstOrNull()?.toLong()
+                            }.orElse(null) ?: targetAmount.toLong(),
+                            symbol = asset.symbol
+                        )
+
+                        if (result.isSuccess) {
+                            successCount++
+                            Log.d("MainActivity", "Token sent successfully via Nostr")
+                        } else {
+                            Log.e("MainActivity", "Failed to send via Nostr: ${result.exceptionOrNull()?.message}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Failed to send token", e)
+                    }
+                }
+
+                progressDialog.dismiss()
+
+                if (successCount == tokensToTransfer.size) {
+                    vibrateSuccess()
+                    val formattedAmount = targetAmount.toDouble() / Math.pow(10.0, asset.decimals.toDouble())
+                    showSuccessDialog("Successfully sent $formattedAmount ${asset.symbol} to ${recipient.name}")
+                } else if (successCount > 0) {
+                    Toast.makeText(this@MainActivity, "Partial success: $successCount/${tokensToTransfer.size} tokens sent", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Transfer failed", Toast.LENGTH_LONG).show()
+                }
+
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error in sendTokensWithSplitting", e)
+                Toast.makeText(this@MainActivity, "Transfer error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private suspend fun showSplitConfirmationDialog(
+        splitPlan: org.unicitylabs.wallet.transfer.TokenSplitCalculator.SplitPlan,
+        asset: org.unicitylabs.wallet.model.AggregatedAsset
+    ): Boolean = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        AlertDialog.Builder(this)
+            .setTitle("Token Split Required")
+            .setMessage("""
+                To send the exact amount, the following split will be performed:
+
+                ${splitPlan.describe()}
+
+                This will create new tokens with the exact amounts needed.
+
+                Continue with the transfer?
+            """.trimIndent())
+            .setPositiveButton("Continue") { _, _ -> cont.resume(true, null) }
+            .setNegativeButton("Cancel") { _, _ -> cont.resume(false, null) }
+            .setOnCancelListener { cont.resume(false, null) }
             .show()
     }
 
