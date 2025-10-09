@@ -209,7 +209,7 @@ Resources:
 
               [limits]
               messages_per_sec = 10
-              max_event_bytes = 524288
+              max_event_bytes = 1048576
               max_subscriptions = 100
 
               [retention]
@@ -217,7 +217,7 @@ Resources:
               EOF
               echo "Config file created with PostgreSQL connection"
               cat /usr/src/app/config.toml
-              exec /usr/src/app/nostr-rs-relay
+              exec /usr/src/app/nostr-rs-relay --config /usr/src/app/config.toml
           PortMappings:
             - ContainerPort: 8080
               Protocol: tcp

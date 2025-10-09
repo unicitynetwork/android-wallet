@@ -1,0 +1,15 @@
+services:
+  nostr-relay:
+    image: scsibug/nostr-rs-relay:0.9.0
+    ports:
+      - "8080:8080"
+    volumes:
+      - relay-data:/data
+      - ./config.toml:/usr/src/app/config.toml:ro
+    command: ["/usr/src/app/nostr-rs-relay", "--config", "/usr/src/app/config.toml"]
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+
+volumes:
+  relay-data:

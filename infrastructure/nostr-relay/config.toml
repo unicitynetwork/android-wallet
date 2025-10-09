@@ -1,0 +1,21 @@
+# Nostr RS Relay Configuration
+# Increased limits for Unicity token transfers
+
+[info]
+relay_url = "ws://localhost:8080"
+name = "Unicity Nostr Relay"
+description = "Relay for Unicity wallet P2P transfers"
+
+[limits]
+# Increase max event size for Unicity tokens with transaction history
+# Default: 262144 (256KB)
+# New: 1048576 (1MB) - supports tokens with extensive history
+max_event_bytes = 1048576
+
+# Connection limits
+messages_per_sec = 100
+max_subscriptions = 100
+
+[database]
+data_directory = "/tmp"
+engine = "sqlite"
