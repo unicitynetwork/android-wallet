@@ -158,16 +158,8 @@ class TokenSplitExecutor(
         val burnSalt = java.security.MessageDigest.getInstance("SHA-256")
             .digest((seedString + "_burn_salt").toByteArray())
 
-        // Extract nonce if token has MaskedPredicate
-        val tokenSigningService = if (tokenToSplit.state.predicate is MaskedPredicate) {
-            val maskedPredicate = tokenToSplit.state.predicate as MaskedPredicate
-            // Use the secret with the nonce for masked predicate
-            SigningService.createFromMaskedSecret(secret, maskedPredicate.nonce)
-        } else {
-            signingService
-        }
-
-        val burnCommitment = split.createBurnCommitment(burnSalt, tokenSigningService)
+        // Use the same signing service that owns the token
+        val burnCommitment = split.createBurnCommitment(burnSalt, signingService)
 
         Log.d(TAG, "Submitting burn commitment...")
         val burnResponse = client.submitCommitment(burnCommitment).await()
@@ -243,19 +235,9 @@ class TokenSplitExecutor(
         val senderTokenInfo = mintedTokens.find { !it.isForRecipient }
             ?: throw Exception("Sender token not found in minted tokens")
 
-        // Get sender's nametag token for verification
-        val senderNametagToken = getSenderNametagToken()
-
-        // For recipient token: Create without verification (they'll verify when they receive it)
-        val recipientToken = createSplitTokenDirect(recipientTokenInfo, signingService)
-
-        // For sender token: Create WITH verification using our nametag token
-        val senderToken = if (senderNametagToken != null) {
-            createSplitTokenWithVerification(senderTokenInfo, signingService, senderNametagToken)
-        } else {
-            Log.w(TAG, "No sender nametag token found - creating without verification")
-            createSplitTokenDirect(senderTokenInfo, signingService)
-        }
+        // Create and verify both split tokens
+        val recipientToken = createAndVerifySplitToken(recipientTokenInfo, signingService, "recipient")
+        val senderToken = createAndVerifySplitToken(senderTokenInfo, signingService, "sender")
 
         return SplitTokenResult(
             tokenForRecipient = recipientToken,
@@ -264,32 +246,15 @@ class TokenSplitExecutor(
     }
 
     /**
-     * Gets sender's nametag token from wallet
+     * Creates and verifies a split token
+     *
+     * Tokens are created using the Token constructor then explicitly verified
+     * to ensure they are valid before being added to the wallet or sent.
      */
-    private fun getSenderNametagToken(): Token<*>? {
-        return try {
-            val nametagTokens = walletRepository.tokens.value.filter { it.type == "NAMETAG" }
-            Log.d(TAG, "Found ${nametagTokens.size} nametag tokens in wallet")
-
-            nametagTokens.firstOrNull()?.jsonData?.let { jsonData ->
-                org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                    jsonData,
-                    org.unicitylabs.sdk.token.Token::class.java
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting sender nametag token: ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * Creates a split token WITH SDK verification (for sender's own tokens)
-     */
-    private fun createSplitTokenWithVerification(
+    private fun createAndVerifySplitToken(
         mintInfo: MintedTokenInfo,
         signingService: SigningService,
-        nametagToken: Token<*>
+        tokenType: String
     ): Token<*> {
         val state = TokenState(
             UnmaskedPredicate.create(
@@ -302,33 +267,7 @@ class TokenSplitExecutor(
             null
         )
 
-        return Token.create(
-            trustBase,
-            state,
-            mintInfo.commitment.toTransaction(mintInfo.inclusionProof),
-            listOf(nametagToken)
-        )
-    }
-
-    /**
-     * Creates a split token directly without verification (for recipient's tokens)
-     * Tokens are already valid on-chain - recipient will verify when they receive it
-     */
-    private fun createSplitTokenDirect(
-        mintInfo: MintedTokenInfo,
-        signingService: SigningService
-    ): Token<*> {
-        val state = TokenState(
-            UnmaskedPredicate.create(
-                mintInfo.commitment.transactionData.tokenId,
-                mintInfo.commitment.transactionData.tokenType,
-                signingService,
-                HashAlgorithm.SHA256,
-                mintInfo.commitment.transactionData.salt
-            ),
-            null
-        )
-
+        // Create token with constructor
         val token = Token(
             state,
             mintInfo.commitment.toTransaction(mintInfo.inclusionProof),
@@ -336,7 +275,13 @@ class TokenSplitExecutor(
             emptyList()
         )
 
-        Log.d(TAG, "Split token created without verification: ${mintInfo.tokenId.toHexString().take(8)}...")
+        // Explicitly verify the token before returning
+        val verifyResult = token.verify(trustBase)
+        if (!verifyResult.isSuccessful) {
+            throw Exception("Split token verification failed for $tokenType")
+        }
+
+        Log.d(TAG, "Split token created and verified: ${mintInfo.tokenId.toHexString().take(8)}... ($tokenType)")
         return token
     }
 
