@@ -26,10 +26,13 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     private val priceService = CryptoPriceService(application)
     private var priceUpdateJob: Job? = null
     
-    // Active tokens (exclude transferred tokens - they're in history only)
+    // Active tokens (exclude transferred and burned tokens)
     val tokens: StateFlow<List<Token>> = repository.tokens
         .map { tokenList ->
-            tokenList.filter { it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED }
+            tokenList.filter {
+                it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED &&
+                it.status != org.unicitylabs.wallet.data.model.TokenStatus.BURNED
+            }
         }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -742,6 +745,36 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 Log.d("WalletViewModel", "Added split token: $symbol (${amount}) - ${walletToken.id}")
             } catch (e: Exception) {
                 Log.e("WalletViewModel", "Error adding split token", e)
+            }
+        }
+    }
+
+    fun markTokenAsBurned(sdkToken: org.unicitylabs.sdk.token.Token<*>) {
+        viewModelScope.launch {
+            try {
+                // Find and mark the token as burned immediately
+                val allTokens = repository.tokens.value
+                val tokenToBurn = allTokens.find { walletToken ->
+                    try {
+                        walletToken.jsonData?.let { jsonData ->
+                            val walletSdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
+                                jsonData,
+                                org.unicitylabs.sdk.token.Token::class.java
+                            )
+                            walletSdkToken.id == sdkToken.id
+                        } ?: false
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+
+                tokenToBurn?.let { token ->
+                    val burnedToken = token.copy(status = org.unicitylabs.wallet.data.model.TokenStatus.BURNED)
+                    repository.updateToken(burnedToken)
+                    Log.d("WalletViewModel", "Marked token as BURNED: ${token.id}")
+                }
+            } catch (e: Exception) {
+                Log.e("WalletViewModel", "Error marking token as burned", e)
             }
         }
     }

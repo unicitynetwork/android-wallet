@@ -1795,6 +1795,26 @@ class MainActivity : AppCompatActivity() {
 
                 // Step 5: Execute split if needed
                 val tokensToTransfer = mutableListOf<org.unicitylabs.sdk.token.Token<*>>()
+                var successCount = 0 // Track successful regular transfers
+
+                // Get Nostr service early (needed for both paths)
+                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                if (nostrService == null) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Nostr service not available", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                if (!nostrService.isRunning()) {
+                    nostrService.start()
+                    kotlinx.coroutines.delay(2000)
+                }
+
+                val recipientPubkey = nostrService.queryPubkeyByNametag(recipientNametag)
+                if (recipientPubkey == null) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@MainActivity, "Recipient not found", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
 
                 if (splitPlan.requiresSplit) {
                     progressDialog.setMessage("Executing token split...")
@@ -1809,7 +1829,11 @@ class MainActivity : AppCompatActivity() {
                         splitPlan,
                         recipientProxyAddress,
                         signingService,
-                        secret
+                        secret,
+                        onTokenBurned = { burnedToken ->
+                            // Mark token as burned immediately so it disappears from UI
+                            viewModel.markTokenAsBurned(burnedToken)
+                        }
                     )
 
                     tokensToTransfer.addAll(splitResult.tokensForRecipient)
@@ -1819,70 +1843,103 @@ class MainActivity : AppCompatActivity() {
                         viewModel.addNewTokenFromSplit(newToken)
                     }
 
-                    // Remove burned tokens from wallet
-                    splitResult.burnedTokens.forEach { burnedToken ->
-                        viewModel.removeTokenAfterSplit(burnedToken)
-                    }
+                    // Burned tokens already marked via callback - no need to do anything here
                 } else {
-                    // No split needed, just transfer directly
-                    tokensToTransfer.addAll(splitPlan.tokensToTransferDirectly)
-                }
+                    // No split needed - but still need to CREATE TRANSFER TRANSACTIONS for these tokens!
+                    // They haven't been transferred on-chain yet
+                    progressDialog.setMessage("Creating transfer transactions...")
 
-                // Step 6: Send tokens via Nostr
-                progressDialog.setMessage("Sending tokens to recipient...")
+                    for (tokenToTransfer in splitPlan.tokensToTransferDirectly) {
+                        val salt = ByteArray(32)
+                        java.security.SecureRandom().nextBytes(salt)
 
-                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
-                if (nostrService == null) {
-                    progressDialog.dismiss()
-                    Toast.makeText(this@MainActivity, "Nostr service not available", Toast.LENGTH_LONG).show()
-                    return@launch
-                }
-
-                if (!nostrService.isRunning()) {
-                    nostrService.start()
-                    kotlinx.coroutines.delay(2000)
-                }
-
-                val recipientPubkey = nostrService.queryPubkeyByNametag(recipientNametag)
-                if (recipientPubkey == null) {
-                    progressDialog.dismiss()
-                    Toast.makeText(this@MainActivity, "Recipient not found", Toast.LENGTH_LONG).show()
-                    return@launch
-                }
-
-                // Send each token via Nostr
-                // Split tokens are already minted with correct recipient addresses - no need to transfer again!
-                var successCount = 0
-                for (tokenToSend in tokensToTransfer) {
-                    try {
-                        Log.d("MainActivity", "Sending split token ${tokenToSend.id.toHexString().take(8)}... via Nostr")
-
-                        // Serialize token and send via Nostr (no on-chain transfer needed - already minted for recipient)
-                        val tokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(tokenToSend)
-
-                        val result = nostrService.sendTokenTransfer(
-                            recipientNametag = recipientNametag,
-                            tokenJson = tokenJson,
-                            amount = tokenToSend.getCoins().map { coinData ->
-                                coinData.coins.values.firstOrNull()?.toLong()
-                            }.orElse(null) ?: targetAmount.toLong(),
-                            symbol = asset.symbol
-                        )
-
-                        if (result.isSuccess) {
-                            successCount++
-                            Log.d("MainActivity", "Token sent successfully via Nostr")
-                        } else {
-                            Log.e("MainActivity", "Failed to send via Nostr: ${result.exceptionOrNull()?.message}")
+                        val transferCommitment = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            org.unicitylabs.sdk.transaction.TransferCommitment.create(
+                                tokenToTransfer,
+                                recipientProxyAddress,
+                                salt,
+                                null,
+                                null,
+                                signingService
+                            )
                         }
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Failed to send token", e)
+
+                        val client = org.unicitylabs.wallet.di.ServiceProvider.stateTransitionClient
+                        val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            client.submitCommitment(transferCommitment).get()
+                        }
+
+                        if (response.status == org.unicitylabs.sdk.api.SubmitCommitmentStatus.SUCCESS) {
+                            val inclusionProof = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val trustBase = org.unicitylabs.wallet.di.ServiceProvider.getRootTrustBase()
+                                org.unicitylabs.sdk.util.InclusionProofUtils.waitInclusionProof(
+                                    client,
+                                    trustBase,
+                                    transferCommitment
+                                ).get(30, java.util.concurrent.TimeUnit.SECONDS)
+                            }
+
+                            val transferTransaction = transferCommitment.toTransaction(inclusionProof)
+
+                            // Create transfer package (like old sendTokenViaNostr)
+                            val sourceTokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(tokenToTransfer)
+                            val transferTxJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(transferTransaction)
+
+                            val payload = mapOf(
+                                "sourceToken" to sourceTokenJson,
+                                "transferTx" to transferTxJson
+                            )
+                            val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
+                            val transferPackage = "token_transfer:$payloadJson"
+
+                            // Send via sendDirectMessage (not sendTokenTransfer) for proper format
+                            val sent = nostrService.sendDirectMessage(recipientPubkey!!, transferPackage)
+
+                            if (sent) {
+                                successCount++
+                                // Remove sent token from wallet
+                                viewModel.removeTokenAfterTransfer(tokenToTransfer)
+                            }
+                        } else {
+                            Log.e("MainActivity", "Failed to transfer token: ${response.status}")
+                        }
+                    }
+                }
+
+                // Step 6: Send SPLIT tokens via Nostr (if any)
+                // Regular tokens already sent in the else block above
+                if (splitPlan.requiresSplit && tokensToTransfer.isNotEmpty()) {
+                    progressDialog.setMessage("Sending split tokens to recipient...")
+
+                    val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                    if (nostrService != null && nostrService.isRunning()) {
+                        for (tokenToSend in tokensToTransfer) {
+                            try {
+                                Log.d("MainActivity", "Sending split token ${tokenToSend.id.toHexString().take(8)}... via Nostr")
+
+                                val tokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(tokenToSend)
+
+                                val result = nostrService.sendTokenTransfer(
+                                    recipientNametag = recipientNametag,
+                                    tokenJson = tokenJson,
+                                    amount = null, // Split tokens - amount for display only
+                                    symbol = asset.symbol
+                                )
+
+                                if (!result.isSuccess) {
+                                    Log.e("MainActivity", "Failed to send split token via Nostr")
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "Failed to send split token", e)
+                            }
+                        }
                     }
                 }
 
                 progressDialog.dismiss()
 
-                if (successCount == tokensToTransfer.size) {
+                val totalSent = if (splitPlan.requiresSplit) tokensToTransfer.size else successCount
+                if (totalSent > 0) {
                     vibrateSuccess()
                     val formattedAmount = targetAmount.toDouble() / Math.pow(10.0, asset.decimals.toDouble())
                     showSuccessDialog("Successfully sent $formattedAmount ${asset.symbol} to ${recipient.name}")

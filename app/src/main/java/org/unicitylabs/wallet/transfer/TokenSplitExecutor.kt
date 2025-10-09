@@ -48,13 +48,15 @@ class TokenSplitExecutor(
      * @param recipientAddress Address of the recipient (can be ProxyAddress with nametag)
      * @param signingService Signing service for the sender's wallet
      * @param secret The wallet secret (needed for masked predicates)
+     * @param onTokenBurned Callback invoked immediately after token is burned (for UI updates)
      * @return Result containing the new tokens created from the split
      */
     suspend fun executeSplitPlan(
         plan: TokenSplitCalculator.SplitPlan,
         recipientAddress: Address,
         signingService: SigningService,
-        secret: ByteArray
+        secret: ByteArray,
+        onTokenBurned: ((Token<*>) -> Unit)? = null
     ): SplitExecutionResult {
         Log.d(TAG, "Executing split plan: ${plan.describe()}")
 
@@ -74,7 +76,8 @@ class TokenSplitExecutor(
                 coinId = plan.coinId,
                 recipientAddress = recipientAddress,
                 signingService = signingService,
-                secret = secret
+                secret = secret,
+                onTokenBurned = onTokenBurned
             )
 
             tokensForRecipient.add(splitResult.tokenForRecipient)
@@ -99,7 +102,8 @@ class TokenSplitExecutor(
         coinId: CoinId,
         recipientAddress: Address,
         signingService: SigningService,
-        secret: ByteArray
+        secret: ByteArray,
+        onTokenBurned: ((Token<*>) -> Unit)?
     ): SplitTokenResult {
         Log.d(TAG, "Splitting token ${tokenToSplit.id.toHexString().take(8)}...")
         Log.d(TAG, "Split amounts: $splitAmount (recipient), $remainderAmount (sender)")
@@ -173,6 +177,10 @@ class TokenSplitExecutor(
         } else {
             Log.d(TAG, "Token burned successfully")
         }
+
+        // Mark token as burned immediately (before minting) for UI safety
+        onTokenBurned?.invoke(tokenToSplit)
+        Log.d(TAG, "Token marked as burned in wallet")
 
         // Wait for inclusion proof (works even if already burned)
         val burnInclusionProof = InclusionProofUtils.waitInclusionProof(
@@ -278,7 +286,11 @@ class TokenSplitExecutor(
         // Explicitly verify the token before returning
         val verifyResult = token.verify(trustBase)
         if (!verifyResult.isSuccessful) {
-            throw Exception("Split token verification failed for $tokenType")
+            Log.e(TAG, "===== Split token verification FAILED for $tokenType =====")
+            Log.e(TAG, "Full verification result: ${verifyResult.toString()}")
+            Log.e(TAG, "TokenId: ${mintInfo.tokenId.toHexString()}")
+            Log.e(TAG, "Commitment data: tokenId=${mintInfo.commitment.transactionData.tokenId}, salt=${mintInfo.commitment.transactionData.salt.joinToString("") { "%02x".format(it) }}")
+            throw Exception("Split token verification failed for $tokenType. Check logs for details: ${verifyResult.toString()}")
         }
 
         Log.d(TAG, "Split token created and verified: ${mintInfo.tokenId.toHexString().take(8)}... ($tokenType)")
