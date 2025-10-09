@@ -166,13 +166,33 @@ public class UnicityTokenRegistry {
 
     /**
      * Get coin definition by name (e.g., "solana", "bitcoin")
+     * Only searches FUNGIBLE assets (excludes non-fungible token types)
+     * If not found in cache, refreshes from online registry
      */
-    public CoinDefinition getCoinByName(String name) {
+    public CoinDefinition getCoinByName(String name) throws IOException {
+        // First check cache - ONLY fungible assets
         for (CoinDefinition coin : coinsById.values()) {
-            if (coin.name != null && coin.name.equalsIgnoreCase(name)) {
+            if ("fungible".equals(coin.assetKind) &&
+                coin.name != null &&
+                coin.name.equalsIgnoreCase(name)) {
                 return coin;
             }
         }
+
+        // Not found in cache - refresh and try again
+        System.out.println("⚠️  Fungible coin '" + name + "' not found in cache, refreshing from online registry...");
+        instance = new UnicityTokenRegistry(registryUrl);
+
+        // Search again after refresh - ONLY fungible assets
+        for (CoinDefinition coin : instance.coinsById.values()) {
+            if ("fungible".equals(coin.assetKind) &&
+                coin.name != null &&
+                coin.name.equalsIgnoreCase(name)) {
+                System.out.println("✅ Found fungible coin '" + name + "' after refresh");
+                return coin;
+            }
+        }
+
         return null;
     }
 

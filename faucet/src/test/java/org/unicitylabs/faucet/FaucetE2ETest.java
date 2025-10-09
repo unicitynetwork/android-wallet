@@ -11,6 +11,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.*;
@@ -126,7 +127,7 @@ public class FaucetE2ETest {
         var token = tokenMinter.mintToken(
             TOKEN_TYPE_HEX,  // token type from config
             COIN_ID_HEX,     // coin ID from config
-            1000L            // amount
+            BigInteger.valueOf(1000L)  // amount
         ).join();
 
         assertNotNull("Token should be minted", token);

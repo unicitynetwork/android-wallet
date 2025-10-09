@@ -46,13 +46,15 @@ public class TokenMinter {
         return trustBase;
     }
 
+    public StateTransitionClient getClient() {
+        return client;
+    }
+
     public TokenMinter(String aggregatorUrl, byte[] privateKey) throws Exception {
         this.random = new SecureRandom();
 
-        // Create signing service with nonce for masked secret
-        byte[] nonce = new byte[32];
-        random.nextBytes(nonce);
-        this.signingService = SigningService.createFromMaskedSecret(privateKey, nonce);
+        // Create signing service from secret directly (no masking for testing)
+        this.signingService = SigningService.createFromSecret(privateKey);
 
         // Load trust base from testnet config
         try {
@@ -77,11 +79,11 @@ public class TokenMinter {
      *
      * @param tokenTypeHex Token type hex string (32 bytes)
      * @param coinIdHex Coin ID hex string (32 bytes)
-     * @param amount Token amount
+     * @param amount Token amount (supports arbitrary precision via BigInteger)
      * @return Minted token
      */
     public CompletableFuture<Token<MintTransactionData<MintTransactionReason>>> mintToken(
-        String tokenTypeHex, String coinIdHex, long amount
+        String tokenTypeHex, String coinIdHex, java.math.BigInteger amount
     ) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -103,7 +105,7 @@ public class TokenMinter {
                 byte[] coinIdData = hexStringToByteArray(coinIdHex);
 
                 Map<CoinId, BigInteger> coins = new HashMap<>();
-                coins.put(new CoinId(coinIdData), BigInteger.valueOf(amount));
+                coins.put(new CoinId(coinIdData), amount); // amount is already BigInteger
                 TokenCoinData coinData = new TokenCoinData(coins);
 
                 // Generate random nonce for masked predicate

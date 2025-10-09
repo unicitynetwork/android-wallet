@@ -106,6 +106,15 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("   Decimals: " + coinDef.decimals);
         System.out.println();
 
+        // Validate coin ID is different from token type
+        if (coinDef.id.equals(tokenTypeHex)) {
+            System.err.println("\n❌ Invalid registry data: Coin ID equals Token Type");
+            System.err.println("   This indicates the registry entry is incorrectly configured.");
+            System.err.println("   Coin '" + coinName + "' should have a unique coin ID, not the token type ID.");
+            System.exit(1);
+            return 1;
+        }
+
         // Determine user-friendly amount
         double userAmount = (amount != null) ? amount : config.defaultAmount;
         int decimals = coinDef.decimals != null ? coinDef.decimals : 8;
@@ -114,10 +123,13 @@ public class FaucetCLI implements Callable<Integer> {
         // This avoids floating point errors (e.g., 0.0003 * 10^8 = 30000, not 29999)
         java.math.BigDecimal userAmountDecimal = java.math.BigDecimal.valueOf(userAmount);
         java.math.BigDecimal multiplier = java.math.BigDecimal.TEN.pow(decimals);
-        long tokenAmount = userAmountDecimal.multiply(multiplier).longValue();
+        java.math.BigDecimal tokenAmountBD = userAmountDecimal.multiply(multiplier);
+
+        // Convert to BigInteger (supports arbitrary precision)
+        java.math.BigInteger tokenAmount = tokenAmountBD.toBigInteger();
 
         // Validate amount is not zero or negative
-        if (tokenAmount <= 0) {
+        if (tokenAmount.compareTo(java.math.BigInteger.ZERO) <= 0) {
             System.err.println("\n❌ Invalid amount: " + userAmount + " " + coinDef.symbol);
             System.err.println("   After applying " + decimals + " decimals, the amount becomes " + tokenAmount);
             System.err.println("   Minimum amount for " + coinDef.symbol + ": " +
