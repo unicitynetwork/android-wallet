@@ -1,6 +1,7 @@
 package org.unicitylabs.faucet;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.unicitylabs.sdk.token.Token;
 import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.transaction.TransferTransactionData;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -441,5 +442,72 @@ public class FaucetE2ETest {
         };
 
         httpClient.newWebSocket(request, listener);
+    }
+
+    @Test
+    public void testTokenSplit() throws Exception {
+        System.out.println("\n╔══════════════════════════════════════════════╗");
+        System.out.println("║  Token Split E2E Test                        ║");
+        System.out.println("╚══════════════════════════════════════════════╝\n");
+
+        // Step 1: Mint Alice's nametag
+        System.out.println("Step 1: Minting nametag for test user...");
+        NametagMinter nametagMinter = new NametagMinter(AGGREGATOR_URL);
+        var nametagToken = nametagMinter.mintNametag(
+            aliceNametag,
+            alicePrivateKey,
+            aliceNostrPubKey
+        ).join();
+        assertNotNull("Nametag token should be minted", nametagToken);
+        System.out.println("✅ Nametag minted: " + aliceNametag);
+
+        // Step 2: Mint a token with 100 units
+        System.out.println("\nStep 2: Minting token with 100 units...");
+        TokenMinter tokenMinter = new TokenMinter(AGGREGATOR_URL, alicePrivateKey);
+        var originalToken = tokenMinter.mintToken(
+            TOKEN_TYPE_HEX,
+            COIN_ID_HEX,
+            BigInteger.valueOf(100L)
+        ).join();
+        assertNotNull("Token should be minted", originalToken);
+        System.out.println("✅ Token minted: 100 units");
+
+        // Step 3: Split the token (100 → 30 + 70)
+        System.out.println("\nStep 3: Splitting token (100 → 30 + 70)...");
+        TokenSplitter splitter = new TokenSplitter(
+            tokenMinter.getClient(),
+            tokenMinter.getTrustBase(),
+            alicePrivateKey
+        );
+
+        var splitResult = splitter.splitToken(
+            originalToken,
+            BigInteger.valueOf(30),
+            BigInteger.valueOf(70),
+            nametagToken
+        );
+
+        assertNotNull("Split result should not be null", splitResult);
+        assertEquals("Should have 2 split tokens", 2, splitResult.splitTokens.size());
+
+        // Verify amounts
+        BigInteger total = splitResult.splitTokens.stream()
+            .map(t -> t.getCoins().get().getCoins().values().iterator().next())
+            .reduce(BigInteger.ZERO, BigInteger::add);
+
+        assertEquals("Total should still be 100", BigInteger.valueOf(100), total);
+
+        System.out.println("✅ Split successful!");
+        System.out.println("   Token 1: " + splitResult.splitTokens.get(0).getCoins().get().getCoins().values().iterator().next() + " units");
+        System.out.println("   Token 2: " + splitResult.splitTokens.get(1).getCoins().get().getCoins().values().iterator().next() + " units");
+
+        // Verify both tokens are valid
+        for (int i = 0; i < splitResult.splitTokens.size(); i++) {
+            Token<?> token = splitResult.splitTokens.get(i);
+            var verifyResult = token.verify(tokenMinter.getTrustBase());
+            assertTrue("Token " + i + " should verify", verifyResult.isSuccessful());
+        }
+
+        System.out.println("✅ All split tokens verified successfully!");
     }
 }
