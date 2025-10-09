@@ -1923,26 +1923,24 @@ class MainActivity : AppCompatActivity() {
                             val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
                             val transferPackage = "token_transfer:$payloadJson"
 
-                            // Check size (relay limit is 256KB)
-                            val payloadSize = transferPackage.length
-                            Log.d("MainActivity", "Transfer payload size: ${payloadSize / 1024}KB")
-
-                            if (payloadSize > 250000) { // 250KB safety margin
-                                Log.w("MainActivity", "Token too large for Nostr (${payloadSize / 1024}KB)")
-                                Toast.makeText(this@MainActivity,
-                                    "Token too large for Nostr relay (${payloadSize / 1024}KB). Use NFC/Bluetooth instead.",
-                                    Toast.LENGTH_LONG).show()
-                                // Skip this token
-                                continue
-                            }
+                            Log.d("MainActivity", "Transfer payload size: ${transferPackage.length / 1024}KB")
 
                             // Send via sendDirectMessage (not sendTokenTransfer) for proper format
-                            val sent = nostrService.sendDirectMessage(recipientPubkey!!, transferPackage)
+                            val sent = try {
+                                nostrService.sendDirectMessage(recipientPubkey!!, transferPackage)
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "Failed to send token: ${e.message}", e)
+                                false
+                            }
 
                             if (sent) {
                                 successCount++
-                                // Remove sent token from wallet
+                                // Only remove from wallet if send succeeded
+                                // Note: This doesn't guarantee relay accepted it (size limits, etc)
+                                // TODO: Wait for relay OK response before removing
                                 viewModel.removeTokenAfterTransfer(tokenToTransfer)
+                            } else {
+                                Log.w("MainActivity", "Token NOT removed from wallet - send failed")
                             }
                         } else {
                             Log.e("MainActivity", "Failed to transfer token: ${response.status}")
