@@ -1892,6 +1892,19 @@ class MainActivity : AppCompatActivity() {
                             val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
                             val transferPackage = "token_transfer:$payloadJson"
 
+                            // Check size (relay limit is 256KB)
+                            val payloadSize = transferPackage.length
+                            Log.d("MainActivity", "Transfer payload size: ${payloadSize / 1024}KB")
+
+                            if (payloadSize > 250000) { // 250KB safety margin
+                                Log.w("MainActivity", "Token too large for Nostr (${payloadSize / 1024}KB)")
+                                Toast.makeText(this@MainActivity,
+                                    "Token too large for Nostr relay (${payloadSize / 1024}KB). Use NFC/Bluetooth instead.",
+                                    Toast.LENGTH_LONG).show()
+                                // Skip this token
+                                continue
+                            }
+
                             // Send via sendDirectMessage (not sendTokenTransfer) for proper format
                             val sent = nostrService.sendDirectMessage(recipientPubkey!!, transferPackage)
 
