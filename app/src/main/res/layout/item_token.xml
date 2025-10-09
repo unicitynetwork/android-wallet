@@ -74,7 +74,8 @@
                         android:layout_height="wrap_content"
                         android:text=" • "
                         android:textSize="13sp"
-                        android:textColor="#CCCCCC" />
+                        android:textColor="#CCCCCC"
+                        android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/tvTokenPrice"
@@ -84,7 +85,8 @@
                         android:textSize="13sp"
                         android:textColor="#CCCCCC"
                         android:maxLines="1"
-                        android:ellipsize="end" />
+                        android:ellipsize="end"
+                        android:visibility="gone" />
 
                 </LinearLayout>
 
@@ -123,7 +125,8 @@
                     android:layout_marginTop="4dp"
                     android:text="+3.32%"
                     android:textSize="13sp"
-                    android:textColor="@color/green_positive" />
+                    android:textColor="@color/green_positive"
+                    android:visibility="gone" />
 
             </LinearLayout>
 
