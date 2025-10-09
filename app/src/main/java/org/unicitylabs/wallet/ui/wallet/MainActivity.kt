@@ -1529,16 +1529,19 @@ class MainActivity : AppCompatActivity() {
                 val amountStr = etAmount.text.toString()
                 if (amountStr.isNotEmpty()) {
                     try {
-                        val amount = amountStr.toDouble()
-                        val amountInSmallestUnit = (amount * Math.pow(10.0, asset.decimals.toDouble())).toLong()
+                        // Use BigDecimal to avoid overflow with high-decimal tokens
+                        val amountDecimal = java.math.BigDecimal(amountStr)
+                        val multiplier = java.math.BigDecimal.TEN.pow(asset.decimals)
+                        val amountInSmallestUnitBD = amountDecimal.multiply(multiplier)
+                        val amountInSmallestUnit = amountInSmallestUnitBD.toBigInteger()
 
-                        if (amountInSmallestUnit <= 0L) {
+                        if (amountInSmallestUnit <= java.math.BigInteger.ZERO) {
                             Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
                             return@setPositiveButton
                         }
 
                         val totalBalanceBigInt = asset.getAmountAsBigInteger()
-                        if (java.math.BigInteger.valueOf(amountInSmallestUnit) > totalBalanceBigInt) {
+                        if (amountInSmallestUnit > totalBalanceBigInt) {
                             Toast.makeText(this, "Insufficient balance", Toast.LENGTH_SHORT).show()
                             return@setPositiveButton
                         }
@@ -1546,7 +1549,7 @@ class MainActivity : AppCompatActivity() {
                         // Proceed with split-aware transfer
                         sendTokensWithSplitting(
                             tokensForCoin = tokensForCoin,
-                            targetAmount = java.math.BigInteger.valueOf(amountInSmallestUnit),
+                            targetAmount = amountInSmallestUnit,
                             asset = asset,
                             recipient = selectedContact
                         )
@@ -1566,8 +1569,10 @@ class MainActivity : AppCompatActivity() {
                 val amountStr = s?.toString() ?: ""
                 if (amountStr.isNotEmpty()) {
                     try {
-                        val amount = amountStr.toDouble()
-                        val amountInSmallestUnit = (amount * Math.pow(10.0, asset.decimals.toDouble())).toLong()
+                        // Use BigDecimal to avoid overflow
+                        val amountDecimal = java.math.BigDecimal(amountStr)
+                        val multiplier = java.math.BigDecimal.TEN.pow(asset.decimals)
+                        val amountInSmallestUnit = amountDecimal.multiply(multiplier).toBigInteger()
 
                         // Preview split plan
                         val calculator = org.unicitylabs.wallet.transfer.TokenSplitCalculator()
@@ -1587,7 +1592,7 @@ class MainActivity : AppCompatActivity() {
 
                         val plan = calculator.calculateOptimalSplit(
                             sdkTokens,
-                            java.math.BigInteger.valueOf(amountInSmallestUnit),
+                            amountInSmallestUnit,
                             coinId
                         )
 
