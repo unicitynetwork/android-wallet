@@ -38,19 +38,59 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
 
     val isLoading: StateFlow<Boolean> = repository.isLoading
 
-    // Outgoing transaction history (transferred tokens)
+    // Unified transaction history
+    val transactionHistory: StateFlow<List<org.unicitylabs.wallet.model.TransactionEvent>> = repository.tokens
+        .map { tokenList ->
+            Log.d("WalletViewModel", "Building transaction history from ${tokenList.size} tokens")
+            val events = mutableListOf<org.unicitylabs.wallet.model.TransactionEvent>()
+
+            tokenList.forEach { token ->
+                Log.d("WalletViewModel", "Token: ${token.name}, status=${token.status}")
+
+                // Skip burned tokens (never received by user)
+                if (token.status == org.unicitylabs.wallet.data.model.TokenStatus.BURNED) {
+                    Log.d("WalletViewModel", "Skipping BURNED token")
+                    return@forEach
+                }
+
+                // Every token was received at some point
+                events.add(
+                    org.unicitylabs.wallet.model.TransactionEvent(
+                        token = token,
+                        type = org.unicitylabs.wallet.model.TransactionType.RECEIVED
+                    )
+                )
+                Log.d("WalletViewModel", "Added RECEIVED event")
+
+                // If transferred, also add sent event
+                if (token.status == org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED) {
+                    events.add(
+                        org.unicitylabs.wallet.model.TransactionEvent(
+                            token = token,
+                            type = org.unicitylabs.wallet.model.TransactionType.SENT
+                        )
+                    )
+                    Log.d("WalletViewModel", "Added SENT event")
+                }
+            }
+
+            Log.d("WalletViewModel", "Total events created: ${events.size}")
+            // Sort by timestamp (most recent first)
+            events.sortedByDescending { it.timestamp }
+        }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
+
+    // Legacy: Keep for compatibility
     val outgoingHistory: StateFlow<List<Token>> = repository.tokens
         .map { tokenList ->
             tokenList.filter { it.status == org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED }
         }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Incoming transaction history (all received tokens, sorted by timestamp)
     val incomingHistory: StateFlow<List<Token>> = repository.tokens
         .map { tokenList ->
-            // All tokens that are not transferred (incoming), sorted by timestamp
             tokenList.filter {
-                it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED
+                it.status != org.unicitylabs.wallet.data.model.TokenStatus.BURNED
             }.sortedByDescending { it.timestamp }
         }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
@@ -812,25 +852,35 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     fun removeTokenAfterTransfer(sdkToken: org.unicitylabs.sdk.token.Token<*>) {
         viewModelScope.launch {
             try {
-                // Find and mark the token as transferred
-                val allTokens = tokens.value
-                val tokenToRemove = allTokens.find { walletToken ->
+                // Find and mark the token as TRANSFERRED (for history)
+                Log.d("WalletViewModel", "removeTokenAfterTransfer called for SDK token: ${sdkToken.id.bytes.joinToString("") { "%02x".format(it) }.take(16)}")
+                val allTokens = repository.tokens.value
+                Log.d("WalletViewModel", "Searching in ${allTokens.size} tokens")
+
+                val tokenToTransfer = allTokens.find { walletToken ->
                     try {
                         walletToken.jsonData?.let { jsonData ->
                             val walletSdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
                                 jsonData,
                                 org.unicitylabs.sdk.token.Token::class.java
                             )
-                            walletSdkToken.id == sdkToken.id
+                            val matches = walletSdkToken.id == sdkToken.id
+                            if (matches) {
+                                Log.d("WalletViewModel", "Found matching token: ${walletToken.id}")
+                            }
+                            matches
                         } ?: false
                     } catch (e: Exception) {
                         false
                     }
                 }
 
-                tokenToRemove?.let { token ->
-                    repository.removeToken(token.id)
-                    Log.d("WalletViewModel", "Removed token after transfer: ${token.id}")
+                if (tokenToTransfer != null) {
+                    val transferredToken = tokenToTransfer.copy(status = org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED)
+                    repository.updateToken(transferredToken)
+                    Log.d("WalletViewModel", "✅ Marked token as TRANSFERRED: ${tokenToTransfer.id}, status=${transferredToken.status}")
+                } else {
+                    Log.e("WalletViewModel", "❌ Token not found in wallet for transfer marking!")
                 }
             } catch (e: Exception) {
                 Log.e("WalletViewModel", "Error marking token as transferred", e)

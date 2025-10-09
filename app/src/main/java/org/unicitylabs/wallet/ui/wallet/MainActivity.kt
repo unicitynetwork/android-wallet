@@ -1644,27 +1644,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTransactionHistory() {
-        val incoming = viewModel.incomingHistory.value
-        val outgoing = viewModel.outgoingHistory.value
+        val transactionEvents = viewModel.transactionHistory.value
 
-        if (incoming.isEmpty() && outgoing.isEmpty()) {
+        Log.d("MainActivity", "Transaction History: ${transactionEvents.size} events")
+        transactionEvents.forEach { event ->
+            Log.d("MainActivity", "${event.type}: ${event.token.name} ${event.token.symbol}")
+        }
+
+        if (transactionEvents.isEmpty()) {
             Toast.makeText(this, "No transactions yet", Toast.LENGTH_SHORT).show()
             return
         }
-
-        // Combine and sort by timestamp (most recent first)
-        val allTransactions = (incoming + outgoing).sortedByDescending { it.timestamp }
 
         val recyclerView = androidx.recyclerview.widget.RecyclerView(this).apply {
             layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MainActivity)
             setPadding(0, 16, 0, 16)
         }
 
-        val adapter = TokenHistoryAdapter(allTransactions, viewModel.aggregatedAssets.value, isSent = false)
+        val adapter = TokenHistoryAdapter(transactionEvents, viewModel.aggregatedAssets.value)
         recyclerView.adapter = adapter
 
         AlertDialog.Builder(this)
-            .setTitle("Transaction History (${allTransactions.size})")
+            .setTitle("Transaction History (${transactionEvents.size})")
             .setView(recyclerView)
             .setPositiveButton("Close", null)
             .show()
@@ -1682,7 +1683,10 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 16, 0, 16)
         }
 
-        val adapter = TokenHistoryAdapter(incoming, viewModel.aggregatedAssets.value)
+        val incomingEvents = incoming.map {
+            org.unicitylabs.wallet.model.TransactionEvent(it, org.unicitylabs.wallet.model.TransactionType.RECEIVED)
+        }
+        val adapter = TokenHistoryAdapter(incomingEvents, viewModel.aggregatedAssets.value)
         recyclerView.adapter = adapter
 
         AlertDialog.Builder(this)
@@ -1704,7 +1708,10 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 16, 0, 16)
         }
 
-        val adapter = TokenHistoryAdapter(outgoing, viewModel.aggregatedAssets.value, isSent = true)
+        val outgoingEvents = outgoing.map {
+            org.unicitylabs.wallet.model.TransactionEvent(it, org.unicitylabs.wallet.model.TransactionType.SENT)
+        }
+        val adapter = TokenHistoryAdapter(outgoingEvents, viewModel.aggregatedAssets.value)
         recyclerView.adapter = adapter
 
         AlertDialog.Builder(this)
