@@ -1697,14 +1697,15 @@ class MainActivity : AppCompatActivity() {
         recipient: Contact
     ) {
         lifecycleScope.launch {
+            // Show progress dialog (outside try so it's always accessible for dismiss)
+            val progressDialog = android.app.ProgressDialog(this@MainActivity).apply {
+                setTitle("Processing Transfer")
+                setMessage("Calculating optimal transfer strategy...")
+                setCancelable(false)
+                show()
+            }
+
             try {
-                // Show progress dialog
-                val progressDialog = android.app.ProgressDialog(this@MainActivity).apply {
-                    setTitle("Processing Transfer")
-                    setMessage("Calculating optimal transfer strategy...")
-                    setCancelable(false)
-                    show()
-                }
 
                 // Step 1: Calculate optimal split plan
                 val calculator = org.unicitylabs.wallet.transfer.TokenSplitCalculator()
@@ -1892,6 +1893,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
             } catch (e: Exception) {
+                progressDialog.dismiss()
                 Log.e("MainActivity", "Error in sendTokensWithSplitting", e)
                 Toast.makeText(this@MainActivity, "Transfer error: ${e.message}", Toast.LENGTH_LONG).show()
             }
