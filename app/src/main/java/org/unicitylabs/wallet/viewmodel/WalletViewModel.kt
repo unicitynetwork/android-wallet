@@ -106,7 +106,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                         coinId = coinId,
                         symbol = symbol,
                         name = coinDef?.name ?: tokensForCoin.firstOrNull()?.name,
-                        totalAmount = tokensForCoin.sumOf { it.amount ?: 0L },
+                        totalAmount = tokensForCoin.mapNotNull { it.getAmountAsBigInteger() }
+                            .fold(java.math.BigInteger.ZERO) { acc, amt -> acc + amt }
+                            .toString(), // Keep as String to support arbitrary precision
                         decimals = decimals,
                         tokenCount = tokensForCoin.size,
                         iconUrl = coinDef?.getIconUrl() ?: tokensForCoin.first().iconUrl,
@@ -138,7 +140,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 .mapNotNull { (coinId, tokensForCoin) ->
                     val coinDef = registry.getCoinDefinition(coinId)
                     if (coinDef != null) {
-                        val totalBalance = tokensForCoin.sumOf { it.amount ?: 0L }.toDouble()
+                        val totalBalance = tokensForCoin.mapNotNull { it.getAmountAsBigInteger() }
+                            .fold(java.math.BigInteger.ZERO) { acc, amt -> acc + amt }
+                            .toDouble()
                         CryptoCurrency(
                             id = coinId,
                             symbol = coinDef.symbol ?: coinId.take(4),
@@ -711,7 +715,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
 
                 val coinIdBytes = firstCoin.key.bytes
                 val coinIdHex = coinIdBytes.joinToString("") { "%02x".format(it) }
-                val amount = firstCoin.value.toLong()
+                val amount = firstCoin.value.toString() // BigInteger as String
 
                 // Use actual SDK token ID (not random nonsense)
                 val tokenIdHex = sdkToken.id.bytes.joinToString("") { "%02x".format(it) }

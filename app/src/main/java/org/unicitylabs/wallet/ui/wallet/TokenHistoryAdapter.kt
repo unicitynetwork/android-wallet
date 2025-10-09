@@ -42,10 +42,11 @@ class TokenHistoryAdapter(
             // Format amount with proper decimals
             val asset = token.coinId?.let { aggregatedMap[it] }
             val amount = if (asset != null) {
-                val value = (token.amount ?: 0).toDouble() / Math.pow(10.0, asset.decimals.toDouble())
+                val bigIntAmount = token.getAmountAsBigInteger() ?: java.math.BigInteger.ZERO
+                val value = bigIntAmount.toDouble() / Math.pow(10.0, asset.decimals.toDouble())
                 String.format("%.${Math.min(asset.decimals, 8)}f", value).trimEnd('0').trimEnd('.')
             } else {
-                (token.amount ?: 0).toString()
+                token.amount ?: "0"
             }
 
             val action = if (isSent) "Sent" else "Received"

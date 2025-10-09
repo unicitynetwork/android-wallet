@@ -25,7 +25,7 @@ data class Token(
     val transactionId: String? = null,
     val isOfflineTransfer: Boolean = false,
     val pendingOfflineData: String? = null,
-    val amount: Long? = null,           // Amount of fungible tokens (e.g., 1000 SOL)
+    val amount: String? = null,         // Amount as string (supports BigInteger > Long.MAX_VALUE)
     val coinId: String? = null,         // Hex string coin ID from registry
     val symbol: String? = null,         // e.g., "SOL"
     val iconUrl: String? = null         // Icon URL from registry
@@ -35,6 +35,17 @@ data class Token(
             sizeBytes < 1024 -> "${sizeBytes}B"
             sizeBytes < 1024 * 1024 -> "${sizeBytes / 1024}KB"
             else -> "${sizeBytes / (1024 * 1024)}MB"
+        }
+    }
+
+    /**
+     * Get amount as BigInteger (supports arbitrary precision)
+     */
+    fun getAmountAsBigInteger(): java.math.BigInteger? {
+        return try {
+            amount?.let { java.math.BigInteger(it) }
+        } catch (e: Exception) {
+            null
         }
     }
 }

@@ -1515,8 +1515,7 @@ class MainActivity : AppCompatActivity() {
         val tvSplitInfo = dialogView.findViewById<TextView>(R.id.tvSplitInfo)
 
         // Show available balance
-        val totalBalance = asset.totalAmount
-        val formattedBalance = totalBalance / Math.pow(10.0, asset.decimals.toDouble())
+        val formattedBalance = asset.getFormattedAmount()
         tvBalance.text = "Available: $formattedBalance ${asset.symbol}"
         tilAmount.hint = "Amount to send (${asset.symbol})"
 
@@ -1538,7 +1537,8 @@ class MainActivity : AppCompatActivity() {
                             return@setPositiveButton
                         }
 
-                        if (amountInSmallestUnit > totalBalance.toLong()) {
+                        val totalBalanceBigInt = asset.getAmountAsBigInteger()
+                        if (java.math.BigInteger.valueOf(amountInSmallestUnit) > totalBalanceBigInt) {
                             Toast.makeText(this, "Insufficient balance", Toast.LENGTH_SHORT).show()
                             return@setPositiveButton
                         }

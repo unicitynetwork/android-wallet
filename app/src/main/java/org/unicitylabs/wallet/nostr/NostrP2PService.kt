@@ -735,7 +735,7 @@ class NostrP2PService(
         }
     }
 
-    private fun showTokenReceivedNotification(amount: Long?, symbol: String) {
+    private fun showTokenReceivedNotification(amount: String?, symbol: String) {
         // TODO: Implement notification
         Log.i(TAG, "📬 New token received: $amount $symbol")
     }
@@ -965,7 +965,7 @@ class NostrP2PService(
 
             // Extract metadata from token for wallet display
             val registry = UnicityTokenRegistry.getInstance(context)
-            var amount: Long? = null
+            var amount: String? = null // BigInteger as String (arbitrary precision)
             var coinIdHex: String? = null
             var symbol: String? = null
             var iconUrl: String? = null
@@ -991,10 +991,16 @@ class NostrP2PService(
                         val firstCoin = coinsArray[0] as? List<*>
                         if (firstCoin != null && firstCoin.size >= 2) {
                             coinIdHex = firstCoin[0] as? String
+                            // Store amount as String to support BigInteger (arbitrary precision)
                             amount = when (val amountValue = firstCoin[1]) {
-                                is String -> amountValue.toLongOrNull()
-                                is Number -> amountValue.toLong()
-                                else -> null
+                                is java.math.BigInteger -> amountValue.toString()
+                                is java.math.BigDecimal -> amountValue.toBigInteger().toString()
+                                is String -> amountValue
+                                is Number -> amountValue.toString()
+                                else -> {
+                                    Log.e(TAG, "Unknown amount type: ${amountValue?.javaClass}")
+                                    null
+                                }
                             }
 
                             Log.d(TAG, "Extracted: coinId=$coinIdHex, amount=$amount")
@@ -1027,7 +1033,7 @@ class NostrP2PService(
                 jsonData = tokenJson,
                 sizeBytes = tokenJson.length,
                 status = org.unicitylabs.wallet.data.model.TokenStatus.CONFIRMED,
-                amount = amount,
+                amount = amount, // Store as string to support BigInteger
                 coinId = coinIdHex,
                 symbol = symbol,
                 iconUrl = iconUrl

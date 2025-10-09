@@ -8,30 +8,40 @@ data class AggregatedAsset(
     val coinId: String,
     val symbol: String,
     val name: String?,
-    val totalAmount: Long, // Sum of all amounts for this coinId (in smallest units)
-    val decimals: Int,     // Number of decimal places from registry (e.g., 9 for SOL)
-    val tokenCount: Int,   // Number of individual tokens containing this coin
+    val totalAmount: String, // BigInteger as String (supports arbitrary precision)
+    val decimals: Int,       // Number of decimal places from registry (e.g., 9 for SOL)
+    val tokenCount: Int,     // Number of individual tokens containing this coin
     val iconUrl: String?,
     val priceUsd: Double = 0.0,  // Price per unit in USD
     val priceEur: Double = 0.0,  // Price per unit in EUR
     val change24h: Double = 0.0  // 24h price change percentage
 ) {
+    fun getAmountAsBigInteger(): java.math.BigInteger {
+        return try {
+            java.math.BigInteger(totalAmount)
+        } catch (e: Exception) {
+            java.math.BigInteger.ZERO
+        }
+    }
+
     fun getFormattedAmount(): String {
         // Convert from smallest units to human-readable amount using decimals
-        val divisor = Math.pow(10.0, decimals.toDouble())
-        val amountAsDecimal = totalAmount / divisor
+        val bigIntAmount = getAmountAsBigInteger()
+        val divisor = java.math.BigDecimal.TEN.pow(decimals)
+        val amountAsDecimal = java.math.BigDecimal(bigIntAmount).divide(divisor)
 
-        return if (amountAsDecimal % 1 == 0.0) {
-            amountAsDecimal.toInt().toString()
+        return if (amountAsDecimal.scale() == 0) {
+            amountAsDecimal.toPlainString()
         } else {
             // Show up to 'decimals' decimal places, trimming trailing zeros
-            String.format("%.${decimals}f", amountAsDecimal).trimEnd('0').trimEnd('.')
+            amountAsDecimal.stripTrailingZeros().toPlainString()
         }
     }
 
     fun getAmountAsDecimal(): Double {
+        val bigIntAmount = getAmountAsBigInteger()
         val divisor = Math.pow(10.0, decimals.toDouble())
-        return totalAmount / divisor
+        return bigIntAmount.toDouble() / divisor
     }
 
     fun getTotalFiatValue(currency: String): Double {
