@@ -2483,7 +2483,10 @@ class MainActivity : AppCompatActivity() {
             val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(this)
             val statusMessage = if (paymentRequest.isSpecific()) {
                 val asset = registry.getCoinById(paymentRequest.coinId!!)
-                "Scan to send ${paymentRequest.amount} ${asset?.symbol ?: "tokens"}"
+                val decimals = asset?.decimals ?: 0
+                val divisor = java.math.BigDecimal.TEN.pow(decimals)
+                val displayAmount = java.math.BigDecimal(paymentRequest.amount).divide(divisor).stripTrailingZeros().toPlainString()
+                "Scan to send $displayAmount ${asset?.symbol ?: "tokens"}"
             } else {
                 "Scan to send tokens to ${paymentRequest.nametag}@unicity"
             }
@@ -3857,11 +3860,12 @@ class MainActivity : AppCompatActivity() {
         val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(this)
 
         val message = if (paymentRequest.isSpecific()) {
-            // Specific amount requested
             val asset = registry.getCoinById(paymentRequest.coinId!!)
-            "Send ${paymentRequest.amount} ${asset?.symbol ?: "tokens"}\nto ${paymentRequest.nametag}@unicity?"
+            val decimals = asset?.decimals ?: 0
+            val divisor = java.math.BigDecimal.TEN.pow(decimals)
+            val displayAmount = java.math.BigDecimal(paymentRequest.amount).divide(divisor).stripTrailingZeros().toPlainString()
+            "Send $displayAmount ${asset?.symbol ?: "tokens"}\nto ${paymentRequest.nametag}@unicity?"
         } else {
-            // Open request - sender chooses amount
             "Send tokens to ${paymentRequest.nametag}@unicity?\n\nYou will choose the amount in the next step."
         }
 
