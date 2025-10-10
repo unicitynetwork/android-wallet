@@ -2312,6 +2312,22 @@ class MainActivity : AppCompatActivity() {
         val rvAssets = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvAssets)
         val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
 
+        // Update title for receive context
+        val titleView = dialogView.findViewById<TextView>(android.R.id.text1)
+        if (titleView == null) {
+            // Title is directly in the layout, find it by traversing
+            val rootLayout = dialogView as? android.view.ViewGroup
+            rootLayout?.let { root ->
+                for (i in 0 until root.childCount) {
+                    val child = root.getChildAt(i)
+                    if (child is TextView && child.text.toString().contains("Select Asset")) {
+                        child.text = "Select Asset to Request"
+                        break
+                    }
+                }
+            }
+        }
+
         // Load token registry
         val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(this)
         val assets = registry.getFungibleTokens() // Only show fungible tokens for requests

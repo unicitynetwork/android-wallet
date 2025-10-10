@@ -36,10 +36,22 @@ class TokenDefinitionAdapter(
         private val assetSymbol: TextView = itemView.findViewById(R.id.assetSymbol)
 
         fun bind(token: TokenDefinition) {
-            // Use a placeholder icon for now (can enhance with icon loading later)
-            assetIcon.setImageResource(R.drawable.ic_coin_placeholder)
+            // Load icon from URL using IconCacheManager
+            val iconUrl = token.getIconUrl()
+            if (iconUrl != null) {
+                val iconManager = org.unicitylabs.wallet.util.IconCacheManager.getInstance(itemView.context)
+                iconManager.loadIcon(
+                    url = iconUrl,
+                    imageView = assetIcon,
+                    placeholder = R.drawable.ic_coin_placeholder,
+                    error = R.drawable.ic_coin_placeholder
+                )
+            } else {
+                assetIcon.setImageResource(R.drawable.ic_coin_placeholder)
+            }
+
             assetName.text = token.name
-            assetSymbol.text = token.symbol ?: "·${token.id.take(4)}"
+            assetSymbol.text = token.symbol ?: token.id.take(4)
 
             itemView.setOnClickListener {
                 onTokenSelected(token)
