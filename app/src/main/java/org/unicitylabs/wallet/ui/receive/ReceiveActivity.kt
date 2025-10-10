@@ -1036,7 +1036,7 @@ class ReceiveActivity : AppCompatActivity() {
 
         // Generate QR code
         try {
-            val qrContent = paymentRequest.toJson()
+            val qrContent = paymentRequest.toUri()
             val qrBitmap = generateQRCode(qrContent)
             qrCodeImage.setImageBitmap(qrBitmap)
 

@@ -3770,36 +3770,20 @@ class MainActivity : AppCompatActivity() {
     private fun handleScannedQRCode(content: String) {
         Log.d("MainActivity", "Scanned QR: ${content.take(100)}...")
 
-        // Try to parse as URI format first (this is what we generate)
-        try {
-            if (content.startsWith("unicity://pay") || content.startsWith("nfcwallet://payment-request")) {
-                val paymentRequest = org.unicitylabs.wallet.model.PaymentRequest.fromUri(content)
-                if (paymentRequest != null) {
-                    Log.d("MainActivity", "Parsed as PaymentRequest URI: $paymentRequest")
-                    handlePaymentRequest(paymentRequest)
-                    return
-                }
-            }
-        } catch (e: Exception) {
-            Log.d("MainActivity", "Not a PaymentRequest URI")
-        }
-
-        // Legacy deep link handling
-        if (content.startsWith("nfcwallet://")) {
-            try {
-                val uri = Uri.parse(content)
-                when (uri.host) {
-                    "mint-request" -> {
-                        handleMintRequest(uri)
-                        return
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error parsing legacy deep link", e)
+        if (content.startsWith("unicity://pay")) {
+            val paymentRequest = org.unicitylabs.wallet.model.PaymentRequest.fromUri(content)
+            if (paymentRequest != null) {
+                handlePaymentRequest(paymentRequest)
+                return
             }
         }
 
-        Toast.makeText(this, "Not a valid payment request QR code", Toast.LENGTH_SHORT).show()
+        if (content.startsWith("nfcwallet://mint-request")) {
+            handleMintRequest(Uri.parse(content))
+            return
+        }
+
+        Toast.makeText(this, "Not a valid QR code", Toast.LENGTH_SHORT).show()
     }
 
     /**
