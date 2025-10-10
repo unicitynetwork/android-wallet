@@ -298,9 +298,9 @@
                     style="@style/Button.Unicity"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Send Token"
                     app:icon="@drawable/ic_send"
-                    app:iconGravity="textStart" />
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp" />
 
             </LinearLayout>
 

@@ -158,15 +158,12 @@
                 <!-- Send Button -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSendCrypto"
-                    style="@style/Widget.Material3.Button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    app:icon="@drawable/ic_send_plane"
+                    style="@style/Button.Unicity"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:icon="@drawable/ic_send"
                     app:iconGravity="textStart"
                     app:iconPadding="0dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:backgroundTint="#4169E1"
                     android:layout_marginStart="16dp"
                     android:layout_gravity="bottom" />
 

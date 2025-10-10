@@ -551,9 +551,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         tokenAdapter = TokenAdapter(
             onSendClick = { token ->
-                checkNfc {
-                    startHybridTokenTransfer(token)
-                }
+                showTokenSendMethodDialog(token)
             },
             onCancelClick = { token ->
                 cancelTokenTransfer(token)
@@ -1951,6 +1949,43 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "Transfer error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private fun showTokenSendMethodDialog(token: Token) {
+        AlertDialog.Builder(this)
+            .setTitle("Send ${token.symbol ?: "Token"}")
+            .setMessage("Choose transfer method:")
+            .setPositiveButton("NFC Tap") { _, _ ->
+                checkNfc {
+                    startHybridTokenTransfer(token)
+                }
+            }
+            .setNegativeButton("Choose Contact") { _, _ ->
+                // Show contact list, then send whole token
+                currentContactDialog = ContactListDialog(
+                    context = this,
+                    onContactSelected = { selectedContact ->
+                        if (selectedContact.hasUnicityTag()) {
+                            // Get asset info for this token
+                            val asset = viewModel.aggregatedAssets.value.find { it.coinId == token.coinId }
+                            if (asset != null) {
+                                sendTokenViaNostr(token, selectedContact, asset)
+                            } else {
+                                Toast.makeText(this, "Asset not found", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            AlertDialog.Builder(this)
+                                .setTitle("Cannot Send")
+                                .setMessage("This contact doesn't have a @unicity nametag. Transfers require @unicity nametags.")
+                                .setPositiveButton("OK", null)
+                                .show()
+                        }
+                    }
+                )
+                currentContactDialog?.show()
+            }
+            .setNeutralButton("Cancel", null)
+            .show()
     }
 
     private fun sendTokenViaNostr(token: Token, recipient: Contact, asset: org.unicitylabs.wallet.model.AggregatedAsset) {
