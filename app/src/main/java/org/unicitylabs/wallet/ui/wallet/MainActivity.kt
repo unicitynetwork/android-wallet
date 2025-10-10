@@ -1494,8 +1494,25 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showAssetSendDialog(asset: org.unicitylabs.wallet.model.AggregatedAsset) {
-        // For now, just show info - implement token selection later
-        Toast.makeText(this, "Send ${asset.symbol}: Select individual tokens from Tokens tab", Toast.LENGTH_LONG).show()
+        // Show contact selection dialog, then amount dialog (skip asset selection)
+        currentContactDialog = ContactListDialog(
+            context = this,
+            onContactSelected = { selectedContact ->
+                // Check if contact has @unicity tag
+                if (selectedContact.hasUnicityTag()) {
+                    // Go directly to amount dialog (asset already selected)
+                    showAssetSendAmountDialog(asset, selectedContact)
+                } else {
+                    // Show warning for non-@unicity contacts
+                    AlertDialog.Builder(this)
+                        .setTitle("Cannot Send")
+                        .setMessage("This contact doesn't have a @unicity nametag. Transfers require @unicity nametags.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        )
+        currentContactDialog?.show()
     }
 
     private fun showAssetSendAmountDialog(asset: org.unicitylabs.wallet.model.AggregatedAsset, selectedContact: Contact) {
