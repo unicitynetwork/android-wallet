@@ -1512,15 +1512,11 @@ class MainActivity : AppCompatActivity() {
         val etAmount = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etAmount)
         val tilAmount = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.tilAmount)
         val tvBalance = dialogView.findViewById<TextView>(R.id.tvBalance)
-        val tvSplitInfo = dialogView.findViewById<TextView>(R.id.tvSplitInfo)
 
         // Show available balance
         val formattedBalance = asset.getFormattedAmount()
         tvBalance.text = "Available: $formattedBalance ${asset.symbol}"
         tilAmount.hint = "Amount to send (${asset.symbol})"
-
-        // Initially hide split info
-        tvSplitInfo.visibility = View.GONE
 
         // Quick amount buttons
         val btn25 = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn25Percent)
@@ -1584,61 +1580,6 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .create()
-
-        // Add text watcher to show split preview
-        etAmount.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {
-                val amountStr = s?.toString() ?: ""
-                if (amountStr.isNotEmpty()) {
-                    try {
-                        // Use BigDecimal to avoid overflow
-                        val amountDecimal = java.math.BigDecimal(amountStr)
-                        val multiplier = java.math.BigDecimal.TEN.pow(asset.decimals)
-                        val amountInSmallestUnit = amountDecimal.multiply(multiplier).toBigInteger()
-
-                        // Preview split plan
-                        val calculator = org.unicitylabs.wallet.transfer.TokenSplitCalculator()
-                        val coinId = org.unicitylabs.sdk.token.fungible.CoinId(hexStringToByteArray(asset.coinId))
-
-                        // Convert wallet tokens to SDK tokens for calculation
-                        val sdkTokens = tokensForCoin.mapNotNull { token ->
-                            try {
-                                org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                                    token.jsonData,
-                                    org.unicitylabs.sdk.token.Token::class.java
-                                )
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-
-                        val plan = calculator.calculateOptimalSplit(
-                            sdkTokens,
-                            amountInSmallestUnit,
-                            coinId
-                        )
-
-                        if (plan != null) {
-                            if (plan.requiresSplit) {
-                                tvSplitInfo.text = "ℹ️ Will split 1 token to send exact amount"
-                                tvSplitInfo.visibility = View.VISIBLE
-                            } else {
-                                tvSplitInfo.text = "✅ Exact match found (${plan.tokensToTransferDirectly.size} token${if(plan.tokensToTransferDirectly.size > 1) "s" else ""})"
-                                tvSplitInfo.visibility = View.VISIBLE
-                            }
-                        } else {
-                            tvSplitInfo.visibility = View.GONE
-                        }
-                    } catch (e: Exception) {
-                        tvSplitInfo.visibility = View.GONE
-                    }
-                } else {
-                    tvSplitInfo.visibility = View.GONE
-                }
-            }
-        })
 
         dialog.show()
     }
@@ -1783,18 +1724,6 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 Log.d("MainActivity", "Split plan created: ${splitPlan.describe()}")
-
-                // Show split confirmation if needed
-                if (splitPlan.requiresSplit) {
-                    progressDialog.setMessage("Token split required. Confirming...")
-                    val confirmed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        showSplitConfirmationDialog(splitPlan, asset)
-                    }
-                    if (!confirmed) {
-                        progressDialog.dismiss()
-                        return@launch
-                    }
-                }
 
                 // Step 2: Extract recipient nametag
                 val recipientNametag = recipient.address
@@ -2009,27 +1938,6 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "Transfer error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
-    }
-
-    private suspend fun showSplitConfirmationDialog(
-        splitPlan: org.unicitylabs.wallet.transfer.TokenSplitCalculator.SplitPlan,
-        asset: org.unicitylabs.wallet.model.AggregatedAsset
-    ): Boolean = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-        AlertDialog.Builder(this)
-            .setTitle("Token Split Required")
-            .setMessage("""
-                To send the exact amount, the following split will be performed:
-
-                ${splitPlan.describe()}
-
-                This will create new tokens with the exact amounts needed.
-
-                Continue with the transfer?
-            """.trimIndent())
-            .setPositiveButton("Continue") { _, _ -> cont.resume(true, null) }
-            .setNegativeButton("Cancel") { _, _ -> cont.resume(false, null) }
-            .setOnCancelListener { cont.resume(false, null) }
-            .show()
     }
 
     private fun sendTokenViaNostr(token: Token, recipient: Contact, asset: org.unicitylabs.wallet.model.AggregatedAsset) {
