@@ -363,10 +363,29 @@ class MainActivity : AppCompatActivity() {
         val data = intent.data
         if (data != null) {
             when {
+                data.scheme == "unicity" -> {
+                    when (data.host) {
+                        "pay" -> {
+                            // Handle unicity://pay?nametag=...&coinId=...&amount=...
+                            val paymentRequest = org.unicitylabs.wallet.model.PaymentRequest.fromUri(data.toString())
+                            if (paymentRequest != null) {
+                                handlePaymentRequest(paymentRequest)
+                            } else {
+                                Toast.makeText(this, "Invalid payment request", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
                 data.scheme == "nfcwallet" -> {
                     when (data.host) {
                         "mint-request" -> handleMintRequest(data)
-                        // Legacy payment-request deep link removed - payment requests now handled via QR scan
+                        "payment-request" -> {
+                            // Legacy - try to parse as new PaymentRequest format
+                            val paymentRequest = org.unicitylabs.wallet.model.PaymentRequest.fromUri(data.toString())
+                            if (paymentRequest != null) {
+                                handlePaymentRequest(paymentRequest)
+                            }
+                        }
                     }
                 }
                 data.scheme == "https" && data.host == "nfcwallet.unicity.io" -> {
