@@ -116,7 +116,8 @@
                     android:text="$25,511.7"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    android:textColor="@android:color/white" />
+                    android:textColor="@android:color/white"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/tvTokenChangePercent"
@@ -170,19 +171,14 @@
                 android:layout_marginBottom="16dp">
 
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Token Details"
-                    android:textAppearance="@style/TextAppearance.Unicity.Subtitle"
-                    android:layout_marginBottom="@dimen/margin_sm" />
-
-                <TextView
                     android:id="@+id/tvTokenId"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="ID: abc123..."
-                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
+                    android:text="abc123..."
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
                     android:fontFamily="monospace"
+                    android:layout_marginStart="8dp"
                     android:layout_marginBottom="@dimen/margin_xs" />
 
                 <TextView
@@ -190,16 +186,9 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Created: Dec 16, 2024"
-                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
-                    android:layout_marginBottom="@dimen/margin_xs" />
-
-                <TextView
-                    android:id="@+id/tvUnicityAddress"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Address: unicity_..."
-                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
-                    android:fontFamily="monospace"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:layout_marginStart="8dp"
                     android:layout_marginBottom="@dimen/margin_xs" />
 
                 <TextView
@@ -207,17 +196,10 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Size: 50KB"
-                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:layout_marginStart="8dp"
                     android:layout_marginBottom="@dimen/margin_xs" />
-
-                <TextView
-                    android:id="@+id/tvTokenData"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Data: "
-                    android:textAppearance="@style/TextAppearance.Unicity.BodySmall"
-                    android:layout_marginBottom="@dimen/margin_xs"
-                    android:visibility="gone" />
 
             </LinearLayout>
 

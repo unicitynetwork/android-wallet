@@ -152,56 +152,7 @@ class TokenAdapter(
     }
     
     private fun showTokenDetails(binding: ItemTokenBinding, token: Token) {
-        try {
-            // Find the views - they might not exist in older layouts
-            val tvAmount = binding.root.findViewById<TextView?>(R.id.tvTokenAmount)
-            val tvData = binding.root.findViewById<TextView?>(R.id.tvTokenData)
-            
-            // If views don't exist, just return
-            if (tvAmount == null && tvData == null) return
-            
-            // Hide by default
-            tvAmount?.visibility = View.GONE
-            tvData?.visibility = View.GONE
-            
-            // Try to parse token data
-            token.jsonData?.let { jsonData ->
-                try {
-                    // Use UnicityObjectMapper for SDK-generated JSON
-                    val tokenNode: JsonNode = UnicityObjectMapper.JSON.readTree(jsonData)
-                    
-                    // Debug logging
-                    android.util.Log.d("TokenAdapter", "Token JSON structure: ${tokenNode.toString().take(500)}")
-                    val genesis = tokenNode.get("genesis")
-                    val genesisData = genesis?.get("data")
-                    android.util.Log.d("TokenAdapter", "Genesis data: $genesisData")
-                    val mintData = genesisData?.get("data")
-                    android.util.Log.d("TokenAdapter", "Mint data type: ${mintData?.javaClass?.name}, value: $mintData")
-                    
-                    // Try to extract amount
-                    val amount = extractAmountFromTokenNode(tokenNode)
-                    android.util.Log.d("TokenAdapter", "Extracted amount: $amount")
-                    if (amount != null && tvAmount != null) {
-                        tvAmount.visibility = View.VISIBLE
-                        tvAmount.text = "Amount: $amount"
-                    }
-                    
-                    // Try to extract data
-                    val data = extractDataFromTokenNode(tokenNode)
-                    android.util.Log.d("TokenAdapter", "Extracted data: $data")
-                    if (data != null && data.toString().isNotEmpty() && tvData != null) {
-                        tvData.visibility = View.VISIBLE
-                        tvData.text = "Data: $data"
-                    } else {
-                        tvData?.visibility = View.GONE
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("TokenAdapter", "Error parsing token JSON", e)
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("TokenAdapter", "Error showing token details", e)
-        }
+        // Token details display simplified - most info now in collapsed view
     }
     
     private fun extractDataFromTokenNode(tokenNode: JsonNode): Any? {
@@ -304,13 +255,8 @@ class TokenAdapter(
             }
             
             // Expanded details
-            binding.tvTokenId.text = "ID: ${token.id.take(12)}..."
+            binding.tvTokenId.text = token.id
             binding.tvTokenTimestamp.text = "Created: ${formatDate(token.timestamp)}"
-            binding.tvUnicityAddress.text = if (token.unicityAddress != null) {
-                "Address: ${token.unicityAddress.take(12)}..."
-            } else {
-                "Address: Not set"
-            }
             binding.tvTokenSize.text = "Size: ${token.getFormattedSize()}"
             
             // Try to show amount and data - simplified approach
