@@ -1827,6 +1827,7 @@ class MainActivity : AppCompatActivity() {
                 // Step 5: Execute split if needed
                 val tokensToTransfer = mutableListOf<org.unicitylabs.sdk.token.Token<*>>()
                 var successCount = 0 // Track successful regular transfers
+                var splitResult: org.unicitylabs.wallet.transfer.TokenSplitExecutor.SplitExecutionResult? = null
 
                 // Get Nostr service early (needed for both paths)
                 val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
@@ -1856,7 +1857,7 @@ class MainActivity : AppCompatActivity() {
                         viewModel.repository
                     )
 
-                    val splitResult = executor.executeSplitPlan(
+                    splitResult = executor.executeSplitPlan(
                         splitPlan,
                         recipientProxyAddress,
                         signingService,
@@ -1950,25 +1951,33 @@ class MainActivity : AppCompatActivity() {
 
                 // Step 6: Send SPLIT tokens via Nostr (if any)
                 // Regular tokens already sent in the else block above
-                if (splitPlan.requiresSplit && tokensToTransfer.isNotEmpty()) {
+                if (splitPlan.requiresSplit && splitResult != null) {
                     progressDialog.setMessage("Sending split tokens to recipient...")
 
                     val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
                     if (nostrService != null && nostrService.isRunning()) {
-                        for (tokenToSend in tokensToTransfer) {
+                        // For split tokens, we need to send sourceToken + transferTx (same as regular transfers)
+                        // The splitResult has parallel lists: tokensForRecipient and recipientTransferTxs
+                        for ((index, sourceToken) in splitResult.tokensForRecipient.withIndex()) {
                             try {
-                                Log.d("MainActivity", "Sending split token ${tokenToSend.id.toHexString().take(8)}... via Nostr")
+                                val transferTx = splitResult.recipientTransferTxs[index]
 
-                                val tokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(tokenToSend)
+                                Log.d("MainActivity", "Sending split token ${sourceToken.id.toHexString().take(8)}... via Nostr")
 
-                                val result = nostrService.sendTokenTransfer(
-                                    recipientNametag = recipientNametag,
-                                    tokenJson = tokenJson,
-                                    amount = null, // Split tokens - amount for display only
-                                    symbol = asset.symbol
+                                val sourceTokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(sourceToken)
+                                val transferTxJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(transferTx)
+
+                                val payload = mapOf(
+                                    "sourceToken" to sourceTokenJson,
+                                    "transferTx" to transferTxJson
                                 )
+                                val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
+                                val transferPackage = "token_transfer:$payloadJson"
 
-                                if (!result.isSuccess) {
+                                Log.d("MainActivity", "Split token transfer payload size: ${transferPackage.length / 1024}KB")
+
+                                val sent = nostrService.sendDirectMessage(recipientPubkey!!, transferPackage)
+                                if (!sent) {
                                     Log.e("MainActivity", "Failed to send split token via Nostr")
                                 }
                             } catch (e: Exception) {
@@ -1980,13 +1989,16 @@ class MainActivity : AppCompatActivity() {
 
                 progressDialog.dismiss()
 
-                val totalSent = if (splitPlan.requiresSplit) tokensToTransfer.size else successCount
+                val totalSent = if (splitPlan.requiresSplit && splitResult != null) {
+                    splitResult.tokensForRecipient.size
+                } else {
+                    successCount
+                }
+
                 if (totalSent > 0) {
                     vibrateSuccess()
                     val formattedAmount = targetAmount.toDouble() / Math.pow(10.0, asset.decimals.toDouble())
                     showSuccessDialog("Successfully sent $formattedAmount ${asset.symbol} to ${recipient.name}")
-                } else if (successCount > 0) {
-                    Toast.makeText(this@MainActivity, "Partial success: $successCount/${tokensToTransfer.size} tokens sent", Toast.LENGTH_LONG).show()
                 } else {
                     Toast.makeText(this@MainActivity, "Transfer failed", Toast.LENGTH_LONG).show()
                 }

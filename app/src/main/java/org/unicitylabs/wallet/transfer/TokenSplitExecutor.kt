@@ -7,7 +7,6 @@ import org.unicitylabs.sdk.address.Address
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.hash.HashAlgorithm
-import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate
 import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
 import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicateReference
 import org.unicitylabs.sdk.signing.SigningService
@@ -36,9 +35,10 @@ class TokenSplitExecutor(
     }
 
     data class SplitExecutionResult(
-        val tokensForRecipient: List<Token<*>>,   // Tokens to send to recipient
+        val tokensForRecipient: List<Token<*>>,   // Source tokens (before transfer to recipient)
         val tokensKeptBySender: List<Token<*>>,   // New tokens kept by sender (from splits)
-        val burnedTokens: List<Token<*>>          // Original tokens that were burned
+        val burnedTokens: List<Token<*>>,         // Original tokens that were burned
+        val recipientTransferTxs: List<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>>  // Transfer transactions for recipient tokens
     )
 
     /**
@@ -63,6 +63,7 @@ class TokenSplitExecutor(
         val tokensForRecipient = mutableListOf<Token<*>>()
         val tokensKeptBySender = mutableListOf<Token<*>>()
         val burnedTokens = mutableListOf<Token<*>>()
+        val recipientTransferTxs = mutableListOf<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>>()
 
         // Add directly transferable tokens
         tokensForRecipient.addAll(plan.tokensToTransferDirectly)
@@ -76,19 +77,20 @@ class TokenSplitExecutor(
                 coinId = plan.coinId,
                 recipientAddress = recipientAddress,
                 signingService = signingService,
-                secret = secret,
                 onTokenBurned = onTokenBurned
             )
 
             tokensForRecipient.add(splitResult.tokenForRecipient)
             tokensKeptBySender.add(splitResult.tokenForSender)
             burnedTokens.add(plan.tokenToSplit)
+            recipientTransferTxs.add(splitResult.recipientTransferTx)
         }
 
         return SplitExecutionResult(
             tokensForRecipient = tokensForRecipient,
             tokensKeptBySender = tokensKeptBySender,
-            burnedTokens = burnedTokens
+            burnedTokens = burnedTokens,
+            recipientTransferTxs = recipientTransferTxs
         )
     }
 
@@ -102,7 +104,6 @@ class TokenSplitExecutor(
         coinId: CoinId,
         recipientAddress: Address,
         signingService: SigningService,
-        secret: ByteArray,
         onTokenBurned: ((Token<*>) -> Unit)?
     ): SplitTokenResult {
         Log.d(TAG, "Splitting token ${tokenToSplit.id.toHexString().take(8)}...")
@@ -126,23 +127,25 @@ class TokenSplitExecutor(
         val senderSalt = java.security.MessageDigest.getInstance("SHA-256")
             .digest((seedString + "_sender_salt").toByteArray())
 
-        // Create token for recipient
-        builder.createToken(
-            recipientTokenId,
-            tokenToSplit.type,
-            null, // No additional data
-            TokenCoinData(mapOf(coinId to splitAmount)),
-            recipientAddress,
-            recipientSalt,
-            null // No recipient data hash
-        )
-
-        // Create token for sender (remainder)
+        // Create sender's address (used for BOTH split tokens initially)
         val senderAddress = UnmaskedPredicateReference.create(
             tokenToSplit.type,
             signingService,
             HashAlgorithm.SHA256
         ).toAddress()
+
+        // Create token for recipient (initially minted to sender, will transfer later)
+        builder.createToken(
+            recipientTokenId,
+            tokenToSplit.type,
+            null, // No additional data
+            TokenCoinData(mapOf(coinId to splitAmount)),
+            senderAddress, // Mint to sender first, then transfer
+            recipientSalt,
+            null // No recipient data hash
+        )
+
+        // Create token for sender (remainder)
 
         builder.createToken(
             senderTokenId,
@@ -198,9 +201,6 @@ class TokenSplitExecutor(
         Log.d(TAG, "Submitting ${mintCommitments.size} mint commitments...")
         val mintedTokens = mutableListOf<MintedTokenInfo>()
 
-        // Store recipient address string for comparison
-        val recipientAddressString = recipientAddress.address
-
         for ((index, mintCommitment) in mintCommitments.withIndex()) {
             val response = client.submitCommitment(mintCommitment).await()
 
@@ -221,8 +221,8 @@ class TokenSplitExecutor(
                 mintCommitment
             ).await()
 
-            // Determine if this is for recipient or sender based on address
-            val isForRecipient = mintCommitment.transactionData.recipient.address == recipientAddressString
+            // Determine if this is for recipient based on tokenId (both minted to sender now)
+            val isForRecipient = mintCommitment.transactionData.tokenId == recipientTokenId
 
             mintedTokens.add(
                 MintedTokenInfo(
@@ -243,13 +243,44 @@ class TokenSplitExecutor(
         val senderTokenInfo = mintedTokens.find { !it.isForRecipient }
             ?: throw Exception("Sender token not found in minted tokens")
 
-        // Create and verify both split tokens
-        val recipientToken = createAndVerifySplitToken(recipientTokenInfo, signingService, "recipient")
+        // Create and verify both split tokens (both owned by sender)
+        val recipientTokenBeforeTransfer = createAndVerifySplitToken(recipientTokenInfo, signingService, "recipient (before transfer)")
         val senderToken = createAndVerifySplitToken(senderTokenInfo, signingService, "sender")
 
+        // Step 3: Transfer recipient token to recipient's ProxyAddress
+        Log.d(TAG, "Transferring recipient token to ${recipientAddress.address}...")
+        val transferSalt = ByteArray(32)
+        java.security.SecureRandom().nextBytes(transferSalt)
+
+        val transferCommitment = org.unicitylabs.sdk.transaction.TransferCommitment.create(
+            recipientTokenBeforeTransfer,
+            recipientAddress,
+            transferSalt,
+            null,
+            null,
+            signingService
+        )
+
+        val transferResponse = client.submitCommitment(transferCommitment).await()
+        if (transferResponse.status != SubmitCommitmentStatus.SUCCESS &&
+            transferResponse.status != SubmitCommitmentStatus.REQUEST_ID_EXISTS) {
+            throw Exception("Failed to transfer recipient token: ${transferResponse.status}")
+        }
+
+        val transferInclusionProof = InclusionProofUtils.waitInclusionProof(
+            client,
+            trustBase,
+            transferCommitment
+        ).await()
+
+        val transferTransaction = transferCommitment.toTransaction(transferInclusionProof)
+
+        Log.d(TAG, "Recipient token transferred successfully")
+
         return SplitTokenResult(
-            tokenForRecipient = recipientToken,
-            tokenForSender = senderToken
+            tokenForRecipient = recipientTokenBeforeTransfer,
+            tokenForSender = senderToken,
+            recipientTransferTx = transferTransaction
         )
     }
 
@@ -312,7 +343,8 @@ class TokenSplitExecutor(
      * Result of a single token split
      */
     data class SplitTokenResult(
-        val tokenForRecipient: Token<*>,
-        val tokenForSender: Token<*>
+        val tokenForRecipient: Token<*>,  // Source token (before transfer to recipient)
+        val tokenForSender: Token<*>,
+        val recipientTransferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>  // Transfer transaction to recipient
     )
 }

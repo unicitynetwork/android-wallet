@@ -98,11 +98,13 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Gets all tokens for a specific coinId
      * Used for selecting which token to send when user picks an aggregated asset
-     * Excludes transferred tokens
+     * Excludes transferred and burned tokens
      */
     fun getTokensByCoinId(coinId: String): List<Token> {
         return tokens.value.filter {
-            it.coinId == coinId && it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED
+            it.coinId == coinId &&
+            it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED &&
+            it.status != org.unicitylabs.wallet.data.model.TokenStatus.BURNED
         }
     }
 
@@ -119,9 +121,11 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     // Aggregated assets by coinId for Assets tab with price data
     val aggregatedAssets: StateFlow<List<org.unicitylabs.wallet.model.AggregatedAsset>> = repository.tokens
         .map { tokenList ->
-            // Filter tokens that have coins and are not transferred
+            // Filter tokens that have coins and are not transferred or burned
             val tokensWithCoins = tokenList.filter {
-                it.coinId != null && it.amount != null && it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED
+                it.coinId != null && it.amount != null &&
+                it.status != org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED &&
+                it.status != org.unicitylabs.wallet.data.model.TokenStatus.BURNED
             }
 
             // Get token registry for decimals lookup
