@@ -2395,18 +2395,24 @@ class MainActivity : AppCompatActivity() {
                     return@setPositiveButton
                 }
 
-                val amount = try {
-                    java.math.BigInteger(amountText)
-                } catch (e: Exception) {
-                    null
-                }
+                try {
+                    // Convert decimal amount to smallest units (SAME AS SEND FLOW)
+                    val amountDecimal = java.math.BigDecimal(amountText)
+                    val decimals = asset.decimals ?: 0
+                    val multiplier = java.math.BigDecimal.TEN.pow(decimals)
+                    val amountInSmallestUnitBD = amountDecimal.multiply(multiplier)
+                    val amountInSmallestUnit = amountInSmallestUnitBD.toBigInteger()
 
-                if (amount == null || amount <= java.math.BigInteger.ZERO) {
-                    Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
+                    if (amountInSmallestUnit <= java.math.BigInteger.ZERO) {
+                        Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
+                        return@setPositiveButton
+                    }
 
-                showReceiveQRCodeWithRequest(asset.id, amount)
+                    showReceiveQRCodeWithRequest(asset.id, amountInSmallestUnit)
+
+                } catch (e: NumberFormatException) {
+                    Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Back") { _, _ ->
                 showReceiveSpecifyAmountDialog()
