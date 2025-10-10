@@ -222,4 +222,23 @@ class UnicityTokenRegistry private constructor(private val context: Context) {
     fun getAllDefinitions(): List<TokenDefinition> {
         return tokenDefinitions
     }
+
+    /**
+     * Alias for getAllDefinitions() - returns all assets (tokens and coins)
+     */
+    fun getAllAssets(): List<TokenDefinition> {
+        return getAllDefinitions()
+    }
+
+    /**
+     * Alias for getCoinDefinition() - get coin by ID
+     */
+    fun getCoinById(coinIdHex: String): TokenDefinition? {
+        return getCoinDefinition(coinIdHex)
+    }
 }
+
+/**
+ * AssetMetadata is just an alias for TokenDefinition
+ */
+typealias AssetMetadata = TokenDefinition

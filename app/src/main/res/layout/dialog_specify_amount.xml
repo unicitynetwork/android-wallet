@@ -7,75 +7,98 @@
     android:padding="24dp"
     android:background="@android:color/white">
 
-    <!-- Currency Selection -->
+    <!-- Title -->
     <TextView
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Select Asset"
+        android:text="Request Specific Amount"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/black"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Select token and enter amount to request"
         android:textSize="14sp"
         android:textColor="#666666"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="24dp" />
 
-    <!-- Assets List -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/assetsRecyclerView"
+    <!-- Asset Selector -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/assetInputLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="24dp"
-        android:maxHeight="200dp" />
-
-    <!-- Selected Asset Display -->
-    <LinearLayout
-        android:id="@+id/selectedAssetLayout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
         android:layout_marginBottom="16dp"
-        android:visibility="gone">
+        android:hint="Select Token"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+        app:boxCornerRadiusTopStart="12dp"
+        app:boxCornerRadiusTopEnd="12dp"
+        app:boxCornerRadiusBottomStart="12dp"
+        app:boxCornerRadiusBottomEnd="12dp">
 
-        <ImageView
-            android:id="@+id/selectedAssetIcon"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="12dp" />
-
-        <TextView
-            android:id="@+id/selectedAssetName"
-            android:layout_width="wrap_content"
+        <AutoCompleteTextView
+            android:id="@+id/assetDropdown"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="16sp"
-            android:textColor="#333333"
-            android:textStyle="bold" />
+            android:inputType="none"
+            android:padding="16dp"
+            android:textSize="16sp" />
 
-    </LinearLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
     <!-- Amount Input -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/amountInputLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
         android:hint="Amount"
-        app:boxBackgroundMode="outline"
-        app:boxStrokeColor="@color/primary_blue"
-        app:hintTextColor="@color/primary_blue"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         app:boxCornerRadiusTopStart="12dp"
         app:boxCornerRadiusTopEnd="12dp"
         app:boxCornerRadiusBottomStart="12dp"
-        app:boxCornerRadiusBottomEnd="12dp"
-        android:visibility="gone">
+        app:boxCornerRadiusBottomEnd="12dp">
 
         <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/amountInput"
+            android:id="@+id/etAmount"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="wrap_content"
             android:inputType="numberDecimal"
-            android:textColor="#333333"
-            android:maxLines="1"
-            android:gravity="center_vertical"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp" />
+            android:padding="16dp"
+            android:textSize="16sp" />
 
     </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCancel"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:text="Cancel"
+            android:layout_marginEnd="8dp"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            app:cornerRadius="12dp"
+            app:strokeColor="@color/primary_blue"
+            android:textColor="@color/primary_blue" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnGenerateQR"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:text="Generate QR"
+            android:layout_marginStart="8dp"
+            android:backgroundTint="@color/primary_blue"
+            app:cornerRadius="12dp" />
+
+    </LinearLayout>
 
 </LinearLayout>
