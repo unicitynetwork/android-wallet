@@ -861,8 +861,6 @@ class ReceiveActivity : AppCompatActivity() {
         }
     }
 
-    // ========== NEW NOSTR-BASED RECEIVE FUNCTIONALITY ==========
-
     /**
      * Show receive options dialog: Specify Amount or Let Sender Choose
      */
