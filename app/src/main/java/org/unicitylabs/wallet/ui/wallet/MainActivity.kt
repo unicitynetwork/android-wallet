@@ -1777,6 +1777,7 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
 
+                // Step 5a: Execute split if needed
                 if (splitPlan.requiresSplit) {
                     progressDialog.setMessage("Executing token split...")
 
@@ -1797,17 +1798,15 @@ class MainActivity : AppCompatActivity() {
                         }
                     )
 
-                    tokensToTransfer.addAll(splitResult.tokensForRecipient)
-
                     // Update local wallet with new sender tokens
                     splitResult.tokensKeptBySender.forEach { newToken ->
                         viewModel.addNewTokenFromSplit(newToken)
                     }
+                }
 
-                    // Burned tokens already marked via callback - no need to do anything here
-                } else {
-                    // No split needed - but still need to CREATE TRANSFER TRANSACTIONS for these tokens!
-                    // They haven't been transferred on-chain yet
+                // Step 5b: Create transfer transactions for direct tokens (if any)
+                // These need to be transferred whether or not a split happened
+                if (splitPlan.tokensToTransferDirectly.isNotEmpty()) {
                     progressDialog.setMessage("Creating transfer transactions...")
 
                     for (tokenToTransfer in splitPlan.tokensToTransferDirectly) {
@@ -1918,11 +1917,8 @@ class MainActivity : AppCompatActivity() {
 
                 progressDialog.dismiss()
 
-                val totalSent = if (splitPlan.requiresSplit && splitResult != null) {
-                    splitResult.tokensForRecipient.size
-                } else {
-                    successCount
-                }
+                // Calculate total sent: direct transfers + split tokens
+                val totalSent = successCount + (splitResult?.tokensForRecipient?.size ?: 0)
 
                 if (totalSent > 0) {
                     vibrateSuccess()

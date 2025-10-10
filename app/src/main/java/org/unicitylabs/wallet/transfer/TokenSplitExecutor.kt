@@ -65,8 +65,8 @@ class TokenSplitExecutor(
         val burnedTokens = mutableListOf<Token<*>>()
         val recipientTransferTxs = mutableListOf<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>>()
 
-        // Add directly transferable tokens
-        tokensForRecipient.addAll(plan.tokensToTransferDirectly)
+        // NOTE: Direct transfer tokens (plan.tokensToTransferDirectly) are NOT handled here
+        // They must be handled by the caller to create transfer commitments
 
         // Execute split if required
         if (plan.requiresSplit && plan.tokenToSplit != null) {

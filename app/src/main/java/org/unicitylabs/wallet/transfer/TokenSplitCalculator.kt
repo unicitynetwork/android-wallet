@@ -202,40 +202,48 @@ class TokenSplitCalculator {
         targetAmount: BigInteger,
         coinId: CoinId
     ): SplitPlan {
-        // Find tokens less than target amount (can be transferred directly)
-        val smallerTokens = tokens.filter { it.amount < targetAmount }
-        val largerTokens = tokens.filter { it.amount > targetAmount }
+        // Sort tokens by amount (smallest first)
+        val sortedTokens = tokens.sortedBy { it.amount }
 
-        // Calculate how much we can transfer directly
-        val directTransferAmount = smallerTokens.fold(BigInteger.ZERO) { acc, ta -> acc + ta.amount }
-        val remainingNeeded = targetAmount - directTransferAmount
+        // Build up transfer amount by adding tokens until we need to split
+        var accumulated = BigInteger.ZERO
+        val tokensToTransferDirectly = mutableListOf<Token<*>>()
 
-        // Find the best token to split (prefer smallest token that's large enough)
-        val tokenToSplit = largerTokens.minByOrNull { it.amount }
-            ?: tokens.maxByOrNull { it.amount }!! // Use largest if no larger tokens
+        for (tokenWithAmount in sortedTokens) {
+            val newTotal = accumulated + tokenWithAmount.amount
+            if (newTotal == targetAmount) {
+                // Perfect match!
+                tokensToTransferDirectly.add(tokenWithAmount.token)
+                return SplitPlan(
+                    tokensToTransferDirectly = tokensToTransferDirectly,
+                    tokenToSplit = null,
+                    splitAmount = null,
+                    remainderAmount = null,
+                    totalTransferAmount = targetAmount,
+                    coinId = coinId
+                )
+            } else if (newTotal < targetAmount) {
+                // Still need more - add this token and continue
+                tokensToTransferDirectly.add(tokenWithAmount.token)
+                accumulated = newTotal
+            } else {
+                // Adding this token would overshoot - split it
+                val splitAmount = targetAmount - accumulated
+                val remainderAmount = tokenWithAmount.amount - splitAmount
 
-        return if (remainingNeeded > BigInteger.ZERO && tokenToSplit.amount >= remainingNeeded) {
-            // Split the selected token
-            SplitPlan(
-                tokensToTransferDirectly = smallerTokens.map { it.token },
-                tokenToSplit = tokenToSplit.token,
-                splitAmount = remainingNeeded,
-                remainderAmount = tokenToSplit.amount - remainingNeeded,
-                totalTransferAmount = targetAmount,
-                coinId = coinId
-            )
-        } else {
-            // Edge case: need to split without using smaller tokens
-            val singleTokenToSplit = tokens.find { it.amount >= targetAmount }!!
-            SplitPlan(
-                tokensToTransferDirectly = emptyList(),
-                tokenToSplit = singleTokenToSplit.token,
-                splitAmount = targetAmount,
-                remainderAmount = singleTokenToSplit.amount - targetAmount,
-                totalTransferAmount = targetAmount,
-                coinId = coinId
-            )
+                return SplitPlan(
+                    tokensToTransferDirectly = tokensToTransferDirectly,
+                    tokenToSplit = tokenWithAmount.token,
+                    splitAmount = splitAmount,
+                    remainderAmount = remainderAmount,
+                    totalTransferAmount = targetAmount,
+                    coinId = coinId
+                )
+            }
         }
+
+        // Should not reach here if validation passed
+        throw IllegalStateException("Could not create split plan")
     }
 
     /**
