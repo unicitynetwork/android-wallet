@@ -2265,11 +2265,230 @@ class MainActivity : AppCompatActivity() {
     }
     
     /**
-     * Show Receive QR dialog - launches ReceiveActivity with Nostr-based flow
+     * Show Receive QR dialog - shows options directly in MainActivity
      */
     private fun showReceiveQRDialog() {
-        // Launch ReceiveActivity which handles everything (option dialog, QR generation, etc.)
-        startActivity(Intent(this, org.unicitylabs.wallet.ui.receive.ReceiveActivity::class.java))
+        showReceiveOptionsDialog()
+    }
+
+    /**
+     * Show receive options dialog: Specify Amount or Let Sender Choose
+     */
+    private fun showReceiveOptionsDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_receive_options, null)
+
+        val cardSpecifyAmount = dialogView.findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardSpecifyAmount)
+        val cardLetSenderChoose = dialogView.findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardLetSenderChoose)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(true)
+            .create()
+
+        cardSpecifyAmount.setOnClickListener {
+            dialog.dismiss()
+            showReceiveSpecifyAmountDialog()
+        }
+
+        cardLetSenderChoose.setOnClickListener {
+            dialog.dismiss()
+            showReceiveOpenQRCode()
+        }
+
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    /**
+     * Show dialog to specify asset and amount for receive
+     */
+    private fun showReceiveSpecifyAmountDialog() {
+        // Step 1: Show asset selection dialog (reuse existing layout)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_select_asset, null)
+        val rvAssets = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvAssets)
+        val btnCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel)
+
+        // Load token registry
+        val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(this)
+        val assets = registry.getFungibleTokens() // Only show fungible tokens for requests
+
+        val assetDialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(true)
+            .create()
+
+        // Setup RecyclerView with TokenDefinitionAdapter
+        rvAssets.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        val adapter = org.unicitylabs.wallet.ui.receive.TokenDefinitionAdapter(assets) { selectedAsset ->
+            assetDialog.dismiss()
+            // Step 2: Show amount dialog for selected asset
+            showReceiveAmountInputDialog(selectedAsset)
+        }
+        rvAssets.adapter = adapter
+
+        btnCancel.setOnClickListener {
+            assetDialog.dismiss()
+            showReceiveOptionsDialog()
+        }
+
+        assetDialog.show()
+    }
+
+    /**
+     * Show amount input dialog for receive request
+     */
+    private fun showReceiveAmountInputDialog(asset: org.unicitylabs.wallet.token.TokenDefinition) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_amount_input, null)
+        val etAmount = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etAmount)
+        val tvBalance = dialogView.findViewById<TextView>(R.id.tvBalance)
+        val tvSplitInfo = dialogView.findViewById<TextView>(R.id.tvSplitInfo)
+
+        // Hide split info for receive (not applicable)
+        tvSplitInfo?.visibility = View.GONE
+
+        // Hide balance for receive (we're requesting, not sending)
+        tvBalance?.visibility = View.GONE
+
+        // Hide percentage buttons for receive (we want exact amount)
+        dialogView.findViewById<View>(R.id.btn25Percent)?.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn50Percent)?.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btn75Percent)?.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.btnMax)?.visibility = View.GONE
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Request ${asset.symbol ?: asset.name}")
+            .setView(dialogView)
+            .setPositiveButton("Generate QR") { _, _ ->
+                val amountText = etAmount.text?.toString()
+
+                if (amountText.isNullOrEmpty()) {
+                    Toast.makeText(this, "Please enter an amount", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                val amount = try {
+                    java.math.BigInteger(amountText)
+                } catch (e: Exception) {
+                    null
+                }
+
+                if (amount == null || amount <= java.math.BigInteger.ZERO) {
+                    Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                showReceiveQRCodeWithRequest(asset.id, amount)
+            }
+            .setNegativeButton("Back") { _, _ ->
+                showReceiveSpecifyAmountDialog()
+            }
+            .setCancelable(true)
+            .create()
+
+        dialog.show()
+    }
+
+    /**
+     * Show QR code with open payment request (no coinId/amount specified)
+     */
+    private fun showReceiveOpenQRCode() {
+        val nametag = getMyNametag()
+        if (nametag == null) {
+            Toast.makeText(this, "Please set up your nametag in Profile first", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val paymentRequest = org.unicitylabs.wallet.model.PaymentRequest(nametag = nametag)
+        showReceiveQRCodeDialog(paymentRequest)
+    }
+
+    /**
+     * Show QR code with specific payment request (coinId + amount)
+     */
+    private fun showReceiveQRCodeWithRequest(coinId: String, amount: java.math.BigInteger) {
+        val nametag = getMyNametag()
+        if (nametag == null) {
+            Toast.makeText(this, "Please set up your nametag in Profile first", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val paymentRequest = org.unicitylabs.wallet.model.PaymentRequest(
+            nametag = nametag,
+            coinId = coinId,
+            amount = amount
+        )
+        showReceiveQRCodeDialog(paymentRequest)
+    }
+
+    /**
+     * Show QR code dialog with the payment request
+     */
+    private fun showReceiveQRCodeDialog(paymentRequest: org.unicitylabs.wallet.model.PaymentRequest) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_qr_code, null)
+
+        val qrCodeImage = dialogView.findViewById<ImageView>(R.id.qrCodeImage)
+        val statusText = dialogView.findViewById<TextView>(R.id.statusText)
+        val timerText = dialogView.findViewById<TextView>(R.id.timerText)
+        val btnShare = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnShare)
+        val btnClose = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnClose)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(true)
+            .create()
+
+        // Generate QR code
+        try {
+            val qrContent = paymentRequest.toJson()
+            val qrBitmap = generateQRCode(qrContent)
+            qrCodeImage.setImageBitmap(qrBitmap)
+
+            // Update status text
+            val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(this)
+            val statusMessage = if (paymentRequest.isSpecific()) {
+                val asset = registry.getCoinById(paymentRequest.coinId!!)
+                "Scan to send ${paymentRequest.amount} ${asset?.symbol ?: "tokens"}"
+            } else {
+                "Scan to send tokens to ${paymentRequest.nametag}@unicity"
+            }
+            statusText.text = statusMessage
+
+            // Hide timer for now (we can add expiry later if needed)
+            timerText.visibility = View.GONE
+
+            // Share button
+            btnShare.setOnClickListener {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, qrContent)
+                    putExtra(Intent.EXTRA_SUBJECT, "Unicity Payment Request")
+                }
+                startActivity(Intent.createChooser(shareIntent, "Share Payment Request"))
+            }
+
+            btnClose.setOnClickListener {
+                dialog.dismiss()
+            }
+
+            dialog.show()
+
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error generating QR code", e)
+            Toast.makeText(this, "Error generating QR code: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * Get user's nametag from SharedPreferences
+     */
+    private fun getMyNametag(): String? {
+        val prefs = getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+        val nametag = prefs.getString("unicity_tag", null)
+        return if (nametag.isNullOrEmpty()) null else nametag
     }
     
     private fun showDepositDialog() {

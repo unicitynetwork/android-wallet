@@ -179,6 +179,10 @@ class ReceiveActivity : AppCompatActivity() {
         setupSuccessDialog()
         observeViewModel()
 
+        // Hide background UI since we're only showing QR dialog
+        binding.contentContainer.visibility = View.GONE
+        binding.btnCancel.visibility = View.GONE
+
         // Show receive options dialog immediately
         showReceiveOptionsDialog()
     }
