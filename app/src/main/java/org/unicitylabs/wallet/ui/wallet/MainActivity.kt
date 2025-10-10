@@ -508,15 +508,15 @@ class MainActivity : AppCompatActivity() {
         
         // Setup action buttons
         binding.buyButton.setOnClickListener {
-            showBuySellDialog()
+            Toast.makeText(this, "Coming soon!", Toast.LENGTH_SHORT).show()
         }
-        
+
         binding.receiveButton.setOnClickListener {
             showReceiveQRDialog()
         }
-        
+
         binding.depositButton.setOnClickListener {
-            showDepositDialog()
+            Toast.makeText(this, "Coming soon!", Toast.LENGTH_SHORT).show()
         }
         
         binding.transferButton.setOnClickListener {
