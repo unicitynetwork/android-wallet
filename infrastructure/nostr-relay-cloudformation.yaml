@@ -210,6 +210,8 @@ Resources:
               [limits]
               messages_per_sec = 10
               max_event_bytes = 1048576
+              max_ws_message_bytes = 1048576
+              max_ws_frame_bytes = 1048576
               max_subscriptions = 100
 
               [retention]
