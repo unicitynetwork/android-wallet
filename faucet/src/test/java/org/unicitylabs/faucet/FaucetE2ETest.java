@@ -300,11 +300,15 @@ public class FaucetE2ETest {
         Thread.sleep(2000);
 
         // Test 1: Query nametag by Alice's Nostr pubkey
+        // NOTE: Returns HASHED nametag for privacy (not original)
         NostrClient queryClient = new NostrClient(NOSTR_RELAY, faucetPrivateKey);
-        String queriedNametag = queryClient.queryNametagByPubkey(NOSTR_RELAY, aliceNostrPubKey).join();
-        assertNotNull("Should find nametag for Alice's pubkey", queriedNametag);
-        assertEquals("Should return correct nametag", aliceNametag, queriedNametag);
-        System.out.println("✅ Query by pubkey successful: " + aliceNostrPubKey.substring(0, 16) + "... → " + queriedNametag);
+        String queriedNametagHash = queryClient.queryNametagByPubkey(NOSTR_RELAY, aliceNostrPubKey).join();
+        assertNotNull("Should find nametag hash for Alice's pubkey", queriedNametagHash);
+
+        // Verify it's the correct hash
+        String expectedHash = NametagUtils.hashNametag(aliceNametag);
+        assertEquals("Should return hashed nametag", expectedHash, queriedNametagHash);
+        System.out.println("✅ Query by pubkey successful: " + aliceNostrPubKey.substring(0, 16) + "... → " + queriedNametagHash.substring(0, 16) + "... (hash)");
 
         // Test 2: Query Nostr pubkey by Alice's nametag
         // This is critical for wallet functionality

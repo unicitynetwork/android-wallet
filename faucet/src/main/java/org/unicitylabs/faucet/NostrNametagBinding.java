@@ -39,12 +39,12 @@ public class NostrNametagBinding {
         // Each nametag gets its own event: (pubkey, kind, d-tag) uniquely identifies the event
         tags.add(Arrays.asList("d", hashedNametag)); // Unique per nametag - allows multiple bindings
         tags.add(Arrays.asList("nametag", hashedNametag)); // Store HASHED nametag for privacy
-        tags.add(Arrays.asList("t", hashedNametag)); // Also use 't' tag which is commonly indexed
+        tags.add(Arrays.asList("t", hashedNametag)); // Use 't' tag which is indexed by relay
         tags.add(Arrays.asList("address", unicityAddress)); // Store Unicity address
 
-        // Create content with binding information (don't include raw nametag for privacy)
+        // Create content with binding information (privacy: only hashes)
         Map<String, Object> contentData = new LinkedHashMap<>();
-        contentData.put("nametag_hash", hashedNametag); // Only store hash
+        contentData.put("nametag_hash", hashedNametag); // Only hash
         contentData.put("address", unicityAddress);
         contentData.put("verified", System.currentTimeMillis());
         String content = jsonMapper.writeValueAsString(contentData);
@@ -90,9 +90,8 @@ public class NostrNametagBinding {
         Map<String, Object> filter = new HashMap<>();
         filter.put("kinds", Arrays.asList(KIND_NAMETAG_BINDING));
         filter.put("authors", Arrays.asList(nostrPubkey));
-
-        // Use #d tag to ensure we get the nametag binding
-        filter.put("#d", Arrays.asList(TAG_D_VALUE));
+        // Don't filter by #d - each binding has unique d tag (hashedNametag)
+        // authors + kinds is sufficient to find all nametag bindings for this pubkey
         filter.put("limit", 1);
 
         return filter;
