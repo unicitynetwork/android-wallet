@@ -140,14 +140,22 @@ class IdentityManager(private val context: Context) {
         // Use createFromSecret for UnmaskedPredicate (not createFromMaskedSecret)
         val signingService = SigningService.createFromSecret(secret)
 
+        Log.d(TAG, "getWalletPredicate called:")
+        Log.d(TAG, "  Identity pubkey: ${identity.publicKey}")
+        Log.d(TAG, "  SigningService pubkey: ${bytesToHex(signingService.publicKey)}")
+
         // Use the provided salt (from transaction)
-        UnmaskedPredicate.create(
+        val predicate = UnmaskedPredicate.create(
             tokenId,
             tokenType,
             signingService,
             HashAlgorithm.SHA256,
             salt
         )
+
+        Log.d(TAG, "  Created predicate pubkey: ${bytesToHex(predicate.publicKey)}")
+
+        predicate
     }
     
     /**

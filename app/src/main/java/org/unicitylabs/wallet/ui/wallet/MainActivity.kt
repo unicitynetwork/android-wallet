@@ -1717,12 +1717,33 @@ class MainActivity : AppCompatActivity() {
 
                 Log.d("MainActivity", "Successfully parsed ${sdkTokens.size} SDK tokens")
 
+                // Calculate total available balance
+                val totalAvailable = sdkTokens.mapNotNull { token ->
+                    val coins = token.getCoins()
+                    if (coins.isPresent) {
+                        coins.get().coins[coinId]
+                    } else null
+                }.fold(java.math.BigInteger.ZERO) { acc, amount -> acc.add(amount) }
+
+                Log.d("MainActivity", "Total available: $totalAvailable, requested: $targetAmount")
+
+                // Check if insufficient balance BEFORE calling calculator
+                if (totalAvailable < targetAmount) {
+                    progressDialog.dismiss()
+                    val availableDecimal = java.math.BigDecimal(totalAvailable).divide(java.math.BigDecimal.TEN.pow(asset.decimals)).stripTrailingZeros()
+                    val requestedDecimal = java.math.BigDecimal(targetAmount).divide(java.math.BigDecimal.TEN.pow(asset.decimals)).stripTrailingZeros()
+                    val message = "Insufficient balance!\n\nRequested: $requestedDecimal ${asset.symbol}\nAvailable: $availableDecimal ${asset.symbol}"
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                    Log.e("MainActivity", "Insufficient balance: requested=$requestedDecimal, available=$availableDecimal")
+                    return@launch
+                }
+
                 val splitPlan = calculator.calculateOptimalSplit(sdkTokens, targetAmount, coinId)
 
                 if (splitPlan == null) {
                     progressDialog.dismiss()
-                    Log.e("MainActivity", "Split calculator returned null!")
-                    Toast.makeText(this@MainActivity, "Cannot create transfer plan. Check logs for details.", Toast.LENGTH_LONG).show()
+                    Log.e("MainActivity", "Split calculator returned null - unexpected!")
+                    Toast.makeText(this@MainActivity, "Cannot create transfer plan. This should not happen - check logs.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
@@ -1816,16 +1837,24 @@ class MainActivity : AppCompatActivity() {
                         val salt = ByteArray(32)
                         java.security.SecureRandom().nextBytes(salt)
 
+                        Log.d("MainActivity", "Creating transfer commitment:")
+                        Log.d("MainActivity", "  Token: ${tokenToTransfer.id.bytes.joinToString("") { "%02x".format(it) }.take(16)}...")
+                        Log.d("MainActivity", "  Recipient ProxyAddress: ${recipientProxyAddress.address}")
+                        Log.d("MainActivity", "  RecipientPredicateHash: null (proxy transfer)")
+                        Log.d("MainActivity", "  RecipientDataHash: null")
+
                         val transferCommitment = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                             org.unicitylabs.sdk.transaction.TransferCommitment.create(
                                 tokenToTransfer,
                                 recipientProxyAddress,
                                 salt,
-                                null,
-                                null,
+                                null,  // recipientPredicateHash - null for proxy transfers
+                                null,  // recipientDataHash
                                 signingService
                             )
                         }
+
+                        Log.d("MainActivity", "Transfer commitment created successfully")
 
                         val client = org.unicitylabs.wallet.di.ServiceProvider.stateTransitionClient
                         val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -3859,6 +3888,30 @@ class MainActivity : AppCompatActivity() {
     ) {
         val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(this)
 
+        // For specific requests, check balance BEFORE showing confirmation
+        if (paymentRequest.isSpecific()) {
+            val asset = viewModel.aggregatedAssets.value.find { it.coinId == paymentRequest.coinId }
+            if (asset != null) {
+                val availableBalance = asset.getAmountAsBigInteger()
+                val requestedAmount = paymentRequest.amount!!
+
+                if (availableBalance < requestedAmount) {
+                    val assetDef = registry.getCoinById(paymentRequest.coinId!!)
+                    val decimals = assetDef?.decimals ?: 0
+                    val divisor = java.math.BigDecimal.TEN.pow(decimals)
+                    val availableDecimal = java.math.BigDecimal(availableBalance).divide(divisor).stripTrailingZeros().toPlainString()
+                    val requestedDecimal = java.math.BigDecimal(requestedAmount).divide(divisor).stripTrailingZeros().toPlainString()
+
+                    AlertDialog.Builder(this)
+                        .setTitle("Insufficient Balance")
+                        .setMessage("Cannot send $requestedDecimal ${assetDef?.symbol ?: "tokens"} to ${paymentRequest.nametag}@unicity\n\nYour balance: $availableDecimal ${assetDef?.symbol ?: "tokens"}")
+                        .setPositiveButton("OK", null)
+                        .show()
+                    return
+                }
+            }
+        }
+
         val message = if (paymentRequest.isSpecific()) {
             val asset = registry.getCoinById(paymentRequest.coinId!!)
             val decimals = asset?.decimals ?: 0
@@ -4028,26 +4081,32 @@ class MainActivity : AppCompatActivity() {
     ) {
         lifecycleScope.launch {
             try {
-                Log.d("MainActivity", "Executing token transfer: coinId=$coinId, amount=$amount, to=$recipientNametag")
+                Log.d("MainActivity", "━━━ executeNostrTokenTransfer START ━━━")
+                Log.d("MainActivity", "  Recipient nametag: $recipientNametag")
+                Log.d("MainActivity", "  Recipient pubkey: ${recipientPubkey.take(16)}...")
+                Log.d("MainActivity", "  CoinId: $coinId")
+                Log.d("MainActivity", "  Amount: $amount")
 
                 // 1. Get all tokens with matching coinId
                 val tokensForCoin = viewModel.getTokensByCoinId(coinId)
 
                 if (tokensForCoin.isEmpty()) {
                     Toast.makeText(this@MainActivity, "No tokens found with coinId $coinId", Toast.LENGTH_LONG).show()
-                    Log.e("MainActivity", "No tokens found for coinId: $coinId")
+                    Log.e("MainActivity", "❌ No tokens found for coinId: $coinId")
                     return@launch
                 }
 
-                Log.d("MainActivity", "Found ${tokensForCoin.size} token(s) for coinId")
+                Log.d("MainActivity", "✅ Found ${tokensForCoin.size} token(s) for coinId")
 
                 // 2. Get the asset metadata
                 val asset = viewModel.aggregatedAssets.value.find { it.coinId == coinId }
                 if (asset == null) {
                     Toast.makeText(this@MainActivity, "Asset not found in wallet", Toast.LENGTH_LONG).show()
-                    Log.e("MainActivity", "Asset not found for coinId: $coinId")
+                    Log.e("MainActivity", "❌ Asset not found for coinId: $coinId")
                     return@launch
                 }
+
+                Log.d("MainActivity", "✅ Asset found: ${asset.symbol}")
 
                 // 3. Create a Contact object from nametag for compatibility
                 val recipientContact = Contact(
@@ -4057,6 +4116,9 @@ class MainActivity : AppCompatActivity() {
                     avatarUrl = null,
                     isUnicityUser = true
                 )
+
+                Log.d("MainActivity", "✅ Created contact: name=${recipientContact.name}, address=${recipientContact.address}")
+                Log.d("MainActivity", "🚀 Calling sendTokensWithSplitting...")
 
                 // 4. Use existing sendTokensWithSplitting logic
                 sendTokensWithSplitting(tokensForCoin, amount, asset, recipientContact)

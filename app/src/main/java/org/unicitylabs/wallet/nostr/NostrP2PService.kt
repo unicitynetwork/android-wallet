@@ -904,7 +904,7 @@ class NostrP2PService(
 
             Log.d(TAG, "✅ Transfer is for my nametag: $matchedNametag")
 
-            // Get identity to create signing service
+            // Get identity and create signing service
             val identityManager = org.unicitylabs.wallet.identity.IdentityManager(context)
             val identity = identityManager.getCurrentIdentity()
             if (identity == null) {
@@ -912,46 +912,109 @@ class NostrP2PService(
                 return null
             }
 
-            // Create signing service for UnmaskedPredicate
             val secret = hexToBytes(identity.privateKey)
             val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
 
-            // CRITICAL: Create recipient predicate using the salt FROM the transfer transaction
+            // Create recipient predicate
             val transferSalt = transferTx.data.salt
+
+            Log.d(TAG, "Creating recipient predicate:")
+            Log.d(TAG, "  Identity pubkey: ${identity.publicKey}")
+            Log.d(TAG, "  Source TokenId: ${bytesToHex(sourceToken.id.bytes).take(16)}...")
+            Log.d(TAG, "  TokenType: ${sourceToken.type}")
+            Log.d(TAG, "  Transfer Salt: ${bytesToHex(transferSalt).take(16)}...")
+
             val recipientPredicate = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate.create(
-                sourceToken.id,     // Use TOKEN's ID (not random!)
-                sourceToken.type,   // Use TOKEN's type
+                sourceToken.id,
+                sourceToken.type,
                 signingService,
                 org.unicitylabs.sdk.hash.HashAlgorithm.SHA256,
-                transferSalt  // Use TRANSACTION's salt (critical!)
+                transferSalt
             )
+
+            Log.d(TAG, "✅ Predicate created - PublicKey: ${bytesToHex(recipientPredicate.publicKey).take(32)}...")
 
             val recipientState = org.unicitylabs.sdk.token.TokenState(recipientPredicate, null)
 
             Log.d(TAG, "Finalizing transfer with nametag token...")
+            Log.d(TAG, "  Transfer Recipient: ${transferTx.data.recipient.address}")
+            Log.d(TAG, "  My Nametag ProxyAddress: ${org.unicitylabs.sdk.address.ProxyAddress.create(myNametagToken.id).address}")
 
             // Get StateTransitionClient and trustBase
             val client = org.unicitylabs.wallet.di.ServiceProvider.stateTransitionClient
             val trustBase = org.unicitylabs.wallet.di.ServiceProvider.getRootTrustBase()
 
             // Finalize the transaction with nametag for proxy resolution
-            val finalizedToken = withContext(Dispatchers.IO) {
-                client.finalizeTransaction(
-                    trustBase,
-                    sourceToken,
-                    recipientState,
-                    transferTx,
-                    listOf(myNametagToken)  // Include nametag for proxy resolution
-                )
+            val finalizedToken = try {
+                withContext(Dispatchers.IO) {
+                    client.finalizeTransaction(
+                        trustBase,
+                        sourceToken,
+                        recipientState,
+                        transferTx,
+                        listOf(myNametagToken)  // Include nametag for proxy resolution
+                    )
+                }
+            } catch (ve: org.unicitylabs.sdk.verification.VerificationException) {
+                // CRITICAL: Log verification details to debug the issue
+                Log.e(TAG, "❌❌❌ VERIFICATION FAILED ❌❌❌")
+                Log.e(TAG, "Verification Result: ${ve.verificationResult}")
+                Log.e(TAG, "Full exception:", ve)
+
+                // CRITICAL: Save failed transfer for recovery
+                saveFailedTransfer(sourceToken, transferTx, matchedNametag, ve.verificationResult.toString())
+
+                throw ve // Re-throw after logging
             }
 
             Log.i(TAG, "✅ Token finalized successfully!")
             return finalizedToken
 
+        } catch (ve: org.unicitylabs.sdk.verification.VerificationException) {
+            Log.e(TAG, "❌ CRITICAL: Token verification failed during finalization")
+            Log.e(TAG, "VerificationResult: ${ve.verificationResult}")
+            Log.e(TAG, "This transfer has been saved for manual recovery")
+            ve.printStackTrace()
+            return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error finalizing transfer", e)
+            Log.e(TAG, "❌ Error finalizing transfer", e)
             e.printStackTrace()
             return null
+        }
+    }
+
+    /**
+     * CRITICAL: Save failed transfer for manual recovery
+     * Never lose tokens due to verification errors
+     */
+    private suspend fun saveFailedTransfer(
+        sourceToken: org.unicitylabs.sdk.token.Token<*>,
+        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>,
+        nametag: String,
+        verificationError: String
+    ) {
+        try {
+            val failedTransferDir = java.io.File(context.filesDir, "failed_transfers")
+            failedTransferDir.mkdirs()
+
+            val timestamp = System.currentTimeMillis()
+            val failedTransferFile = java.io.File(failedTransferDir, "failed_$timestamp.json")
+
+            val failedTransferData = mapOf(
+                "timestamp" to timestamp,
+                "nametag" to nametag,
+                "verificationError" to verificationError,
+                "sourceToken" to UnicityObjectMapper.JSON.writeValueAsString(sourceToken),
+                "transferTx" to UnicityObjectMapper.JSON.writeValueAsString(transferTx)
+            )
+
+            failedTransferFile.writeText(JsonMapper.toJson(failedTransferData))
+
+            Log.e(TAG, "❌❌❌ FAILED TRANSFER SAVED: ${failedTransferFile.absolutePath}")
+            Log.e(TAG, "Token is NOT lost - can be manually recovered from this file")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "CRITICAL: Failed to save failed transfer - TOKEN MAY BE LOST!", e)
         }
     }
 
