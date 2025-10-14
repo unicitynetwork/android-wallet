@@ -18,14 +18,10 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Test to find maximum transferable file size with NIP-04 encryption + GZIP compression.
- *
- * This test is marked as @Ignore to prevent it from running on every build (it's slow).
- * Run manually with: ./gradlew test --tests NostrMaxTransferSizeTest
+ * Test token transfer sizes with NIP-04 encryption + GZIP compression.
  */
-@Ignore("Manual test - run explicitly with: ./gradlew test --tests NostrMaxTransferSizeTest")
-public class NostrMaxTransferSizeTest {
-    private static final Logger log = LoggerFactory.getLogger(NostrMaxTransferSizeTest.class);
+public class NostrTransferSizeTest {
+    private static final Logger log = LoggerFactory.getLogger(NostrTransferSizeTest.class);
 
     private static final String RELAY_URL = "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080";
     private static final int KIND_TOKEN_TRANSFER = 31113;
@@ -38,6 +34,28 @@ public class NostrMaxTransferSizeTest {
         .build();
 
     @Test
+    public void testSend500KBTokenTransfer() throws Exception {
+        log.info("=== Testing 500KB token transfer via Nostr ===");
+
+        // Generate test keys
+        byte[] senderPrivateKey = new byte[32];
+        new SecureRandom().nextBytes(senderPrivateKey);
+        NostrKeyManager senderKeyManager = NostrKeyManager.fromPrivateKey(senderPrivateKey);
+
+        byte[] recipientPrivateKey = new byte[32];
+        new SecureRandom().nextBytes(recipientPrivateKey);
+        NostrKeyManager recipientKeyManager = NostrKeyManager.fromPrivateKey(recipientPrivateKey);
+
+        // Test 500KB transfer
+        boolean success = testTransfer(senderKeyManager, recipientKeyManager, 500);
+
+        assertTrue("Should successfully send and receive 500KB", success);
+
+        log.info("✅ 500KB token transfer test passed!");
+    }
+
+    @Test
+    @Ignore("Manual test - run explicitly with: ./gradlew test --tests NostrTransferSizeTest.findMaximumTransferSize")
     public void findMaximumTransferSize() throws Exception {
         log.info("=== Finding Maximum Transferable File Size ===");
         log.info("Relay: {}", RELAY_URL);
