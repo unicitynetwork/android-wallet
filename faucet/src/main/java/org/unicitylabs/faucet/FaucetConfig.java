@@ -20,7 +20,7 @@ public class FaucetConfig {
     public String defaultCoin;    // Default coin name (e.g., "solana", "bitcoin")
 
     /**
-     * Load configuration from resources
+     * Load configuration from resources, with environment variable overrides
      */
     public static FaucetConfig load() throws IOException {
         ObjectMapper mapper = new ObjectMapper();
@@ -31,6 +31,20 @@ public class FaucetConfig {
             throw new IOException("faucet-config.json not found in resources");
         }
 
-        return mapper.readValue(configStream, FaucetConfig.class);
+        FaucetConfig config = mapper.readValue(configStream, FaucetConfig.class);
+
+        // Override with environment variables if present
+        String envMnemonic = System.getenv("FAUCET_MNEMONIC");
+        if (envMnemonic != null && !envMnemonic.trim().isEmpty()) {
+            config.faucetMnemonic = envMnemonic.trim();
+            System.out.println("✅ Using FAUCET_MNEMONIC from environment variable");
+        }
+
+        // Validate mnemonic is set
+        if (config.faucetMnemonic == null || config.faucetMnemonic.trim().isEmpty()) {
+            throw new IOException("Faucet mnemonic not configured. Set FAUCET_MNEMONIC environment variable or configure in faucet-config.json");
+        }
+
+        return config;
     }
 }

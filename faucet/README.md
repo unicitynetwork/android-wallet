@@ -23,10 +23,12 @@ A production-ready REST API server and CLI application for distributing Unicity 
    cd faucet
    ```
 
-2. **Set up environment variables:**
+2. **Set up environment variables (required):**
    ```bash
    cp .env.example .env
-   # Edit .env and set your FAUCET_API_KEY
+   # Edit .env and set:
+   # - FAUCET_API_KEY (for history access)
+   # - FAUCET_MNEMONIC (your faucet wallet mnemonic - GENERATE A NEW ONE!)
    ```
 
 3. **Start the server:**
@@ -160,11 +162,12 @@ Health check endpoint.
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `FAUCET_API_KEY` | API key for history access | `change-me-in-production` |
-| `DATA_DIR` | Directory for database and token files | `./data` |
-| `PORT` | Server port | `8080` |
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `FAUCET_MNEMONIC` | BIP-39 mnemonic phrase for faucet wallet | Falls back to config file | **Yes** |
+| `FAUCET_API_KEY` | API key for history access | `change-me-in-production` | **Yes** |
+| `DATA_DIR` | Directory for database and token files | `./data` | No |
+| `PORT` | Server port | `8080` | No |
 
 ### Faucet Configuration
 
@@ -181,7 +184,10 @@ Edit `src/main/resources/faucet-config.json`:
 }
 ```
 
-**IMPORTANT:** Change the `faucetMnemonic` to a secure mnemonic in production!
+**IMPORTANT:**
+- Set `FAUCET_MNEMONIC` environment variable in `.env` (overrides the config file)
+- The mnemonic in config file is just a fallback
+- **Generate a new secure mnemonic for production!**
 
 ## Supported Coins
 

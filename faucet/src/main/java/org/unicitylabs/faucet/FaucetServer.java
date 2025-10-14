@@ -322,6 +322,10 @@ public class FaucetServer {
                 apiKey = "change-me-in-production";
             }
 
+            // Show first 5 chars of API key for verification
+            String apiKeyPreview = apiKey.length() >= 5 ? apiKey.substring(0, 5) + "..." : apiKey;
+            System.out.println("🔑 API Key: " + apiKeyPreview);
+
             // Get port from environment or use default
             int port = 8080;
             String portEnv = System.getenv("PORT");
@@ -332,6 +336,11 @@ public class FaucetServer {
                     System.err.println("⚠️  Invalid PORT value, using default: 8080");
                 }
             }
+
+            // Show first 5 chars of mnemonic for verification
+            String mnemonicPreview = config.faucetMnemonic.length() >= 5 ?
+                config.faucetMnemonic.substring(0, 5) + "..." : config.faucetMnemonic;
+            System.out.println("🔐 Mnemonic: " + mnemonicPreview);
 
             // Initialize faucet service
             FaucetService faucetService = new FaucetService(config, dataDir);

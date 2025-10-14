@@ -13,6 +13,9 @@ services:
       # API key for history access (CHANGE THIS IN PRODUCTION!)
       FAUCET_API_KEY: ${FAUCET_API_KEY:-your-secret-api-key-here}
 
+      # BIP-39 mnemonic phrase for faucet wallet (CHANGE THIS IN PRODUCTION!)
+      FAUCET_MNEMONIC: ${FAUCET_MNEMONIC:-abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about}
+
       # Server port
       PORT: 8080
 
