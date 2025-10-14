@@ -1,26 +1,172 @@
 # Unicity Token Faucet
 
-A standalone CLI application for minting Unicity tokens and sending them via Nostr to nametag recipients.
+A production-ready REST API server and CLI application for distributing Unicity testnet tokens via web interface or command line.
 
-## Overview
+## Features
 
-This faucet application:
-1. Loads all supported coins dynamically from the Unicity registry
-2. Mints tokens with proper proxy address targeting
-3. Transfers tokens to recipient's nametag proxy address (supports phone numbers as nametags)
-4. Uses privacy-preserving SHA-256 hashed nametags for Nostr lookups
-5. Sends complete transfer package (source token + transfer transaction) via Nostr
-6. Recipient wallet finalizes the transfer with cryptographic verification
+- 🌐 **REST API Server** - Full REST API under `/api/v1/`
+- 💧 **Web Interface** - User-friendly faucet UI at `/faucet/index.html`
+- 📊 **History Tracking** - Track all faucet requests with API key protected history
+- 🗄️ **Database Storage** - SQLite database for request history
+- 📁 **Token Storage** - Automatic token file storage in `./data/tokens/`
+- 🐳 **Docker Ready** - Single command deployment with Docker Compose
+- 🔐 **API Key Protection** - Secure history access with API key authentication
+- 📱 **Phone Number Support** - Send tokens to phone numbers (e.g., +14155552671)
+- 🔒 **Privacy-Preserving** - SHA-256 hashed nametags for Nostr lookups
 
-The wallet app receives and finalizes these token transfers automatically through proper Unicity Protocol semantics.
+## Quick Start - Web Server
 
-### Privacy-Preserving Nametag System
-- **Hashed Storage**: All nametags are SHA-256 hashed before Nostr queries
-- **Phone Number Support**: Send tokens to phone numbers (e.g., +14155552671)
-- **E.164 Normalization**: Phone numbers are normalized to ensure consistent hashing
-- **Privacy by Default**: Raw nametags are never exposed on the network
+### Deploy with Docker Compose (Recommended)
+
+1. **Navigate to faucet directory:**
+   ```bash
+   cd faucet
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env and set your FAUCET_API_KEY
+   ```
+
+3. **Start the server:**
+   ```bash
+   docker compose up
+   ```
+
+4. **Access the faucet:**
+   - Web UI: http://localhost:8080/faucet/index.html
+   - History: http://localhost:8080/faucet/history/index.html
+   - API: http://localhost:8080/api/v1/
+
+### Stop the server:
+```bash
+docker compose down
+```
+
+### View logs:
+```bash
+docker compose logs -f
+```
+
+## Quick Start - CLI
+
+### Run the CLI Faucet
+
+```bash
+# Default coin (Solana) with default amount
+./gradlew run --args="--nametag=alice"
+
+# Send to a phone number (automatically normalized and hashed)
+./gradlew run --args="--nametag=+14155552671"
+
+# Specify amount and coin
+./gradlew run --args="--nametag=alice --amount=0.01 --coin=bitcoin"
+./gradlew run --args="--nametag=alice --amount=0.5 --coin=ethereum"
+./gradlew run --args="--nametag=alice --amount=100 --coin=tether"
+```
+
+## REST API Documentation
+
+### Endpoints
+
+#### `GET /api/v1/coins`
+Get list of supported crypto assets.
+
+**Response:**
+```json
+{
+  "success": true,
+  "coins": [
+    {
+      "id": "...",
+      "name": "solana",
+      "symbol": "SOL",
+      "decimals": 9,
+      "description": "Solana",
+      "iconUrl": "https://..."
+    }
+  ]
+}
+```
+
+#### `POST /api/v1/faucet`
+Submit a faucet request to mint and send tokens.
+
+**Request Body:**
+```json
+{
+  "unicityId": "alice",
+  "coin": "solana",
+  "amount": 0.05
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Token sent successfully",
+  "data": {
+    "requestId": 1,
+    "unicityId": "alice",
+    "coin": "Solana",
+    "symbol": "SOL",
+    "amount": 0.05,
+    "amountInSmallestUnits": "50000000",
+    "recipientNostrPubkey": "..."
+  }
+}
+```
+
+#### `GET /api/v1/history`
+Get faucet request history (requires API key).
+
+**Headers:**
+```
+X-API-Key: your-api-key
+```
+
+**Query Parameters:**
+- `limit` (optional, default: 100, max: 1000)
+- `offset` (optional, default: 0)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "requests": [...],
+    "pagination": {
+      "limit": 100,
+      "offset": 0,
+      "total": 250
+    }
+  }
+}
+```
+
+#### `GET /health`
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
 
 ## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `FAUCET_API_KEY` | API key for history access | `change-me-in-production` |
+| `DATA_DIR` | Directory for database and token files | `./data` |
+| `PORT` | Server port | `8080` |
+
+### Faucet Configuration
 
 Edit `src/main/resources/faucet-config.json`:
 
@@ -35,68 +181,11 @@ Edit `src/main/resources/faucet-config.json`:
 }
 ```
 
-### Configuration Options
-
-- **registryUrl**: URL to unicity-ids registry JSON (defines all coins and token types dynamically)
-- **nostrRelay**: WebSocket URL of the Nostr relay for P2P messaging
-- **aggregatorUrl**: URL of the Unicity aggregator service
-- **faucetMnemonic**: BIP-39 mnemonic phrase for faucet identity - **KEEP SECURE!**
-- **defaultAmount**: Default token amount if not specified via CLI
-- **defaultCoin**: Default coin name (e.g., "solana", "bitcoin")
-
-## Usage
-
-### Build the Project
-
-```bash
-cd faucet
-./gradlew build
-```
-
-### Run the Faucet
-
-```bash
-# Default coin (Solana) with default amount
-./gradlew run --args="--nametag=alice"
-
-# Send to a phone number (automatically normalized and hashed)
-./gradlew run --args="--nametag=+14155552671"
-./gradlew run --args="--nametag=4155552671"  # Works without country code
-
-# Specify amount (uses proper decimals automatically)
-./gradlew run --args="--nametag=alice --amount=1.5"
-
-# Specify coin
-./gradlew run --args="--nametag=alice --amount=0.01 --coin=bitcoin"
-./gradlew run --args="--nametag=alice --amount=0.5 --coin=ethereum"
-./gradlew run --args="--nametag=alice --amount=100 --coin=tether"
-./gradlew run --args="--nametag=alice --amount=50 --coin=usd-coin"
-
-# Send Bitcoin to a phone number
-./gradlew run --args="--nametag=+14155552671 --amount=0.001 --coin=bitcoin"
-
-# Force refresh registry from GitHub
-./gradlew run --args="--nametag=alice --refresh"
-```
-
-### CLI Options
-
-```
-Usage: faucet [-hV] -n=<nametag> [-a=<amount>] [-c=<coin>] [--refresh] [--config=<configPath>]
-
-Options:
-  -n, --nametag=<nametag>   Recipient's nametag (required)
-  -a, --amount=<amount>     Token amount in human-readable units (e.g., 0.05)
-  -c, --coin=<coin>         Coin to mint (e.g., 'bitcoin', 'ethereum', 'solana')
-      --refresh             Force refresh registry from GitHub (ignores cache)
-      --config=<path>       Path to config file
-  -h, --help                Show this help message and exit
-  -V, --version             Print version information and exit
-```
+**IMPORTANT:** Change the `faucetMnemonic` to a secure mnemonic in production!
 
 ## Supported Coins
 
-All coins are loaded dynamically from the registry. Current coins:
+All coins are loaded dynamically from the registry:
 
 | Coin | Symbol | Decimals | CoinGecko ID |
 |------|--------|----------|--------------|
@@ -108,6 +197,15 @@ All coins are loaded dynamically from the registry. Current coins:
 
 To add new coins, update the [unicity-ids.testnet.json](https://github.com/unicitynetwork/unicity-ids/blob/main/unicity-ids.testnet.json) registry.
 
+## Data Persistence
+
+All data is stored in the `./data` directory:
+
+- `./data/faucet.db` - SQLite database with request history
+- `./data/tokens/` - Individual token files for each request
+
+This directory is automatically created and persisted via Docker volume mount.
+
 ## How It Works
 
 ### 1. Registry Loading
@@ -116,8 +214,9 @@ To add new coins, update the [unicity-ids.testnet.json](https://github.com/unici
 - Cache valid for 24 hours
 - Use `--refresh` to force update
 
-### 2. Nametag Resolution
+### 2. Nametag Resolution (Privacy-Preserving)
 - Queries Nostr relay: `{"kinds": [30078], "#t": ["nametag"]}`
+- Uses SHA-256 hashed nametags (never exposes raw nametags)
 - Gets recipient's Nostr public key from binding
 - Creates proxy address: `ProxyAddress.create(TokenId.fromNameTag(nametag))`
 
@@ -139,45 +238,154 @@ To add new coins, update the [unicity-ids.testnet.json](https://github.com/unici
 - Format: `token_transfer:{"sourceToken":"...","transferTx":"..."}`
 - Wallet receives, verifies, and finalizes
 
-## Proper Transfer Flow
+## Architecture
 
-Unlike simple token sending, this implements the full Unicity Protocol:
-
-1. **Faucet**: Mint → Transfer to ProxyAddress → Send transfer package via Nostr
-2. **Wallet**: Receive → Check proxy address → Load nametag token → Create recipient predicate with transfer's salt → Finalize with SDK → Save
-
-This ensures:
-- ✅ Cryptographic ownership verification
-- ✅ Proxy address resolution with nametag tokens
-- ✅ Proper state transitions
-- ✅ Verifiable inclusion proofs
-
-## Registry Cache
-
-**Location:** `~/.unicity/registry-cache.json`
-
-**Clear cache:**
-```bash
-rm ~/.unicity/registry-cache.json
-# Or use --refresh flag
+```
+┌─────────────────┐
+│  Web Browser    │
+│  (User)         │
+└────────┬────────┘
+         │ HTTP
+         ▼
+┌─────────────────┐
+│  Javalin        │  REST API Server
+│  Web Server     │  - /api/v1/coins
+│                 │  - /api/v1/faucet
+│                 │  - /api/v1/history
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ FaucetService   │  Business Logic
+│                 │  - Token minting
+│                 │  - Nametag resolution
+│                 │  - Nostr delivery
+└────────┬────────┘
+         │
+         ├──────────────────┐
+         ▼                  ▼
+┌─────────────────┐  ┌─────────────────┐
+│ SQLite Database │  │ Token Storage   │
+│ (History)       │  │ (./data/tokens) │
+└─────────────────┘  └─────────────────┘
 ```
 
-## Testing
+## Local Development (without Docker)
 
-Run E2E test:
+### Run the server:
+
+1. **Build the project:**
+   ```bash
+   ./gradlew build
+   ```
+
+2. **Set environment variables:**
+   ```bash
+   export FAUCET_API_KEY="your-api-key"
+   export DATA_DIR="./data"
+   export PORT=8080
+   ```
+
+3. **Run the server:**
+   ```bash
+   ./gradlew run --args="org.unicitylabs.faucet.FaucetServer"
+   ```
+
+### Run tests:
+
 ```bash
+./gradlew test
 ./gradlew test --tests "FaucetE2ETest.testCompleteTokenTransferFlow"
+```
+
+## CLI Options
+
+```
+Usage: faucet [-hV] -n=<nametag> [-a=<amount>] [-c=<coin>] [--refresh] [--config=<configPath>]
+
+Options:
+  -n, --nametag=<nametag>   Recipient's nametag or phone number (required)
+  -a, --amount=<amount>     Token amount in human-readable units (e.g., 0.05)
+  -c, --coin=<coin>         Coin to mint (e.g., 'bitcoin', 'ethereum', 'solana')
+      --refresh             Force refresh registry from GitHub (ignores cache)
+      --config=<path>       Path to config file
+  -h, --help                Show this help message and exit
+  -V, --version             Print version information and exit
+```
+
+## Security Considerations
+
+1. **API Key**: Always set a strong `FAUCET_API_KEY` in production
+2. **Mnemonic**: The faucet mnemonic in config should be kept secure
+3. **Network**: Consider running behind a reverse proxy (nginx, Traefik) with HTTPS
+4. **Rate Limiting**: Consider implementing rate limiting for production use
+5. **Privacy**: Nametags are automatically SHA-256 hashed for privacy
+
+## Troubleshooting
+
+### Docker build fails
+- Ensure Docker has enough memory (4GB+ recommended)
+- Check that all source files are present
+- Try `docker compose build --no-cache`
+
+### Server won't start
+- Check that port 8080 is not already in use
+- Verify faucet-config.json is valid JSON
+- Check logs: `docker compose logs -f`
+
+### Database errors
+- Ensure `./data` directory has write permissions
+- Delete `./data/faucet.db` to reset the database
+
+### Token delivery fails
+- Verify Nostr relay is accessible
+- Check that nametag has been minted and published
+- Ensure aggregator URL is correct
+
+### Registry cache issues
+```bash
+# Clear cache
+rm ~/.unicity/registry-cache.json
+# Or use --refresh flag
+./gradlew run --args="--nametag=alice --refresh"
+```
+
+## Project Structure
+
+```
+faucet/
+├── src/
+│   ├── main/
+│   │   ├── java/org/unicitylabs/faucet/
+│   │   │   ├── db/                    # Database models and DAO
+│   │   │   ├── FaucetServer.java      # REST API server
+│   │   │   ├── FaucetService.java     # Business logic
+│   │   │   ├── FaucetCLI.java         # CLI interface
+│   │   │   ├── TokenMinter.java       # Token minting
+│   │   │   ├── NametagResolver.java   # Nametag resolution
+│   │   │   └── UnicityTokenRegistry.java  # Registry loader
+│   │   └── resources/
+│   │       ├── public/faucet/         # Web UI files
+│   │       ├── faucet-config.json     # Faucet configuration
+│   │       └── trustbase-testnet.json # Trust base
+│   └── test/
+├── build.gradle.kts
+├── Dockerfile
+├── docker-compose.yml
+└── README.md
 ```
 
 ## Dependencies
 
 - Unicity Java SDK 1.2+ (state transitions, proxy addressing)
+- Unicity Nostr SDK 1.0+ (Nostr client, token transfer protocol)
+- Javalin 5.6+ (web server)
+- SQLite JDBC (database)
 - Jackson (JSON/CBOR serialization)
-- OkHttp (WebSocket for Nostr)
-- BouncyCastle (Schnorr signatures)
+- BouncyCastle (cryptography)
 - Picocli (CLI)
 - BitcoinJ (BIP-39 mnemonic)
 
 ## License
 
-MIT License
+Part of the Unicity Protocol project - MIT License

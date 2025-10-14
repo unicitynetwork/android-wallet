@@ -41,6 +41,12 @@ dependencies {
     // Apache Commons Codec for hex encoding (used by SDK and faucet)
     implementation("commons-codec:commons-codec:1.16.0")
 
+    // Web server framework
+    implementation("io.javalin:javalin:5.6.3")
+
+    // SQLite database
+    implementation("org.xerial:sqlite-jdbc:3.44.1.0")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.awaitility:awaitility:4.2.0")
@@ -48,6 +54,18 @@ dependencies {
 
 application {
     mainClass.set("org.unicitylabs.faucet.FaucetCLI")
+}
+
+// Create a fat JAR with all dependencies
+tasks.jar {
+    manifest {
+        attributes["Main-Class"] = "org.unicitylabs.faucet.FaucetServer"
+    }
+    // Include all dependencies
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+    // Exclude signature files to avoid signature conflicts
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.register<JavaExec>("mint") {
@@ -60,4 +78,11 @@ tasks.register<JavaExec>("mint") {
     if (project.hasProperty("args")) {
         args = (project.property("args") as String).split("\\s+".toRegex())
     }
+}
+
+tasks.register<JavaExec>("server") {
+    group = "application"
+    description = "Run the faucet web server"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.unicitylabs.faucet.FaucetServer")
 }
