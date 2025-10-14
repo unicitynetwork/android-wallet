@@ -12,7 +12,7 @@ import org.junit.Test
 import org.spongycastle.crypto.digests.SHA256Digest
 import org.spongycastle.util.encoders.Hex
 import org.unicitylabs.wallet.nostr.Event
-import org.unicitylabs.wallet.nostr.NostrNametagBinding
+import org.unicitylabs.nostr.protocol.EventKinds
 import org.unicitylabs.wallet.util.JsonMapper
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
@@ -176,7 +176,7 @@ class NostrNametagBindingTest {
         val createdAt = System.currentTimeMillis() / 1000
 
         val tags = listOf(
-            listOf("d", NostrNametagBinding.TAG_D_VALUE),
+            listOf("d", "unicity-nametag"),  // TAG_D_VALUE
             listOf("nametag", nametagId),
             listOf("t", nametagId),  // IMPORTANT: Use 't' tag for indexing
             listOf("address", unicityAddress)
@@ -192,7 +192,7 @@ class NostrNametagBindingTest {
             0,
             client.publicKey,
             createdAt,
-            NostrNametagBinding.KIND_NAMETAG_BINDING,
+            EventKinds.APP_DATA,  // KIND_NAMETAG_BINDING = 30078 = APP_DATA
             tags,
             content
         )
@@ -213,7 +213,7 @@ class NostrNametagBindingTest {
             id = eventId,
             pubkey = client.publicKey,
             created_at = createdAt,
-            kind = NostrNametagBinding.KIND_NAMETAG_BINDING,
+            kind = EventKinds.APP_DATA,  // KIND_NAMETAG_BINDING = 30078 = APP_DATA
             tags = tags,
             content = content,
             sig = signatureHex
@@ -230,9 +230,9 @@ class NostrNametagBindingTest {
         val subscriptionId = "query-nametag-${System.currentTimeMillis()}"
 
         val filter = mapOf(
-            "kinds" to listOf(NostrNametagBinding.KIND_NAMETAG_BINDING),
+            "kinds" to listOf(EventKinds.APP_DATA),  // KIND_NAMETAG_BINDING = 30078
             "authors" to listOf(nostrPubkey),
-            "#d" to listOf(NostrNametagBinding.TAG_D_VALUE),
+            "#d" to listOf("unicity-nametag"),  // TAG_D_VALUE
             "limit" to 1
         )
 
@@ -259,7 +259,7 @@ class NostrNametagBindingTest {
         val subscriptionId = "query-pubkey-${System.currentTimeMillis()}"
 
         val filter = mapOf(
-            "kinds" to listOf(NostrNametagBinding.KIND_NAMETAG_BINDING),
+            "kinds" to listOf(EventKinds.APP_DATA),  // KIND_NAMETAG_BINDING = 30078
             "#t" to listOf(nametagId),  // IMPORTANT: Use #t tag
             "limit" to 1
         )

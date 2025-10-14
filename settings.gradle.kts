@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "UnicityAndroidWallet"
 include(":app")
+include(":unicity-nostr-sdk")

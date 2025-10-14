@@ -1,6 +1,6 @@
 package org.unicitylabs.wallet.nostr
 
-// Nostr protocol implementation without external library dependency
+// Nostr protocol implementation using unicity-nostr-sdk
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -19,17 +19,23 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import org.spongycastle.util.encoders.Hex
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.data.repository.WalletRepository
 import org.unicitylabs.wallet.p2p.IP2PService
 import org.unicitylabs.wallet.token.UnicityTokenRegistry
 import org.unicitylabs.wallet.util.JsonMapper
+
+// Nostr SDK imports
+import org.unicitylabs.nostr.crypto.NostrKeyManager as SdkKeyManager
+import org.unicitylabs.nostr.nametag.NametagBinding
+import org.unicitylabs.nostr.protocol.EventKinds
+import org.unicitylabs.nostr.util.HexUtils
+
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-// Event data class for Nostr protocol
+// Event data class for Nostr protocol (keeping wallet's version for compatibility)
 data class Event(
     val id: String,
     val pubkey: String,
@@ -94,7 +100,7 @@ class NostrP2PService(
     }
 
     // Core components
-    private val keyManager = NostrKeyManager(context)
+    private val keyManager = NostrKeyManagerAdapter(context)
     // Using shared JsonMapper
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -440,7 +446,7 @@ class NostrP2PService(
         val result = ByteArray(32)
         hash.doFinal(result, 0)
 
-        return Hex.toHexString(result)
+        return HexUtils.toHex(result)
     }
 
     /**
@@ -448,9 +454,9 @@ class NostrP2PService(
      * Nostr uses Schnorr signatures (BIP-340) for events
      */
     private fun signEvent(eventId: String): String {
-        val messageBytes = Hex.decode(eventId)
+        val messageBytes = HexUtils.fromHex(eventId)
         val signature = keyManager.sign(messageBytes)
-        return Hex.toHexString(signature)
+        return HexUtils.toHex(signature)
     }
 
     /**
@@ -611,7 +617,7 @@ class NostrP2PService(
         return try {
             val tagBytes = tag.toByteArray()
             val hash = MessageDigest.getInstance("SHA-256").digest(tagBytes)
-            val pubkey = Hex.toHexString(hash)
+            val pubkey = HexUtils.toHex(hash)
             Log.d(TAG, "=== RESOLVE DEBUG: Generated fallback pubkey for $tag: ${pubkey.take(20)}... ===")
             pubkey
         } catch (e: Exception) {
@@ -621,8 +627,8 @@ class NostrP2PService(
     }
 
     private fun createEncryptedMessage(recipientPubkey: String, content: String): Event {
-        // Implement NIP-04 encryption
-        val recipientPubkeyBytes = Hex.decode(recipientPubkey)
+        // Implement NIP-04 encryption with auto-compression (SDK)
+        val recipientPubkeyBytes = HexUtils.fromHex(recipientPubkey)
         val encryptedContent = keyManager.encryptMessage(content, recipientPubkeyBytes)
 
         return createEvent(
@@ -633,9 +639,9 @@ class NostrP2PService(
     }
 
     private fun handleEncryptedMessage(event: Event) {
-        // Decrypt NIP-04 message
+        // Decrypt NIP-04 message with auto-decompression (SDK)
         try {
-            val senderPubkeyBytes = Hex.decode(event.pubkey)
+            val senderPubkeyBytes = HexUtils.fromHex(event.pubkey)
             val decryptedContent = keyManager.decryptMessage(event.content, senderPubkeyBytes)
 
             Log.d(TAG, "Received encrypted message from ${event.pubkey}: $decryptedContent")
@@ -687,15 +693,19 @@ class NostrP2PService(
                 Log.d(TAG, "Processing token transfer from ${event.pubkey}")
 
                 // Decrypt the message content
-                // Try hex decoding first (faucet uses simple hex), then NIP-04
+                // SDK handles both NIP-04 (new) and hex (legacy) automatically
                 val decryptedContent = try {
-                    // First try simple hex decoding (faucet format)
+                    // Try NIP-04 decryption first (SDK handles auto-decompression)
                     try {
-                        String(Hex.decode(event.content), Charsets.UTF_8)
-                    } catch (hexError: Exception) {
-                        // Fall back to NIP-04 encryption
-                        val senderPubkeyBytes = Hex.decode(event.pubkey)
+                        val senderPubkeyBytes = HexUtils.fromHex(event.pubkey)
                         keyManager.decryptMessage(event.content, senderPubkeyBytes)
+                    } catch (nip04Error: Exception) {
+                        // Fall back to simple hex decoding (legacy format)
+                        try {
+                            String(HexUtils.fromHex(event.content), Charsets.UTF_8)
+                        } catch (hexError: Exception) {
+                            throw Exception("Failed both NIP-04 and hex decryption", nip04Error)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to decrypt token transfer", e)
@@ -1162,8 +1172,8 @@ class NostrP2PService(
             // Format: "token_transfer:<token_json>"
             val content = "token_transfer:$tokenJson"
 
-            // Encrypt the content for the recipient
-            val recipientPubkeyBytes = Hex.decode(recipientPubkey)
+            // Encrypt the content for the recipient (SDK handles auto-compression)
+            val recipientPubkeyBytes = HexUtils.fromHex(recipientPubkey)
             val encryptedContent = keyManager.encryptMessage(content, recipientPubkeyBytes)
 
             // Create token transfer event
@@ -1255,16 +1265,24 @@ class NostrP2PService(
      */
     suspend fun publishNametagBinding(nametagId: String, unicityAddress: String): Boolean {
         return try {
-            val bindingManager = NostrNametagBinding()
-            val publicKey = keyManager.getPublicKey()
-
             Log.d(TAG, "Publishing nametag binding for: $nametagId")
 
-            val bindingEvent = bindingManager.createBindingEvent(
-                publicKeyHex = publicKey,
-                nametagId = nametagId,
-                unicityAddress = unicityAddress,
-                keyManager = keyManager
+            // Create binding event using SDK
+            val sdkEvent = NametagBinding.createBindingEvent(
+                keyManager.getSdkKeyManager(),
+                nametagId,
+                unicityAddress
+            )
+
+            // Convert SDK event to wallet Event format
+            val bindingEvent = Event(
+                id = sdkEvent.id,
+                pubkey = sdkEvent.pubkey,
+                created_at = sdkEvent.createdAt,
+                kind = sdkEvent.kind,
+                tags = sdkEvent.tags,
+                content = sdkEvent.content,
+                sig = sdkEvent.sig
             )
 
             // Publish the event to all connected relays
@@ -1289,8 +1307,15 @@ class NostrP2PService(
      */
     suspend fun queryPubkeyByNametag(nametagId: String): String? {
         return try {
-            val bindingManager = NostrNametagBinding()
-            val filter = bindingManager.createNametagToPubkeyFilter(nametagId)
+            // Create filter using SDK
+            val sdkFilter = NametagBinding.createNametagToPubkeyFilter(nametagId)
+
+            // Convert SDK filter to map for WebSocket
+            val filter = mapOf(
+                "kinds" to sdkFilter.kinds,
+                "#t" to sdkFilter.tTags,
+                "limit" to sdkFilter.limit
+            )
 
             Log.d(TAG, "Querying pubkey for nametag: $nametagId")
             Log.d(TAG, "Filter: $filter")
@@ -1302,7 +1327,7 @@ class NostrP2PService(
 
             // Add temporary listener for this query
             val listener: (Event) -> Unit = { event ->
-                if (event.kind == NostrNametagBinding.KIND_NAMETAG_BINDING) {
+                if (event.kind == EventKinds.APP_DATA) {
                     // Relay filter already ensures this is for our nametag
                     receivedEvent.complete(event)
                 }

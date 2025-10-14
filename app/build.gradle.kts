@@ -84,6 +84,9 @@ android {
 }
 
 dependencies {
+    // Unicity Nostr SDK (includes Nostr client, crypto, nametag binding, token transfer)
+    implementation(project(":unicity-nostr-sdk"))
+
     // Unicity Java SDK: https://jitpack.io/#org.unicitylabs/java-state-transition-sdk
     implementation("org.unicitylabs:java-state-transition-sdk:1.2.0")
 
