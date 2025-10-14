@@ -210,42 +210,11 @@ public class FaucetE2ETest {
         NostrClient nostrClient = new NostrClient(faucetKeyManager);
         nostrClient.connect(NOSTR_RELAY).join();
 
-        // IMPORTANT: Create a TOKEN_TRANSFER event (kind 31113), not ENCRYPTED_DM (kind 4)
-        // Alice is subscribed to KIND_TOKEN_TRANSFER
-        String transferMessage = "token_transfer:" + tokenJson;
+        // Use SDK method to send token transfer (same as production code)
+        // This ensures test uses the same code path as FaucetCLI
+        // NOTE: sendTokenTransfer() adds "token_transfer:" prefix itself, don't add it here!
+        String eventId = nostrClient.sendTokenTransfer(aliceNostrPubKey, tokenJson).join();
 
-        // Manually create TOKEN_TRANSFER event with NIP-04 encryption
-        long createdAt = System.currentTimeMillis() / 1000;
-        String encryptedContent = faucetKeyManager.encryptHex(transferMessage, aliceNostrPubKey);
-
-        org.unicitylabs.nostr.protocol.Event event = new org.unicitylabs.nostr.protocol.Event();
-        event.setPubkey(faucetKeyManager.getPublicKeyHex());
-        event.setCreatedAt(createdAt);
-        event.setKind(KIND_TOKEN_TRANSFER);  // Use TOKEN_TRANSFER, not ENCRYPTED_DM!
-        event.setTags(Arrays.asList(Arrays.asList("p", aliceNostrPubKey)));
-        event.setContent(encryptedContent);
-
-        // Calculate event ID
-        List<Object> eventData = Arrays.asList(
-            0,
-            event.getPubkey(),
-            event.getCreatedAt(),
-            event.getKind(),
-            event.getTags(),
-            event.getContent()
-        );
-        String eventJson = jsonMapper.writeValueAsString(eventData);
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        byte[] eventIdBytes = digest.digest(eventJson.getBytes());
-        String eventId = Hex.encodeHexString(eventIdBytes);
-        event.setId(eventId);
-
-        // Sign event
-        String signature = faucetKeyManager.signHex(eventIdBytes);
-        event.setSig(signature);
-
-        // Publish the event
-        nostrClient.publishEvent(event).join();
         System.out.println("✅ Token sent via Nostr! Event ID: " + eventId.substring(0, 16) + "...");
         System.out.println("   Kind: " + KIND_TOKEN_TRANSFER + " (TOKEN_TRANSFER)");
 

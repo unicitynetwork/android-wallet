@@ -7,6 +7,7 @@ import picocli.CommandLine.Option;
 // Nostr SDK imports
 import org.unicitylabs.nostr.client.NostrClient;
 import org.unicitylabs.nostr.crypto.NostrKeyManager;
+import org.unicitylabs.nostr.token.TokenTransferProtocol;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -203,11 +204,15 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("   Nostr pubkey: " + recipientPubKey.substring(0, 16) + "...");
         System.out.println("   Proxy address: " + recipientProxyAddress.getAddress());
 
-        // Create Nostr client with SDK (uses NIP-04 encryption + compression)
+        // Send token transfer using SDK's TokenTransferProtocol
+        // This ensures correct event kind (31113) and proper formatting
         NostrKeyManager keyManager = NostrKeyManager.fromPrivateKey(faucetPrivateKey);
         NostrClient nostrClient = new NostrClient(keyManager);
         nostrClient.connect(config.nostrRelay).join();
-        nostrClient.publishEncryptedMessage(recipientPubKey, transferPackage).join();
+
+        // Use SDK method to create properly formatted TOKEN_TRANSFER event
+        nostrClient.sendTokenTransfer(recipientPubKey, transferPackage).join();
+
         nostrClient.disconnect();
 
         System.out.println();
@@ -230,8 +235,9 @@ public class FaucetCLI implements Callable<Integer> {
 
     /**
      * Create a transfer package with source token and transfer transaction
-     * Format: token_transfer:{"sourceToken":"...","transferTx":"..."}
+     * Format: {"sourceToken":"...","transferTx":"..."}
      * The JSON strings are properly escaped and embedded as string values
+     * NOTE: SDK will add "token_transfer:" prefix automatically
      */
     private String createTransferPackage(String sourceTokenJson, String transferTxJson) throws Exception {
         // Escape the JSON strings properly for embedding as string values
@@ -243,9 +249,8 @@ public class FaucetCLI implements Callable<Integer> {
         payload.put("transferTx", transferTxJson);
 
         // Serialize the map (this will properly escape the JSON string values)
-        String payloadJson = mapper.writeValueAsString(payload);
-
-        return "token_transfer:" + payloadJson;
+        // DON'T add "token_transfer:" prefix - SDK does that
+        return mapper.writeValueAsString(payload);
     }
 
     /**
