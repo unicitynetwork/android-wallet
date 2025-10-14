@@ -3,8 +3,8 @@ package org.unicitylabs.wallet.nostr
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.runBlocking
+import org.apache.commons.codec.binary.Hex
 import org.unicitylabs.nostr.crypto.NostrKeyManager as SdkKeyManager
-import org.unicitylabs.nostr.util.HexUtils
 import org.unicitylabs.wallet.identity.IdentityManager
 
 /**
@@ -33,7 +33,7 @@ class NostrKeyManagerAdapter(private val context: Context) {
 
             if (identity != null) {
                 // Use wallet's existing keys
-                val privateKeyBytes = HexUtils.fromHex(identity.privateKey)
+                val privateKeyBytes = Hex.decodeHex(identity.privateKey.toCharArray())
 
                 // Create SDK key manager
                 sdkKeyManager = SdkKeyManager.fromPrivateKey(privateKeyBytes)

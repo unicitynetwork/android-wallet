@@ -15,8 +15,10 @@ import org.unicitylabs.nostr.client.NostrClient;
 import org.unicitylabs.nostr.crypto.NostrKeyManager;
 import org.unicitylabs.nostr.crypto.SchnorrSigner;
 import org.unicitylabs.nostr.nametag.NametagUtils;
-import org.unicitylabs.nostr.util.HexUtils;
 import org.unicitylabs.nostr.protocol.EventKinds;
+
+// Apache Commons Codec for hex encoding
+import org.apache.commons.codec.binary.Hex;
 
 import java.math.BigInteger;
 import java.security.MessageDigest;
@@ -79,7 +81,7 @@ public class FaucetE2ETest {
         alicePrivateKey = new byte[32];
         new SecureRandom().nextBytes(alicePrivateKey);
         byte[] alicePubKeyBytes = SchnorrSigner.getPublicKey(alicePrivateKey); // Derive from private key
-        aliceNostrPubKey = HexUtils.toHex(alicePubKeyBytes);
+        aliceNostrPubKey = Hex.encodeHexString(alicePubKeyBytes);
         System.out.println("✅ Alice's Nostr pubkey: " + aliceNostrPubKey.substring(0, 16) + "...");
 
         // Generate unique nametag for Alice
@@ -235,7 +237,7 @@ public class FaucetE2ETest {
         String eventJson = jsonMapper.writeValueAsString(eventData);
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] eventIdBytes = digest.digest(eventJson.getBytes());
-        String eventId = HexUtils.toHex(eventIdBytes);
+        String eventId = Hex.encodeHexString(eventIdBytes);
         event.setId(eventId);
 
         // Sign event
@@ -444,7 +446,7 @@ public class FaucetE2ETest {
                         } catch (Exception e) {
                             System.out.println("⚠️ Decryption failed, trying hex fallback: " + e.getMessage());
                             try {
-                                byte[] contentBytes = HexUtils.fromHex(content);
+                                byte[] contentBytes = Hex.decodeHex(content.toCharArray());
                                 String decodedContent = new String(contentBytes);
                                 aliceReceivedMessages.add(decodedContent);
                                 if (decodedContent.contains("token_transfer")) {

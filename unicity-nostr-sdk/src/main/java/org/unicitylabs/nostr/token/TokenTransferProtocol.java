@@ -1,6 +1,8 @@
 package org.unicitylabs.nostr.token;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.codec.DecoderException;
 import org.unicitylabs.nostr.crypto.NostrKeyManager;
 import org.unicitylabs.nostr.protocol.Event;
 import org.unicitylabs.nostr.protocol.EventKinds;
@@ -63,7 +65,7 @@ public class TokenTransferProtocol {
         event.setId(eventId);
 
         // Sign event
-        byte[] eventIdBytes = hexToBytes(eventId);
+        byte[] eventIdBytes = Hex.decodeHex(eventId.toCharArray());
         String signature = keyManager.signHex(eventIdBytes);
         event.setSig(signature);
 
@@ -102,9 +104,9 @@ public class TokenTransferProtocol {
         } catch (Exception e) {
             // Fallback to legacy hex encoding (for backward compatibility)
             try {
-                byte[] hexDecoded = hexToBytes(event.getContent());
+                byte[] hexDecoded = Hex.decodeHex(event.getContent().toCharArray());
                 decryptedContent = new String(hexDecoded, StandardCharsets.UTF_8);
-            } catch (Exception hexError) {
+            } catch (DecoderException hexError) {
                 throw new Exception("Failed to decrypt token transfer: NIP-04 failed and hex fallback failed", e);
             }
         }
@@ -157,23 +159,7 @@ public class TokenTransferProtocol {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hashBytes = digest.digest(eventJson.getBytes(StandardCharsets.UTF_8));
 
-        return bytesToHex(hashBytes);
-    }
-
-    private static byte[] hexToBytes(String hex) {
-        byte[] bytes = new byte[hex.length() / 2];
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-        }
-        return bytes;
-    }
-
-    private static String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
+        return new String(Hex.encodeHex(hashBytes));
     }
 
     private TokenTransferProtocol() {

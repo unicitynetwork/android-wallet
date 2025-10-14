@@ -1,5 +1,8 @@
 package org.unicitylabs.nostr.crypto;
 
+import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.codec.DecoderException;
+
 import java.security.SecureRandom;
 import java.util.Arrays;
 
@@ -24,7 +27,8 @@ public class NostrKeyManager {
         }
         this.privateKey = Arrays.copyOf(privateKey, 32);
         this.publicKey = SchnorrSigner.getPublicKey(privateKey);
-        this.publicKeyHex = bytesToHex(publicKey);
+        // Use legacy API for Android compatibility (old commons-codec in system framework)
+        this.publicKeyHex = new String(Hex.encodeHex(publicKey));
     }
 
     /**
@@ -44,7 +48,11 @@ public class NostrKeyManager {
      * @return NostrKeyManager instance
      */
     public static NostrKeyManager fromPrivateKeyHex(String privateKeyHex) {
-        return new NostrKeyManager(hexToBytes(privateKeyHex));
+        try {
+            return new NostrKeyManager(Hex.decodeHex(privateKeyHex.toCharArray()));
+        } catch (DecoderException e) {
+            throw new IllegalArgumentException("Invalid hex string", e);
+        }
     }
 
     /**
@@ -85,7 +93,7 @@ public class NostrKeyManager {
      * Get private key as hex string.
      */
     public String getPrivateKeyHex() {
-        return bytesToHex(privateKey);
+        return new String(Hex.encodeHex(privateKey));
     }
 
     /**
@@ -135,7 +143,7 @@ public class NostrKeyManager {
      * @return Hex-encoded signature
      */
     public String signHex(byte[] messageHash) throws Exception {
-        return bytesToHex(sign(messageHash));
+        return new String(Hex.encodeHex(sign(messageHash)));
     }
 
     /**
@@ -160,8 +168,8 @@ public class NostrKeyManager {
      */
     public static boolean verifyHex(String signatureHex, byte[] messageHash, String publicKeyHex) {
         try {
-            byte[] signature = hexToBytes(signatureHex);
-            byte[] publicKey = hexToBytes(publicKeyHex);
+            byte[] signature = Hex.decodeHex(signatureHex.toCharArray());
+            byte[] publicKey = Hex.decodeHex(publicKeyHex.toCharArray());
             return verify(signature, messageHash, publicKey);
         } catch (Exception e) {
             return false;
@@ -190,7 +198,7 @@ public class NostrKeyManager {
      * @return Encrypted content
      */
     public String encryptHex(String message, String recipientPublicKeyHex) throws Exception {
-        return encrypt(message, hexToBytes(recipientPublicKeyHex));
+        return encrypt(message, Hex.decodeHex(recipientPublicKeyHex.toCharArray()));
     }
 
     /**
@@ -213,7 +221,7 @@ public class NostrKeyManager {
      * @return Decrypted plaintext message
      */
     public String decryptHex(String encryptedContent, String senderPublicKeyHex) throws Exception {
-        return decrypt(encryptedContent, hexToBytes(senderPublicKeyHex));
+        return decrypt(encryptedContent, Hex.decodeHex(senderPublicKeyHex.toCharArray()));
     }
 
     /**
@@ -240,27 +248,6 @@ public class NostrKeyManager {
      */
     public void clear() {
         Arrays.fill(privateKey, (byte) 0);
-    }
-
-    // Hex conversion utilities
-
-    private static byte[] hexToBytes(String hex) {
-        if (hex.length() % 2 != 0) {
-            throw new IllegalArgumentException("Hex string must have even length");
-        }
-        byte[] bytes = new byte[hex.length() / 2];
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-        }
-        return bytes;
-    }
-
-    private static String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
     }
 
     @Override

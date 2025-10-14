@@ -6,7 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.unicitylabs.nostr.client.NostrClient;
 import org.unicitylabs.nostr.crypto.NostrKeyManager;
 import org.unicitylabs.nostr.crypto.SchnorrSigner;
-import org.unicitylabs.nostr.util.HexUtils;
+
+// Apache Commons Codec for hex encoding
+import org.apache.commons.codec.binary.Hex;
 
 import java.security.SecureRandom;
 import java.util.Random;
@@ -38,7 +40,7 @@ public class NostrLargeMessageTest {
         // Generate valid recipient pubkey (we're just testing relay limit)
         byte[] recipientPrivateKey = new byte[32];
         new SecureRandom().nextBytes(recipientPrivateKey);
-        String recipientPubkey = HexUtils.toHex(SchnorrSigner.getPublicKey(recipientPrivateKey));
+        String recipientPubkey = Hex.encodeHexString(SchnorrSigner.getPublicKey(recipientPrivateKey));
 
         // Create 300KB payload (larger than old 256KB limit)
         String largeContent = generateRandomContent(300 * 1024); // 300KB
@@ -85,7 +87,7 @@ public class NostrLargeMessageTest {
         // Generate valid recipient pubkey (we're just testing relay limit)
         byte[] recipientPrivateKey = new byte[32];
         new SecureRandom().nextBytes(recipientPrivateKey);
-        String recipientPubkey = HexUtils.toHex(SchnorrSigner.getPublicKey(recipientPrivateKey));
+        String recipientPubkey = Hex.encodeHexString(SchnorrSigner.getPublicKey(recipientPrivateKey));
 
         // 480KB content → compressed with GZIP (SDK auto-compresses)
         String largeContent = generateRandomContent(480 * 1024);

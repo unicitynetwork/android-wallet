@@ -90,6 +90,9 @@ dependencies {
     // Unicity Java SDK: https://jitpack.io/#org.unicitylabs/java-state-transition-sdk
     implementation("org.unicitylabs:java-state-transition-sdk:1.2.0")
 
+    // Apache Commons Codec for hex encoding (used by Nostr SDK and wallet)
+    implementation("commons-codec:commons-codec:1.16.0")
+
     // Required dependencies for Unicity SDK (also used app-wide for JSON serialization)
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.17.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")

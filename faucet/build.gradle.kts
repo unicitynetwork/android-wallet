@@ -38,6 +38,9 @@ dependencies {
     // BIP-39 for mnemonic phrase (pure Java)
     implementation("org.bitcoinj:bitcoinj-core:0.16.3")
 
+    // Apache Commons Codec for hex encoding (used by SDK and faucet)
+    implementation("commons-codec:commons-codec:1.16.0")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.awaitility:awaitility:4.2.0")
