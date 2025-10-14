@@ -3,6 +3,10 @@ package org.unicitylabs.faucet;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.unicitylabs.nostr.client.NostrClient;
+import org.unicitylabs.nostr.crypto.NostrKeyManager;
+import org.unicitylabs.nostr.crypto.SchnorrSigner;
+import org.unicitylabs.nostr.util.HexUtils;
 
 import java.security.SecureRandom;
 import java.util.Random;
@@ -26,11 +30,15 @@ public class NostrLargeMessageTest {
         byte[] privateKey = new byte[32];
         new SecureRandom().nextBytes(privateKey);
 
-        // Initialize Nostr client
-        NostrClient nostrClient = new NostrClient(RELAY_URL, privateKey);
+        // Initialize Nostr client with SDK
+        NostrKeyManager keyManager = NostrKeyManager.fromPrivateKey(privateKey);
+        NostrClient nostrClient = new NostrClient(keyManager);
+        nostrClient.connect(RELAY_URL).join();
 
-        // Use dummy recipient pubkey (we're just testing relay limit)
-        String recipientPubkey = "a".repeat(64);
+        // Generate valid recipient pubkey (we're just testing relay limit)
+        byte[] recipientPrivateKey = new byte[32];
+        new SecureRandom().nextBytes(recipientPrivateKey);
+        String recipientPubkey = HexUtils.toHex(SchnorrSigner.getPublicKey(recipientPrivateKey));
 
         // Create 300KB payload (larger than old 256KB limit)
         String largeContent = generateRandomContent(300 * 1024); // 300KB
@@ -41,13 +49,14 @@ public class NostrLargeMessageTest {
 
         // Send via Nostr and wait for confirmation
         try {
-            NostrClient.NostrConnection connection = nostrClient.sendEncryptedMessage(recipientPubkey, message)
+            String eventId = nostrClient.publishEncryptedMessage(recipientPubkey, message)
                 .get(10, java.util.concurrent.TimeUnit.SECONDS);
 
             log.info("✅ SUCCESS: 300KB message accepted by relay!");
             log.info("Relay now supports 1MB limit (previously 256KB)");
+            log.info("Event ID: {}", eventId);
 
-            connection.close();
+            nostrClient.disconnect();
             assertTrue("Relay accepted 300KB message", true);
 
         } catch (Exception e) {
@@ -69,24 +78,32 @@ public class NostrLargeMessageTest {
         byte[] privateKey = new byte[32];
         new SecureRandom().nextBytes(privateKey);
 
-        NostrClient nostrClient = new NostrClient(RELAY_URL, privateKey);
-        String recipientPubkey = "c".repeat(64);
+        NostrKeyManager keyManager = NostrKeyManager.fromPrivateKey(privateKey);
+        NostrClient nostrClient = new NostrClient(keyManager);
+        nostrClient.connect(RELAY_URL).join();
 
-        // 480KB content → ~960KB hex-encoded → just under 1MB
+        // Generate valid recipient pubkey (we're just testing relay limit)
+        byte[] recipientPrivateKey = new byte[32];
+        new SecureRandom().nextBytes(recipientPrivateKey);
+        String recipientPubkey = HexUtils.toHex(SchnorrSigner.getPublicKey(recipientPrivateKey));
+
+        // 480KB content → compressed with GZIP (SDK auto-compresses)
         String largeContent = generateRandomContent(480 * 1024);
         String message = "test_transfer:" + largeContent;
 
         log.info("Message size: {} bytes ({} KB)", message.length(), message.length() / 1024);
-        log.info("After hex encoding: ~{} KB", (message.length() * 2) / 1024);
+        log.info("SDK will auto-compress with GZIP");
         log.info("Sending to relay...");
 
         try {
-            NostrClient.NostrConnection connection = nostrClient.sendEncryptedMessage(recipientPubkey, message)
+            String eventId = nostrClient.publishEncryptedMessage(recipientPubkey, message)
                 .get(15, java.util.concurrent.TimeUnit.SECONDS);
 
-            log.info("✅ SUCCESS: 480KB message accepted (960KB hex-encoded)!");
+            log.info("✅ SUCCESS: 480KB message accepted!");
             log.info("Relay confirmed working at 1MB limit");
-            connection.close();
+            log.info("Event ID: {}", eventId);
+
+            nostrClient.disconnect();
             assertTrue("Relay accepted 480KB message", true);
 
         } catch (Exception e) {

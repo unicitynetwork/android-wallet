@@ -1,5 +1,8 @@
 package org.unicitylabs.faucet;
 
+import org.unicitylabs.nostr.client.NostrClient;
+import org.unicitylabs.nostr.crypto.NostrKeyManager;
+
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -25,21 +28,28 @@ public class NametagResolver {
     public CompletableFuture<String> resolveNametag(String nametag) {
         System.out.println("🔍 Resolving nametag via Nostr relay: " + nametag);
 
-        CompletableFuture<String> future = new CompletableFuture<>();
-
         try {
-            // Use NostrClient to query the nametag binding
-            NostrClient nostrClient = new NostrClient(relayUrl, faucetPrivateKey);
+            // Create Nostr client with SDK
+            NostrKeyManager keyManager = NostrKeyManager.fromPrivateKey(faucetPrivateKey);
+            NostrClient nostrClient = new NostrClient(keyManager);
 
-            return nostrClient.queryPubkeyByNametag(relayUrl, nametag)
+            // Connect to relay and query nametag
+            return nostrClient.connect(relayUrl)
+                .thenCompose(v -> nostrClient.queryPubkeyByNametag(nametag))
                 .thenApply(pubkey -> {
                     if (pubkey == null) {
                         throw new RuntimeException("Nametag not found: " + nametag);
                     }
                     System.out.println("✅ Resolved nametag '" + nametag + "' to: " + pubkey.substring(0, 16) + "...");
+                    nostrClient.disconnect();
                     return pubkey;
+                })
+                .exceptionally(e -> {
+                    nostrClient.disconnect();
+                    throw new RuntimeException(e);
                 });
         } catch (Exception e) {
+            CompletableFuture<String> future = new CompletableFuture<>();
             future.completeExceptionally(e);
             return future;
         }

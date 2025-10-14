@@ -4,6 +4,10 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+// Nostr SDK imports
+import org.unicitylabs.nostr.client.NostrClient;
+import org.unicitylabs.nostr.crypto.NostrKeyManager;
+
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 
@@ -199,8 +203,12 @@ public class FaucetCLI implements Callable<Integer> {
         System.out.println("   Nostr pubkey: " + recipientPubKey.substring(0, 16) + "...");
         System.out.println("   Proxy address: " + recipientProxyAddress.getAddress());
 
-        NostrClient nostrClient = new NostrClient(config.nostrRelay, faucetPrivateKey);
-        nostrClient.sendEncryptedMessage(recipientPubKey, transferPackage).join();
+        // Create Nostr client with SDK (uses NIP-04 encryption + compression)
+        NostrKeyManager keyManager = NostrKeyManager.fromPrivateKey(faucetPrivateKey);
+        NostrClient nostrClient = new NostrClient(keyManager);
+        nostrClient.connect(config.nostrRelay).join();
+        nostrClient.publishEncryptedMessage(recipientPubKey, transferPackage).join();
+        nostrClient.disconnect();
 
         System.out.println();
         System.out.println("╔══════════════════════════════════════╗");

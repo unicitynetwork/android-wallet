@@ -1,6 +1,6 @@
 package org.unicitylabs.faucet;
 
-import org.apache.commons.codec.binary.Hex;
+import org.unicitylabs.nostr.util.HexUtils;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.api.SubmitCommitmentResponse;
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus;
@@ -65,7 +65,7 @@ public class TokenSplitter {
         Token<?> nametagToken
     ) throws Exception {
 
-        System.out.println("🔪 Splitting token: " + Hex.encodeHexString(tokenToSplit.getId().getBytes()).substring(0, 8) + "...");
+        System.out.println("🔪 Splitting token: " + HexUtils.toHex(tokenToSplit.getId().getBytes()).substring(0, 8) + "...");
         System.out.println("   Amounts: " + amount1 + " + " + amount2);
 
         // Extract coin ID from original token
@@ -82,7 +82,7 @@ public class TokenSplitter {
         TokenSplitBuilder builder = new TokenSplitBuilder();
 
         // Generate deterministic IDs for retry safety
-        String seed = Hex.encodeHexString(tokenToSplit.getId().getBytes()) + "_" + amount1 + "_" + amount2;
+        String seed = HexUtils.toHex(tokenToSplit.getId().getBytes()) + "_" + amount1 + "_" + amount2;
         byte[] hash1 = MessageDigest.getInstance("SHA-256").digest(seed.getBytes());
         byte[] hash2 = MessageDigest.getInstance("SHA-256").digest((seed + "_2").getBytes());
 
