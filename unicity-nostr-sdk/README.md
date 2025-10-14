@@ -84,14 +84,21 @@ client.subscribe(filter, new NostrEventListener() {
 ### Token Transfers
 
 ```java
-// Send token to recipient's nametag
-String recipientNametag = "alice@unicity";
-String tokenJson = ...; // Unicity SDK token JSON
+// Send token to recipient (by pubkey)
+String recipientPubkey = "..."; // Nostr public key (hex)
+String tokenJson = ...; // Unicity token transfer package JSON
 
-client.sendTokenTransfer(recipientNametag, tokenJson)
+client.sendTokenTransfer(recipientPubkey, tokenJson)
     .thenAccept(eventId -> {
         System.out.println("Token sent: " + eventId);
     });
+
+// SDK automatically:
+// - Adds "token_transfer:" prefix
+// - Creates kind 31113 (TOKEN_TRANSFER) event
+// - Encrypts with NIP-04
+// - Compresses with GZIP (for payloads > 1KB)
+// - Signs with Schnorr
 ```
 
 ### Nametag Bindings
@@ -115,20 +122,39 @@ client.queryPubkeyByNametag("alice@unicity")
 The SDK is organized into several packages:
 
 - `org.unicitylabs.nostr.client` - Main client and relay management
-- `org.unicitylabs.nostr.protocol` - Nostr protocol structures (Event, Filter)
-- `org.unicitylabs.nostr.crypto` - Cryptographic operations (Schnorr, NIP-04)
-- `org.unicitylabs.nostr.nametag` - Nametag binding protocol
-- `org.unicitylabs.nostr.token` - Token transfer protocol
-- `org.unicitylabs.nostr.util` - Utility classes
+- `org.unicitylabs.nostr.protocol` - Nostr protocol structures (Event, Filter, EventKinds)
+- `org.unicitylabs.nostr.crypto` - Cryptographic operations (Schnorr, NIP-04, Bech32, KeyManager)
+- `org.unicitylabs.nostr.nametag` - Nametag binding protocol and privacy-preserving hashing
+- `org.unicitylabs.nostr.token` - Token transfer protocol with compression
 
-## Documentation
+## Dependencies
 
-Full API documentation is available at [docs link].
+- Apache Commons Codec (hex encoding)
+- OkHttp (WebSocket connections)
+- BouncyCastle (Schnorr signatures)
+- Jackson (JSON serialization)
+- libphonenumber (phone number normalization)
+- SLF4J (logging)
 
-## Contributing
+## Key Features
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+### NIP-04 Encryption with GZIP Compression
+Messages larger than 1KB are automatically compressed with GZIP, reducing token transfer sizes by ~70%.
+
+### Android Compatible
+Uses legacy Apache Commons Codec API for compatibility with Android's system framework.
+
+### Event Kinds
+- **4** - Encrypted Direct Message (NIP-04)
+- **30078** - Nametag Binding (parameterized replaceable)
+- **31113** - Token Transfer (Unicity custom)
+
+## Notes
+
+- Uses `Hex.encodeHex()` (legacy API) instead of `Hex.encodeHexString()` for Android compatibility
+- WebSocket EOFException during disconnect is normal and logged at DEBUG level
+- All crypto operations use BouncyCastle (pure Java, no JNI except secp256k1)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License
