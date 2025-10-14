@@ -459,7 +459,22 @@ public class NostrClient {
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
             connected = false;
-            logger.error("Relay connection failed: {}", url, t);
+
+            // Don't log EOFException as ERROR during intentional disconnect
+            // EOFException happens when we close the socket during disconnect()
+            boolean isEOF = t instanceof java.io.EOFException;
+            boolean isIntentionalDisconnect = !isRunning;
+
+            if (isEOF && isIntentionalDisconnect) {
+                // Normal disconnect, just debug log
+                logger.debug("WebSocket closed during disconnect: {}", url);
+            } else if (isEOF) {
+                // EOF during active connection (relay closed unexpectedly)
+                logger.warn("Relay closed connection unexpectedly: {}", url);
+            } else {
+                // Actual error (not EOF)
+                logger.error("Relay connection failed: {}", url, t);
+            }
 
             if (!connectFuture.isDone()) {
                 connectFuture.completeExceptionally(t);
