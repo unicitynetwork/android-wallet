@@ -48,15 +48,55 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            // Load from local.properties if available
+            val keystoreFile = localProperties.getProperty("RELEASE_STORE_FILE")
+            val keystorePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD")
+            val keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS")
+            val keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
+
+            if (keystoreFile != null && file(keystoreFile).exists()) {
+                storeFile = file(keystoreFile)
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // Custom APK name for debug builds
+            applicationIdSuffix = ".debug"
+        }
         release {
+            // Disable minification to avoid R8 breaking reflection-based libraries
+            // This makes APK larger but ensures compatibility
             isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
+
+            // Use release signing if configured
+            if (localProperties.getProperty("RELEASE_STORE_FILE") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
+
+    // Rename output APK files
+    applicationVariants.all {
+        outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val versionName = defaultConfig.versionName
+            output.outputFileName = "unicity-wallet-${versionName}-${buildType.name}.apk"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -234,4 +274,16 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
             "-opt-in=kotlin.RequiresOptIn"
         )
     }
+}
+// Custom tasks for debug and release builds
+tasks.register("debug") {
+    group = "build"
+    description = "Build debug APK"
+    dependsOn(":app:assembleDebug")
+}
+
+tasks.register("release") {
+    group = "build"
+    description = "Build release APK"
+    dependsOn(":app:assembleRelease")
 }
