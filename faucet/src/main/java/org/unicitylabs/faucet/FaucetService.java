@@ -190,10 +190,13 @@ public class FaucetService {
                 );
 
             } catch (Exception e) {
+                // Extract clean error message
+                String cleanErrorMsg = extractErrorMessage(e);
+
                 // Update status to FAILED
                 if (request != null) {
                     request.setStatus("FAILED");
-                    request.setErrorMessage(e.getMessage());
+                    request.setErrorMessage(cleanErrorMsg);
                     try {
                         database.updateRequest(request);
                     } catch (Exception dbEx) {
@@ -203,7 +206,7 @@ public class FaucetService {
 
                 return new FaucetRequestResult(
                         false,
-                        "Failed: " + e.getMessage(),
+                        cleanErrorMsg,
                         request != null ? request.getId() : null,
                         unicityId,
                         coinName,
@@ -215,6 +218,43 @@ public class FaucetService {
                 );
             }
         });
+    }
+
+    /**
+     * Extract a clean, user-friendly error message from an exception
+     * Removes Java exception class names and stack traces
+     */
+    private static String extractErrorMessage(Exception e) {
+        String msg = e.getMessage();
+
+        // Unwrap CompletionException and ExecutionException
+        Throwable current = e;
+        while (current.getCause() != null &&
+               (current instanceof java.util.concurrent.CompletionException ||
+                current instanceof java.util.concurrent.ExecutionException)) {
+            current = current.getCause();
+            if (current.getMessage() != null) {
+                msg = current.getMessage();
+            }
+        }
+
+        if (msg == null) {
+            msg = "Unknown error occurred";
+        }
+
+        // Remove "java.lang.RuntimeException: " and similar prefixes
+        msg = msg.replaceAll("^java\\.lang\\.\\w+Exception:\\s*", "");
+        msg = msg.replaceAll("^java\\.util\\.concurrent\\.\\w+Exception:\\s*", "");
+        msg = msg.replaceAll("^org\\.unicitylabs\\.\\w+\\.\\w+Exception:\\s*", "");
+
+        // Clean up nested exception messages
+        msg = msg.replaceAll("java\\.util\\.concurrent\\.CompletionException:\\s*", "");
+        msg = msg.replaceAll("java\\.lang\\.RuntimeException:\\s*", "");
+
+        // Remove "Failed to resolve nametag: " prefix if followed by another "Nametag not found"
+        msg = msg.replaceAll("Failed to resolve nametag:\\s*", "");
+
+        return msg;
     }
 
     /**

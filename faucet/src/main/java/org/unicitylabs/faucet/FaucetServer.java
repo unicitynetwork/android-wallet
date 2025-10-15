@@ -202,7 +202,10 @@ public class FaucetServer {
                 } else {
                     System.err.println("❌ Request failed: " + result.message);
 
-                    ctx.status(500).json(Map.of(
+                    // Determine HTTP status code based on error message
+                    int statusCode = isUserError(result.message) ? 400 : 500;
+
+                    ctx.status(statusCode).json(Map.of(
                             "success", false,
                             "error", result.message
                     ));
@@ -299,6 +302,17 @@ public class FaucetServer {
                     "error", "Failed to load history: " + e.getMessage()
             ));
         }
+    }
+
+    /**
+     * Determine if an error is a user error (4xx) vs server error (5xx)
+     */
+    private boolean isUserError(String errorMessage) {
+        String lowerMsg = errorMessage.toLowerCase();
+        return lowerMsg.contains("nametag not found") ||
+               lowerMsg.contains("coin not found") ||
+               lowerMsg.contains("invalid amount") ||
+               lowerMsg.contains("not found");
     }
 
     /**
