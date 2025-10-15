@@ -15,11 +15,26 @@ on:
 
 jobs:
   build-and-release:
+    name: Build and Release v${{ github.event.inputs.version }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
+      - name: 🚀 Release Configuration
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "         UNICITY WALLET RELEASE BUILD"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📱 Version:    v${{ github.event.inputs.version }}"
+          echo "🌿 Branch:     ${{ github.ref_name }}"
+          echo "📝 Commit:     ${{ github.sha }}"
+          echo "👤 Triggered:  ${{ github.actor }}"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -36,30 +51,45 @@ jobs:
       - name: Build release APK
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          echo "Building release APK with version $VERSION"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 Building Unicity Wallet v$VERSION"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           ./gradlew release -PversionName=$VERSION
 
       - name: Verify APK was built
         run: |
+          VERSION="${{ github.event.inputs.version }}"
           if [ ! -f app/build/outputs/apk/release/unicity-wallet-*.apk ]; then
-            echo "Error: Release APK not found!"
+            echo "❌ Error: Release APK not found!"
             exit 1
           fi
+          echo ""
+          echo "✅ Build successful!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 APK Details:"
           ls -lh app/build/outputs/apk/release/unicity-wallet-*.apk
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
 
       - name: Rename APK for release
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          echo "📝 Creating release artifact: unicity-wallet-v${VERSION}.apk"
           cp app/build/outputs/apk/release/unicity-wallet-*-release.apk unicity-wallet-v${VERSION}.apk
+          echo "✅ Release APK ready:"
           ls -lh unicity-wallet-v${VERSION}.apk
+          echo ""
 
       - name: Create Git tag
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          echo "🏷️  Creating git tag: v${VERSION}"
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
           git push origin "v${VERSION}"
+          echo "✅ Tag v${VERSION} created and pushed"
+          echo ""
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -104,10 +134,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Release summary
+      - name: 🎉 Release Summary
         run: |
-          echo "✅ Release v${{ github.event.inputs.version }} created successfully!"
+          VERSION="${{ github.event.inputs.version }}"
+          APK_SIZE=$(ls -lh unicity-wallet-v${VERSION}.apk | awk '{print $5}')
           echo ""
-          echo "📦 APK: unicity-wallet-v${{ github.event.inputs.version }}.apk"
-          echo "🏷️  Tag: v${{ github.event.inputs.version }}"
-          echo "🌐 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ github.event.inputs.version }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎉 Release v${VERSION} Published Successfully!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📱 Version:     v${VERSION}"
+          echo "📦 APK:         unicity-wallet-v${VERSION}.apk"
+          echo "📏 Size:        ${APK_SIZE}"
+          echo "🏷️  Git Tag:    v${VERSION}"
+          echo "🌐 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+
+          # Also write to GitHub Step Summary
+          echo "## 🎉 Release v${VERSION} Published!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 📱 **Version**: v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 **APK**: unicity-wallet-v${VERSION}.apk" >> $GITHUB_STEP_SUMMARY
+          echo "- 📏 **Size**: ${APK_SIZE}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏷️ **Git Tag**: v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 **Release URL**: [View Release](https://github.com/${{ github.repository }}/releases/tag/v${VERSION})" >> $GITHUB_STEP_SUMMARY
