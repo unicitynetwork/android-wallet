@@ -290,7 +290,7 @@
             const savedCoin = loadSavedValues();
 
             try {
-                const response = await fetch('/api/v1/coins');
+                const response = await fetch('/api/v1/faucet/coins');
                 const data = await response.json();
 
                 if (data.success) {
@@ -403,7 +403,7 @@
             submitBtn.innerHTML = '<span class="loading"></span>Processing...';
 
             try {
-                const response = await fetch('/api/v1/faucet', {
+                const response = await fetch('/api/v1/faucet/request', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

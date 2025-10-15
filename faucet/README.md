@@ -39,7 +39,7 @@ A production-ready REST API server and CLI application for distributing Unicity 
 4. **Access the faucet:**
    - Web UI: http://localhost:8081/faucet/index.html
    - History: http://localhost:8081/faucet/history/index.html
-   - API: http://localhost:8081/api/v1/
+   - API: http://localhost:8081/api/v1/faucet/
 
 ### Stop the server:
 ```bash
@@ -72,7 +72,9 @@ docker compose logs -f
 
 ### Endpoints
 
-#### `GET /api/v1/coins`
+All endpoints are prefixed with `/api/v1/faucet/`.
+
+#### `GET /api/v1/faucet/coins`
 Get list of supported crypto assets.
 
 **Response:**
@@ -92,7 +94,7 @@ Get list of supported crypto assets.
 }
 ```
 
-#### `POST /api/v1/faucet`
+#### `POST /api/v1/faucet/request`
 Submit a faucet request to mint and send tokens.
 
 **Request Body:**
@@ -121,7 +123,15 @@ Submit a faucet request to mint and send tokens.
 }
 ```
 
-#### `GET /api/v1/history`
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": "Nametag not found: alice"
+}
+```
+
+#### `GET /api/v1/faucet/history`
 Get faucet request history (requires API key).
 
 **Headers:**

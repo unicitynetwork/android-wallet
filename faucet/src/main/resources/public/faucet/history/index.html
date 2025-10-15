@@ -345,7 +345,7 @@
             const offset = currentPage * pageSize;
 
             const response = await fetch(
-                `/api/v1/history?limit=${pageSize}&offset=${offset}`,
+                `/api/v1/faucet/history?limit=${pageSize}&offset=${offset}`,
                 {
                     headers: {
                         'X-API-Key': apiKey

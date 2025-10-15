@@ -42,10 +42,10 @@ public class FaucetServer {
             });
         });
 
-        // API v1 endpoints
-        app.get("/api/v1/coins", this::getCoins);
-        app.post("/api/v1/faucet", this::submitFaucetRequest);
-        app.get("/api/v1/history", this::getHistory);
+        // API v1 faucet endpoints
+        app.get("/api/v1/faucet/coins", this::getCoins);
+        app.post("/api/v1/faucet/request", this::submitFaucetRequest);
+        app.get("/api/v1/faucet/history", this::getHistory);
 
         // Health check
         app.get("/health", ctx -> ctx.json(Map.of("status", "healthy")));
@@ -62,12 +62,12 @@ public class FaucetServer {
         System.out.println("📍 Endpoints:");
         System.out.println("   Web UI:        http://localhost:" + port + "/faucet/index.html");
         System.out.println("   History:       http://localhost:" + port + "/faucet/history/index.html");
-        System.out.println("   API:           http://localhost:" + port + "/api/v1/");
+        System.out.println("   API:           http://localhost:" + port + "/api/v1/faucet/");
         System.out.println();
     }
 
     /**
-     * GET /api/v1/coins
+     * GET /api/v1/faucet/coins
      * Returns list of supported coins with metadata
      */
     private void getCoins(Context ctx) {
@@ -100,13 +100,13 @@ public class FaucetServer {
     }
 
     /**
-     * POST /api/v1/faucet
+     * POST /api/v1/faucet/request
      * Submit a faucet request
      * Request body: {"unicityId": "alice", "coin": "solana", "amount": 0.05}
      */
     private void submitFaucetRequest(Context ctx) {
         System.out.println("\n════════════════════════════════════════════════════");
-        System.out.println("🔵 POST /api/v1/faucet - Request ID: " + System.currentTimeMillis());
+        System.out.println("🔵 POST /api/v1/faucet/request - Request ID: " + System.currentTimeMillis());
         System.out.println("════════════════════════════════════════════════════\n");
 
         try {
@@ -232,7 +232,7 @@ public class FaucetServer {
     }
 
     /**
-     * GET /api/v1/history
+     * GET /api/v1/faucet/history
      * Get faucet request history (requires API key)
      * Query params: limit, offset
      * Header: X-API-Key
