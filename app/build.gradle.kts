@@ -32,8 +32,16 @@ android {
         applicationId = "org.unicitylabs.wallet"
         minSdk = 31
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.1"
+
+        // Version can be overridden via command line:
+        // ./gradlew release -PversionName=1.2.0
+        // If not provided, uses default values below
+        val releaseVersionName = project.findProperty("versionName") as String? ?: "1.1.0"
+        val releaseVersionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull()
+            ?: releaseVersionName.replace(".", "").toIntOrNull() ?: 110
+
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

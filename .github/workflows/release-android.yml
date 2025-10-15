@@ -1,0 +1,113 @@
+name: Release Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.2.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+        default: 'New release of Unicity Wallet'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build release APK
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          echo "Building release APK with version $VERSION"
+          ./gradlew release -PversionName=$VERSION
+
+      - name: Verify APK was built
+        run: |
+          if [ ! -f app/build/outputs/apk/release/unicity-wallet-*.apk ]; then
+            echo "Error: Release APK not found!"
+            exit 1
+          fi
+          ls -lh app/build/outputs/apk/release/unicity-wallet-*.apk
+
+      - name: Rename APK for release
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          cp app/build/outputs/apk/release/unicity-wallet-*-release.apk unicity-wallet-v${VERSION}.apk
+          ls -lh unicity-wallet-v${VERSION}.apk
+
+      - name: Create Git tag
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Unicity Wallet v${{ github.event.inputs.version }}
+          body: |
+            # Unicity Wallet v${{ github.event.inputs.version }}
+
+            ${{ github.event.inputs.release_notes }}
+
+            ## Installation
+
+            Download `unicity-wallet-v${{ github.event.inputs.version }}.apk` and install on your Android device.
+
+            **Minimum Android version**: Android 12 (API 31)
+
+            ## Features
+
+            - 💳 Offline token transfers via NFC + Bluetooth
+            - 🏷️ Nametag binding for easy addressing
+            - 💬 P2P messaging with nearby users
+            - 🗺️ Discover wallet users on map
+            - 📱 Phone number-based contact discovery
+            - 💾 Secure wallet backup to Google Drive
+
+            ## What's New
+
+            See commit history for detailed changes.
+
+            ---
+
+            📱 **Package**: org.unicitylabs.wallet
+            📦 **Version**: ${{ github.event.inputs.version }}
+            🔨 **Built**: ${{ github.run_number }}
+            📅 **Date**: ${{ github.event.repository.updated_at }}
+
+          files: |
+            unicity-wallet-v${{ github.event.inputs.version }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "✅ Release v${{ github.event.inputs.version }} created successfully!"
+          echo ""
+          echo "📦 APK: unicity-wallet-v${{ github.event.inputs.version }}.apk"
+          echo "🏷️  Tag: v${{ github.event.inputs.version }}"
+          echo "🌐 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ github.event.inputs.version }}"
