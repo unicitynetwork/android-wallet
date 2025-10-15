@@ -37,9 +37,9 @@ A production-ready REST API server and CLI application for distributing Unicity 
    ```
 
 4. **Access the faucet:**
-   - Web UI: http://localhost:8080/faucet/index.html
-   - History: http://localhost:8080/faucet/history/index.html
-   - API: http://localhost:8080/api/v1/
+   - Web UI: http://localhost:8081/faucet/index.html
+   - History: http://localhost:8081/faucet/history/index.html
+   - API: http://localhost:8081/api/v1/
 
 ### Stop the server:
 ```bash

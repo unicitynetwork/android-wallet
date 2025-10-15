@@ -5,7 +5,7 @@ services:
       dockerfile: faucet/Dockerfile
     container_name: unicity-faucet
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       # Data directory inside container
       DATA_DIR: /app/data
