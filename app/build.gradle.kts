@@ -108,6 +108,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Enable desugaring to support Java 8+ APIs on older Android versions
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -234,6 +236,9 @@ dependencies {
 
     // Phone number normalization for deterministic contact discovery
     implementation("com.googlecode.libphonenumber:libphonenumber:8.13.51")
+
+    // Core library desugaring - enables Java 10+ APIs on Android
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
