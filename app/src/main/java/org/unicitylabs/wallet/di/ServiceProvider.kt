@@ -3,6 +3,7 @@ package org.unicitylabs.wallet.di
 import android.content.Context
 import org.unicitylabs.sdk.StateTransitionClient
 import org.unicitylabs.sdk.api.AggregatorClient
+import org.unicitylabs.sdk.api.JsonRpcAggregatorClient
 import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
@@ -19,7 +20,7 @@ object ServiceProvider {
      * Singleton instance of AggregatorClient
      */
     val aggregatorClient: AggregatorClient by lazy {
-        AggregatorClient(WalletConstants.UNICITY_AGGREGATOR_URL)
+        JsonRpcAggregatorClient(WalletConstants.UNICITY_AGGREGATOR_URL)
     }
 
     /**
@@ -34,7 +35,7 @@ object ServiceProvider {
      * Used for testing or connecting to different environments
      */
     fun createAggregatorClient(url: String): AggregatorClient {
-        return AggregatorClient(url)
+        return JsonRpcAggregatorClient(url)
     }
 
     /**
@@ -84,25 +85,26 @@ object ServiceProvider {
         }
 
         // Fallback to test trust base for unit tests or if file not found
+        // Create minimal test trustbase JSON
         val testSigningService = SigningService(SigningService.generatePrivateKey())
-        val testTrustBase = RootTrustBase(
-            0,
-            0,
-            0,
-            0,
-            setOf(
-                RootTrustBase.NodeInfo(
-                    "NODE",
-                    testSigningService.publicKey,
-                    1
-                )
-            ),
-            1,
-            ByteArray(0),
-            ByteArray(0),
-            null,
-            emptyMap()
-        )
+        val testTrustBaseJson = """
+        {
+            "version": 0,
+            "networkIdentifier": 0,
+            "systemIdentifier": 0,
+            "systemDescriptionHash": "AA==",
+            "trustNodes": [{
+                "nodeIdentifier": "TEST_NODE",
+                "signingPublicKey": "${java.util.Base64.getEncoder().encodeToString(testSigningService.publicKey)}",
+                "stake": 1
+            }],
+            "quorumThreshold": 1,
+            "hashAlgorithm": "AA==",
+            "signatureAlgorithm": "AA=="
+        }
+        """.trimIndent()
+
+        val testTrustBase = RootTrustBase.fromJson(testTrustBaseJson)
         cachedTrustBase = testTrustBase
         return testTrustBase
     }

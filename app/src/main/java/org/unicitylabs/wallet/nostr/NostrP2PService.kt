@@ -807,7 +807,7 @@ class NostrP2PService(
                 Log.d(TAG, "Parsing transfer transaction...")
                 // Parse transfer transaction with proper type reference
                 val transferTx = try {
-                    val typeRef = object : com.fasterxml.jackson.core.type.TypeReference<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>>() {}
+                    val typeRef = object : com.fasterxml.jackson.core.type.TypeReference<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>>() {}
                     UnicityObjectMapper.JSON.readValue(transferTxJson, typeRef)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse transfer transaction", e)
@@ -818,7 +818,7 @@ class NostrP2PService(
 
                 Log.d(TAG, "✅ Parsed successfully!")
                 Log.d(TAG, "Source token type: ${sourceToken.type}")
-                Log.d(TAG, "Transfer recipient: ${transferTx.data.recipient}")
+                Log.d(TAG, "Transfer recipient: ${transferTx.getData().recipient}")
 
                 // Finalize the transfer
                 Log.d(TAG, "Starting finalization...")
@@ -886,11 +886,11 @@ class NostrP2PService(
      */
     private suspend fun finalizeTransfer(
         sourceToken: org.unicitylabs.sdk.token.Token<*>,
-        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>
+        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>
     ): org.unicitylabs.sdk.token.Token<*>? {
         try {
             // Get recipient address from transfer
-            val recipientAddress = transferTx.data.recipient
+            val recipientAddress = transferTx.getData().recipient
             Log.d(TAG, "Recipient address: ${recipientAddress.address}")
             Log.d(TAG, "Address scheme: ${recipientAddress.scheme}")
 
@@ -946,7 +946,7 @@ class NostrP2PService(
             val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
 
             // Create recipient predicate
-            val transferSalt = transferTx.data.salt
+            val transferSalt = transferTx.getData().salt
 
             Log.d(TAG, "Creating recipient predicate:")
             Log.d(TAG, "  Identity pubkey: ${identity.publicKey}")
@@ -967,7 +967,7 @@ class NostrP2PService(
             val recipientState = org.unicitylabs.sdk.token.TokenState(recipientPredicate, null)
 
             Log.d(TAG, "Finalizing transfer with nametag token...")
-            Log.d(TAG, "  Transfer Recipient: ${transferTx.data.recipient.address}")
+            Log.d(TAG, "  Transfer Recipient: ${transferTx.getData().recipient.address}")
             Log.d(TAG, "  My Nametag ProxyAddress: ${org.unicitylabs.sdk.address.ProxyAddress.create(myNametagToken.id).address}")
 
             // Get StateTransitionClient and trustBase
@@ -981,7 +981,7 @@ class NostrP2PService(
                         trustBase,
                         sourceToken,
                         recipientState,
-                        transferTx,
+                        transferTx as org.unicitylabs.sdk.transaction.TransferTransaction,
                         listOf(myNametagToken)  // Include nametag for proxy resolution
                     )
                 }
@@ -1019,7 +1019,7 @@ class NostrP2PService(
      */
     private suspend fun saveFailedTransfer(
         sourceToken: org.unicitylabs.sdk.token.Token<*>,
-        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>,
+        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>,
         nametag: String,
         verificationError: String
     ) {

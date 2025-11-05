@@ -18,7 +18,7 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace = "org.unicitylabs.wallet"
-    compileSdk = 34
+    compileSdk = 34  // Can compile with newer SDK
     
     testOptions {
         unitTests {
@@ -31,7 +31,7 @@ android {
     defaultConfig {
         applicationId = "org.unicitylabs.wallet"
         minSdk = 31
-        targetSdk = 34
+        targetSdk = 31
 
         // Version can be overridden via command line:
         // ./gradlew release -PversionName=1.2.0
@@ -137,8 +137,9 @@ dependencies {
     // Unicity Nostr SDK (includes Nostr client, crypto, nametag binding, token transfer)
     implementation(project(":unicity-nostr-sdk"))
 
-    // Unicity Java SDK: https://jitpack.io/#org.unicitylabs/java-state-transition-sdk
-    implementation("org.unicitylabs:java-state-transition-sdk:1.2.0")
+    // Unicity Java SDK: Using local JAR build (Android-compatible with Java 8)
+    // TODO: Switch back to JitPack once Android-compatible version is published
+    implementation(files("../../java-state-transition-sdk/build/libs/java-state-transition-sdk.jar"))
 
     // Apache Commons Codec for hex encoding (used by Nostr SDK and wallet)
     implementation("commons-codec:commons-codec:1.16.0")

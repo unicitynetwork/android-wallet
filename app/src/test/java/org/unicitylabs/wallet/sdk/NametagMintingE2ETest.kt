@@ -21,8 +21,8 @@ import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenState
 import org.unicitylabs.sdk.token.TokenType
 import org.unicitylabs.sdk.transaction.MintCommitment
+import org.unicitylabs.sdk.transaction.MintTransaction
 import org.unicitylabs.sdk.transaction.MintTransactionReason
-import org.unicitylabs.sdk.transaction.NametagMintTransactionData
 import org.unicitylabs.sdk.util.InclusionProofUtils
 import org.unicitylabs.wallet.di.ServiceProvider
 import java.net.HttpURLConnection
@@ -236,17 +236,16 @@ class NametagMintingE2ETest {
             println("Minting nametag: $nametagString")
             
             // Create mint transaction data
-            val mintTransactionData: NametagMintTransactionData<MintTransactionReason> =
-                NametagMintTransactionData(
-                    nametagString,
-                    nametagTokenType,
-                    nametagAddress,
-                    salt, // Use the salt parameter passed to the function
-                    ownerAddress
-                )
-            
+            val mintTransactionData = MintTransaction.NametagData(
+                nametagString,
+                nametagTokenType,
+                nametagAddress,
+                salt, // Use the salt parameter passed to the function
+                ownerAddress
+            )
+
             // Create mint commitment
-            val mintCommitment: MintCommitment<NametagMintTransactionData<MintTransactionReason>> = 
+            val mintCommitment: MintCommitment<MintTransactionReason> =
                 MintCommitment.create(mintTransactionData)
             
             // Submit to blockchain
@@ -287,13 +286,12 @@ class NametagMintingE2ETest {
                 nametagString.toByteArray()
             )
 
-            // Use Token constructor directly to bypass verification for test tokens
-            // Token.create() would verify the token which fails with dummy predicate
-            val nametagToken = Token(
+            // Use Token.create() factory method
+            val trustBase = ServiceProvider.getRootTrustBase()
+            val nametagToken = Token.create(
+                trustBase,
                 nametagState,
-                genesisTransaction,
-                emptyList(),  // No transfer transactions yet
-                emptyList()   // No nametag tokens
+                genesisTransaction
             )
             
             println("Nametag minted successfully: $nametagString")

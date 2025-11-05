@@ -17,7 +17,7 @@ import org.unicitylabs.sdk.token.TokenType
 import org.unicitylabs.sdk.token.fungible.CoinId
 import org.unicitylabs.sdk.token.fungible.TokenCoinData
 import org.unicitylabs.sdk.transaction.MintCommitment
-import org.unicitylabs.sdk.transaction.MintTransactionData
+import org.unicitylabs.sdk.transaction.MintTransaction
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.util.InclusionProofUtils
 import org.unicitylabs.wallet.di.ServiceProvider
@@ -128,7 +128,7 @@ class UnicityJavaSdkService(
             random.nextBytes(salt)
             
             // Create mint transaction data (SDK 1.1 signature)
-            val mintData = MintTransactionData<MintTransactionReason>(
+            val mintData = MintTransaction.Data<MintTransactionReason>(
                 tokenId,
                 tokenType,
                 tokenDataBytes,

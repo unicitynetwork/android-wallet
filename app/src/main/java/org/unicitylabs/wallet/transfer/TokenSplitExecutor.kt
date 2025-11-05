@@ -38,7 +38,7 @@ class TokenSplitExecutor(
         val tokensForRecipient: List<Token<*>>,   // Source tokens (before transfer to recipient)
         val tokensKeptBySender: List<Token<*>>,   // New tokens kept by sender (from splits)
         val burnedTokens: List<Token<*>>,         // Original tokens that were burned
-        val recipientTransferTxs: List<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>>  // Transfer transactions for recipient tokens
+        val recipientTransferTxs: List<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>>  // Transfer transactions for recipient tokens
     )
 
     /**
@@ -63,7 +63,7 @@ class TokenSplitExecutor(
         val tokensForRecipient = mutableListOf<Token<*>>()
         val tokensKeptBySender = mutableListOf<Token<*>>()
         val burnedTokens = mutableListOf<Token<*>>()
-        val recipientTransferTxs = mutableListOf<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>>()
+        val recipientTransferTxs = mutableListOf<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>>()
 
         // NOTE: Direct transfer tokens (plan.tokensToTransferDirectly) are NOT handled here
         // They must be handled by the caller to create transfer commitments
@@ -306,12 +306,11 @@ class TokenSplitExecutor(
             null
         )
 
-        // Create token with constructor
-        val token = Token(
+        // Create token using factory method
+        val token = Token.create(
+            trustBase,
             state,
-            mintInfo.commitment.toTransaction(mintInfo.inclusionProof),
-            emptyList(),
-            emptyList()
+            mintInfo.commitment.toTransaction(mintInfo.inclusionProof)
         )
 
         // Explicitly verify the token before returning
@@ -320,7 +319,8 @@ class TokenSplitExecutor(
             Log.e(TAG, "===== Split token verification FAILED for $tokenType =====")
             Log.e(TAG, "Full verification result: ${verifyResult.toString()}")
             Log.e(TAG, "TokenId: ${mintInfo.tokenId.toHexString()}")
-            Log.e(TAG, "Commitment data: tokenId=${mintInfo.commitment.transactionData.tokenId}, salt=${mintInfo.commitment.transactionData.salt.joinToString("") { "%02x".format(it) }}")
+            val txData = mintInfo.commitment.getTransactionData()
+            Log.e(TAG, "Commitment data: tokenId=${txData.tokenId}, salt=${txData.salt.joinToString("") { "%02x".format(it) }}")
             throw Exception("Split token verification failed for $tokenType. Check logs for details: ${verifyResult.toString()}")
         }
 
@@ -345,6 +345,6 @@ class TokenSplitExecutor(
     data class SplitTokenResult(
         val tokenForRecipient: Token<*>,  // Source token (before transfer to recipient)
         val tokenForSender: Token<*>,
-        val recipientTransferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransactionData>  // Transfer transaction to recipient
+        val recipientTransferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>  // Transfer transaction to recipient
     )
 }
