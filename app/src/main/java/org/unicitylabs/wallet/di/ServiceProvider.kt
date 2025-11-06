@@ -84,23 +84,40 @@ object ServiceProvider {
             }
         }
 
-        // Fallback to test trust base for unit tests or if file not found
-        // Create minimal test trustbase JSON
+        // Try to load from test resources (for unit tests)
+        try {
+            val inputStream = javaClass.classLoader?.getResourceAsStream("trustbase-testnet.json")
+            if (inputStream != null) {
+                val json = inputStream.bufferedReader().use { it.readText() }
+                val trustBase = UnicityObjectMapper.JSON.readValue(json, RootTrustBase::class.java)
+                cachedTrustBase = trustBase
+                return trustBase
+            }
+        } catch (e: Exception) {
+            // Continue to fallback
+            e.printStackTrace()
+        }
+
+        // Fallback to minimal test trust base if file not found
+        // Create minimal test trustbase JSON matching the actual format
         val testSigningService = SigningService(SigningService.generatePrivateKey())
+        val testSigKeyHex = org.apache.commons.codec.binary.Hex.encodeHexString(testSigningService.publicKey)
         val testTrustBaseJson = """
         {
-            "version": 0,
-            "networkIdentifier": 0,
-            "systemIdentifier": 0,
-            "systemDescriptionHash": "AA==",
-            "trustNodes": [{
-                "nodeIdentifier": "TEST_NODE",
-                "signingPublicKey": "${java.util.Base64.getEncoder().encodeToString(testSigningService.publicKey)}",
+            "version": 1,
+            "networkId": 0,
+            "epoch": 1,
+            "epochStartRound": 1,
+            "rootNodes": [{
+                "nodeId": "TEST_NODE",
+                "sigKey": "0x${testSigKeyHex}",
                 "stake": 1
             }],
             "quorumThreshold": 1,
-            "hashAlgorithm": "AA==",
-            "signatureAlgorithm": "AA=="
+            "stateHash": "",
+            "changeRecordHash": "",
+            "previousEntryHash": "",
+            "signatures": {}
         }
         """.trimIndent()
 

@@ -104,74 +104,24 @@ class NametagMintingE2ETest {
         val randomSuffix = UUID.randomUUID().toString().take(8)
         val nametagString = "test_${randomSuffix}"
         println("Testing with nametag: $nametagString")
-        
-        // Step 2: Generate test identity
-        val random = SecureRandom()
-        val secret = ByteArray(32)
-        val nonce = ByteArray(32)
-        val salt = ByteArray(32)
-        random.nextBytes(secret)
-        random.nextBytes(nonce)
-        random.nextBytes(salt)
-        
-        // Create signing service
-        val signingService = SigningService.createFromMaskedSecret(secret, nonce)
-        
-        // Create predicate for owner
-        val tokenId = TokenId(ByteArray(32).apply { random.nextBytes(this) })
-        val tokenType = TokenType(ByteArray(32).apply { random.nextBytes(this) })
 
-        val ownerPredicate = MaskedPredicate.create(
-            tokenId,
-            tokenType,
-            signingService,
-            HashAlgorithm.SHA256,
-            nonce
-        )
-        
-        // Create token type for owner address
-        val ownerTokenType = TokenType(ByteArray(32).apply {
-            random.nextBytes(this)
-        })
-        
-        // Create owner address from predicate reference
-        val ownerAddress = ownerPredicate.getReference().toAddress()
-        println("Generated owner address")
+        // Step 2: Generate test identity (owner private key)
+        val ownerPrivateKey = ByteArray(32).apply { SecureRandom().nextBytes(this) }
 
-        // Step 3: Create nametag predicate
-        val nametagTokenId = TokenId(ByteArray(32).apply { random.nextBytes(this) })
-        val nametagTokenType = TokenType(ByteArray(32).apply { random.nextBytes(this) })
-
-        val nametagPredicate = MaskedPredicate.create(
-            nametagTokenId,
-            nametagTokenType,
-            signingService,
-            HashAlgorithm.SHA256,
-            nonce
-        )
-        
-        // Get the nametag address
-        val nametagAddress = nametagPredicate.getReference().toAddress()
-        
-        // Step 4: Mint the nametag
+        // Step 3: Mint the nametag (function creates all addresses internally)
         val nametagToken = withTimeout(3.minutes) {
-            mintNametagDirectly(
-                nametagString,
-                nametagTokenType,
-                nametagAddress,
-                ownerAddress,
-                salt
-            )
+            mintNametagDirectly(nametagString, ownerPrivateKey)
         }
-        
+
+
         assertNotNull("Failed to mint nametag", nametagToken)
         println("✅ Nametag minted successfully!")
-        println("Token ID: ${nametagToken?.id}")
-        
-        // Step 5: Verify the token structure
-        assertNotNull("Token should have ID", nametagToken?.id)
-        assertNotNull("Token should have genesis", nametagToken?.genesis)
-        assertNotNull("Token should have state", nametagToken?.state)
+        println("Token ID: ${nametagToken?.getId()}")
+
+        // Step 4: Verify the token structure
+        assertNotNull("Token should have ID", nametagToken?.getId())
+        assertNotNull("Token should have genesis", nametagToken?.getGenesis())
+        assertNotNull("Token should have state", nametagToken?.getState())
         
         println("✅ All verifications passed!")
     }
@@ -206,16 +156,15 @@ class NametagMintingE2ETest {
         
         // First minting should succeed
         val firstToken = withTimeout(3.minutes) {
-            mintNametagDirectly(nametagString, nametagTokenType, nametagAddress, ownerAddress, salt)
+            mintNametagDirectly(nametagString, secret)
         }
         assertNotNull("First minting should succeed", firstToken)
         println("✅ First minting succeeded")
-        
+
         // Second minting with same nametag should fail
-        val salt2 = ByteArray(32).apply { random.nextBytes(this) }
         try {
             withTimeout(30.seconds) {
-                mintNametagDirectly(nametagString, nametagTokenType, nametagAddress, ownerAddress, salt2)
+                mintNametagDirectly(nametagString, secret)
             }
             fail("Second minting should have failed due to duplicate nametag")
         } catch (e: Exception) {
@@ -227,73 +176,88 @@ class NametagMintingE2ETest {
     
     private suspend fun mintNametagDirectly(
         nametagString: String,
-        nametagTokenType: TokenType,
-        nametagAddress: DirectAddress,
-        ownerAddress: DirectAddress,
-        salt: ByteArray
+        ownerPrivateKey: ByteArray
     ): Token<*>? {
         return try {
             println("Minting nametag: $nametagString")
-            
+
+            // Create signing services (like faucet NametagMinter)
+            val ownerSigningService = SigningService.createFromSecret(ownerPrivateKey)
+
+            // Use FIXED token type (same as all tokens in the system)
+            val UNICITY_TOKEN_TYPE = "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509"
+            val tokenType = TokenType(hexToBytes(UNICITY_TOKEN_TYPE))
+
+            // Create nametag's own address (with random nonce)
+            val nametagNonce = ByteArray(32).apply { SecureRandom().nextBytes(this) }
+            val nametagSigningService = SigningService.createFromMaskedSecret(ownerPrivateKey, nametagNonce)
+            val nametagAddress = org.unicitylabs.sdk.predicate.embedded.MaskedPredicateReference.create(
+                tokenType,
+                nametagSigningService,
+                HashAlgorithm.SHA256,
+                nametagNonce
+            ).toAddress()
+
+            // Create owner's target address (deterministic for receiving tokens)
+            val ownerAddress = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicateReference.create(
+                tokenType,
+                ownerSigningService,
+                HashAlgorithm.SHA256
+            ).toAddress()
+
+            // Create salt
+            val salt = ByteArray(32).apply { SecureRandom().nextBytes(this) }
+
             // Create mint transaction data
             val mintTransactionData = MintTransaction.NametagData(
                 nametagString,
-                nametagTokenType,
+                tokenType,
                 nametagAddress,
-                salt, // Use the salt parameter passed to the function
+                salt,
                 ownerAddress
             )
 
             // Create mint commitment
             val mintCommitment: MintCommitment<MintTransactionReason> =
                 MintCommitment.create(mintTransactionData)
-            
+
             // Submit to blockchain
             val submitResponse = stateTransitionClient.submitCommitment(mintCommitment).await()
-            
+
             if (submitResponse.status != SubmitCommitmentStatus.SUCCESS) {
                 throw RuntimeException("Failed to submit commitment: ${submitResponse.status}")
             }
-            
+
             println("Commitment submitted successfully")
-            
-            // Wait for inclusion proof (use the loaded trustbase)
+
+            // Wait for inclusion proof
             val inclusionProof = InclusionProofUtils.waitInclusionProof(
                 stateTransitionClient,
-                trustBase,  // Use the trustbase loaded from resources
+                trustBase,
                 mintCommitment
             ).await()
             println("Inclusion proof received")
-            
+
             // Create the genesis transaction
             val genesisTransaction = mintCommitment.toTransaction(inclusionProof)
-            
-            // Create the nametag token
-            // Note: Using a simple predicate as placeholder for the state
-            val dummyTokenId = TokenId(ByteArray(32))
-            val dummyTokenType = TokenType(ByteArray(32))
-            val dummyNonce = ByteArray(32)
-            val dummySigningService = SigningService.createFromMaskedSecret(ByteArray(32), dummyNonce)
 
-            val nametagState = TokenState(
-                MaskedPredicate.create(
-                    dummyTokenId,
-                    dummyTokenType,
-                    dummySigningService,
-                    HashAlgorithm.SHA256,
-                    dummyNonce
-                ),
-                nametagString.toByteArray()
-            )
-
-            // Use Token.create() factory method
-            val trustBase = ServiceProvider.getRootTrustBase()
+            // Create token with correct predicate (using nametagSigningService that created nametagAddress)
+            val loadedTrustBase = ServiceProvider.getRootTrustBase()
             val nametagToken = Token.create(
-                trustBase,
-                nametagState,
+                loadedTrustBase,
+                TokenState(
+                    MaskedPredicate.create(
+                        mintCommitment.getTransactionData().tokenId,
+                        mintCommitment.getTransactionData().tokenType,
+                        nametagSigningService,
+                        HashAlgorithm.SHA256,
+                        nametagNonce
+                    ),
+                    null
+                ),
                 genesisTransaction
             )
-            
+
             println("Nametag minted successfully: $nametagString")
             nametagToken
             
@@ -301,5 +265,14 @@ class NametagMintingE2ETest {
             println("Error minting nametag: ${e.message}")
             throw e
         }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        for (i in 0 until len step 2) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+        }
+        return data
     }
 }
