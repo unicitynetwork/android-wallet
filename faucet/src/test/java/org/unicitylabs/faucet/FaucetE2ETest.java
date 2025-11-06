@@ -3,7 +3,7 @@ package org.unicitylabs.faucet;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.unicitylabs.sdk.token.Token;
 import org.unicitylabs.sdk.transaction.Transaction;
-import org.unicitylabs.sdk.transaction.TransferTransactionData;
+import org.unicitylabs.sdk.transaction.TransferTransaction;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 import org.junit.After;
@@ -183,10 +183,11 @@ public class FaucetE2ETest {
         // In production, Alice would do this on her own device
         var aliceRecipient = new TestRecipient(
             new org.unicitylabs.sdk.StateTransitionClient(
-                new org.unicitylabs.sdk.api.AggregatorClient(AGGREGATOR_URL)),
-            tokenMinter.getTrustBase()  // Use the trustbase from tokenMinter
+                new org.unicitylabs.sdk.api.JsonRpcAggregatorClient(AGGREGATOR_URL)),
+            tokenMinter.getTrustBase(),  // Use the trustbase from tokenMinter
+            alicePrivateKey  // Alice's private key to create matching predicate
         );
-        var finalizedToken = aliceRecipient.finalizeReceivedToken(transferInfo);
+        var finalizedToken = aliceRecipient.finalizeReceivedToken(transferInfo, nametagToken);
         assertNotNull("Token should be finalized", finalizedToken);
 
         String tokenJson = tokenMinter.serializeToken(finalizedToken);
@@ -273,7 +274,10 @@ public class FaucetE2ETest {
         // Verify it's a MINT transaction by checking for MINT-specific fields
         assertNotNull("Genesis should have tokenId", genesisTxData.get("tokenId"));
         assertNotNull("Genesis should have tokenType", genesisTxData.get("tokenType"));
-        assertNotNull("Genesis should have coins (fungible token)", genesisTxData.get("coins"));
+        // Check for coins (field might be "coinData" in new SDK)
+        Object coins = genesisTxData.get("coins");
+        Object coinData = genesisTxData.get("coinData");
+        assertTrue("Genesis should have coins or coinData (fungible token)", coins != null || coinData != null);
         System.out.println("📜 Genesis transaction: MINT (verified by structure)");
 
         // Verify genesis has inclusion proof
@@ -303,10 +307,10 @@ public class FaucetE2ETest {
         assertNotNull("Transfer transaction should have inclusion proof", transferInclusionProof);
         System.out.println("✅ Transfer transaction is finalized with inclusion proof!");
 
-        // Verify token state has correct owner (Alice's predicate)
+        // Verify token state has correct owner predicate
         var state = (java.util.Map<?, ?>) receivedTokenData.get("state");
-        var unlockPredicate = state.get("unlockPredicate");
-        assertNotNull("Token should have unlock predicate", unlockPredicate);
+        var predicate = state.get("predicate");
+        assertNotNull("Token should have predicate", predicate);
         System.out.println("✅ Token has valid owner predicate!");
 
         // Step 8: Verify nametag bindings work bidirectionally

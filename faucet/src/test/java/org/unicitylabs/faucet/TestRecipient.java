@@ -4,11 +4,12 @@ import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.bft.RootTrustBase;
 import org.unicitylabs.sdk.hash.HashAlgorithm;
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate;
+import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate;
 import org.unicitylabs.sdk.signing.SigningService;
 import org.unicitylabs.sdk.token.Token;
 import org.unicitylabs.sdk.token.TokenState;
 import org.unicitylabs.sdk.transaction.Transaction;
-import org.unicitylabs.sdk.transaction.TransferTransactionData;
+import org.unicitylabs.sdk.transaction.TransferTransaction;
 
 import java.security.SecureRandom;
 
@@ -21,31 +22,39 @@ public class TestRecipient {
     private final RootTrustBase trustBase;
     private final byte[] privateKey;
     private final SigningService signingService;
-    private final SecureRandom random = new SecureRandom();
 
-    public TestRecipient(StateTransitionClient client, RootTrustBase trustBase) {
+    public TestRecipient(StateTransitionClient client, RootTrustBase trustBase, byte[] privateKey) {
         this.client = client;
         this.trustBase = trustBase;
-        this.privateKey = new byte[32];
-        random.nextBytes(privateKey);
-
-        byte[] nonce = new byte[32];
-        random.nextBytes(nonce);
-        this.signingService = SigningService.createFromMaskedSecret(privateKey, nonce);
+        this.privateKey = privateKey;
+        this.signingService = SigningService.createFromSecret(privateKey);
     }
 
     /**
      * Finalize a received token (what Alice would do on her device)
+     * @param nametagToken Alice's nametag token (needed for proxy address resolution)
      */
-    public Token<?> finalizeReceivedToken(TokenMinter.TransferInfo transferInfo) throws Exception {
+    public Token<?> finalizeReceivedToken(TokenMinter.TransferInfo transferInfo, Token<?> nametagToken) throws Exception {
         Token<?> sourceToken = transferInfo.getSourceToken();
-        Transaction<TransferTransactionData> transferTx = transferInfo.getTransferTransaction();
+        Transaction<TransferTransaction.Data> transferTx = transferInfo.getTransferTransaction();
+
+        System.out.println("Finalizing received token...");
+        System.out.println("  Source token ID: " + bytesToHex(sourceToken.getId().getBytes()));
+        System.out.println("  Transfer recipient: " + transferTx.getData().getRecipient().getAddress());
 
         // Get token ID and type from source
         MaskedPredicate sourcePredicate = (MaskedPredicate) sourceToken.getState().getPredicate();
 
+        // Get the nametag token type (all tokens in test use same type)
+        org.unicitylabs.sdk.token.TokenType nametagTokenType = nametagToken != null ?
+            nametagToken.getType() : sourcePredicate.getTokenType();
+
+        System.out.println("  Source token type: " + bytesToHex(sourcePredicate.getTokenType().getBytes()).substring(0, 16) + "...");
+        System.out.println("  Nametag token type: " + bytesToHex(nametagTokenType.getBytes()).substring(0, 16) + "...");
+
         // Create recipient's predicate using the salt from transfer
-        MaskedPredicate recipientPredicate = MaskedPredicate.create(
+        // Use UnmaskedPredicate for received transfers
+        UnmaskedPredicate recipientPredicate = UnmaskedPredicate.create(
             sourcePredicate.getTokenId(),
             sourcePredicate.getTokenType(),
             signingService,
@@ -53,13 +62,55 @@ public class TestRecipient {
             transferTx.getData().getSalt()
         );
 
-        // Finalize the transaction
-        return client.finalizeTransaction(
-            trustBase,
-            sourceToken,
-            new TokenState(recipientPredicate, null),
-            transferTx,
-            java.util.List.of()  // Would include nametag token if available
-        );
+        System.out.println("  Recipient predicate created (Unmasked)");
+        System.out.println("  Recipient public key: " + bytesToHex(recipientPredicate.getPublicKey()).substring(0, 16) + "...");
+
+        // Check what address the recipient predicate creates
+        String recipientAddress = recipientPredicate.getReference().toAddress().getAddress();
+        System.out.println("  Recipient predicate address: " + recipientAddress);
+        System.out.println("  Transfer recipient (expected): " + transferTx.getData().getRecipient().getAddress());
+
+        if (nametagToken != null) {
+            System.out.println("  Nametag proxy: " + org.unicitylabs.sdk.address.ProxyAddress.create(nametagToken.getId()).getAddress());
+
+            // Get target address from nametag token
+            var nametagGenesisTx = (org.unicitylabs.sdk.transaction.MintTransaction<?>) nametagToken.getGenesis();
+            nametagGenesisTx.getData().getTokenData().ifPresent(tokenData -> {
+                String targetAddr = new String(tokenData);
+                System.out.println("  Nametag target address: " + targetAddr);
+                System.out.println("  Match? " + targetAddr.equals(recipientAddress));
+            });
+        }
+
+        try {
+            // Finalize the transaction
+            // Cast to TransferTransaction (SDK expects concrete type)
+            // Include nametag token for proxy address resolution
+            java.util.List<Token<?>> nametagTokens = (nametagToken != null) ?
+                java.util.List.of(nametagToken) : java.util.List.of();
+
+            Token<?> finalizedToken = client.finalizeTransaction(
+                trustBase,
+                sourceToken,
+                new TokenState(recipientPredicate, null),
+                (TransferTransaction) transferTx,
+                nametagTokens  // Include nametag for proxy resolution
+            );
+            System.out.println("✅ Token finalized successfully");
+            return finalizedToken;
+        } catch (org.unicitylabs.sdk.verification.VerificationException ve) {
+            System.err.println("❌ Verification failed!");
+            System.err.println("  Verification result: " + ve.getVerificationResult());
+            System.err.println("  Details: " + ve.getMessage());
+            throw ve;
+        }
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder result = new StringBuilder();
+        for (byte b : bytes) {
+            result.append(String.format("%02x", b));
+        }
+        return result.toString();
     }
 }

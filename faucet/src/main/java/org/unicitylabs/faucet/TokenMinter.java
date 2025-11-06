@@ -3,6 +3,7 @@ package org.unicitylabs.faucet;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.address.ProxyAddress;
 import org.unicitylabs.sdk.api.AggregatorClient;
+import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
 import org.unicitylabs.sdk.api.SubmitCommitmentResponse;
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus;
 import org.unicitylabs.sdk.bft.RootTrustBase;
@@ -18,10 +19,10 @@ import org.unicitylabs.sdk.token.TokenType;
 import org.unicitylabs.sdk.token.fungible.CoinId;
 import org.unicitylabs.sdk.token.fungible.TokenCoinData;
 import org.unicitylabs.sdk.transaction.MintCommitment;
-import org.unicitylabs.sdk.transaction.MintTransactionData;
+import org.unicitylabs.sdk.transaction.MintTransaction;
 import org.unicitylabs.sdk.transaction.MintTransactionReason;
 import org.unicitylabs.sdk.transaction.TransferCommitment;
-import org.unicitylabs.sdk.transaction.TransferTransactionData;
+import org.unicitylabs.sdk.transaction.TransferTransaction;
 import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
 
@@ -70,7 +71,7 @@ public class TokenMinter {
         }
 
         // Initialize aggregator client
-        AggregatorClient aggregatorClient = new AggregatorClient(aggregatorUrl);
+        AggregatorClient aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl);
         this.client = new StateTransitionClient(aggregatorClient);
     }
 
@@ -82,7 +83,7 @@ public class TokenMinter {
      * @param amount Token amount (supports arbitrary precision via BigInteger)
      * @return Minted token
      */
-    public CompletableFuture<Token<MintTransactionData<MintTransactionReason>>> mintToken(
+    public CompletableFuture<Token<MintTransactionReason>> mintToken(
         String tokenTypeHex, String coinIdHex, java.math.BigInteger amount
     ) {
         return CompletableFuture.supplyAsync(() -> {
@@ -128,7 +129,7 @@ public class TokenMinter {
                 random.nextBytes(salt);
 
                 // Create mint transaction data (following SDK TokenUtils pattern)
-                MintTransactionData<MintTransactionReason> mintData = new MintTransactionData<>(
+                MintTransaction.Data<MintTransactionReason> mintData = new MintTransaction.Data<>(
                     tokenId,
                     tokenType,
                     tokenDataBytes,
@@ -140,7 +141,7 @@ public class TokenMinter {
                 );
 
                 // Create mint commitment
-                MintCommitment<MintTransactionData<MintTransactionReason>> commitment =
+                MintCommitment<MintTransactionReason> commitment =
                     MintCommitment.create(mintData);
 
                 // Submit commitment to aggregator
@@ -169,7 +170,7 @@ public class TokenMinter {
 
                 // Create token using Token.create() with proper predicate
                 // Following SDK TokenUtils.mintToken pattern - create predicate from commitment data
-                Token<MintTransactionData<MintTransactionReason>> token = Token.create(
+                Token<MintTransactionReason> token = Token.create(
                     trustBase,
                     new TokenState(
                         MaskedPredicate.create(
@@ -206,7 +207,7 @@ public class TokenMinter {
     /**
      * Serialize transfer transaction to JSON
      */
-    public String serializeTransaction(Transaction<TransferTransactionData> tx) throws Exception {
+    public String serializeTransaction(Transaction<TransferTransaction.Data> tx) throws Exception {
         return UnicityObjectMapper.JSON.writeValueAsString(tx);
     }
 
@@ -259,7 +260,7 @@ public class TokenMinter {
                 System.out.println("✅ Transfer inclusion proof received!");
 
                 // Create transfer transaction
-                Transaction<TransferTransactionData> transferTransaction =
+                Transaction<TransferTransaction.Data> transferTransaction =
                     transferCommitment.toTransaction(inclusionProof);
 
                 System.out.println("✅ Token transferred successfully!");
@@ -293,9 +294,9 @@ public class TokenMinter {
      */
     public static class TransferInfo {
         private final Token<?> sourceToken;
-        private final Transaction<TransferTransactionData> transferTransaction;
+        private final Transaction<TransferTransaction.Data> transferTransaction;
 
-        public TransferInfo(Token<?> sourceToken, Transaction<TransferTransactionData> transferTransaction) {
+        public TransferInfo(Token<?> sourceToken, Transaction<TransferTransaction.Data> transferTransaction) {
             this.sourceToken = sourceToken;
             this.transferTransaction = transferTransaction;
         }
@@ -304,7 +305,7 @@ public class TokenMinter {
             return sourceToken;
         }
 
-        public Transaction<TransferTransactionData> getTransferTransaction() {
+        public Transaction<TransferTransaction.Data> getTransferTransaction() {
             return transferTransaction;
         }
 

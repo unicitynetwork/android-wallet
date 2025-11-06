@@ -3,20 +3,22 @@ package org.unicitylabs.faucet;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.address.DirectAddress;
 import org.unicitylabs.sdk.api.AggregatorClient;
+import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
 import org.unicitylabs.sdk.api.SubmitCommitmentResponse;
 import org.unicitylabs.sdk.api.SubmitCommitmentStatus;
 import org.unicitylabs.sdk.bft.RootTrustBase;
 import org.unicitylabs.sdk.hash.HashAlgorithm;
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate;
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicateReference;
+import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicateReference;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 import org.unicitylabs.sdk.signing.SigningService;
 import org.unicitylabs.sdk.token.Token;
 import org.unicitylabs.sdk.token.TokenState;
 import org.unicitylabs.sdk.token.TokenType;
 import org.unicitylabs.sdk.transaction.MintCommitment;
+import org.unicitylabs.sdk.transaction.MintTransaction;
 import org.unicitylabs.sdk.transaction.MintTransactionReason;
-import org.unicitylabs.sdk.transaction.NametagMintTransactionData;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
 
 import java.io.InputStream;
@@ -49,7 +51,7 @@ public class NametagMinter {
         }
 
         // Initialize aggregator client
-        AggregatorClient aggregatorClient = new AggregatorClient(aggregatorUrl);
+        AggregatorClient aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl);
         this.client = new StateTransitionClient(aggregatorClient);
     }
 
@@ -61,7 +63,7 @@ public class NametagMinter {
      * @param nostrPubKey Owner's Nostr public key (hex)
      * @return Minted nametag token
      */
-    public CompletableFuture<Token<NametagMintTransactionData<MintTransactionReason>>> mintNametag(
+    public CompletableFuture<Token<MintTransactionReason>> mintNametag(
         String nametag,
         byte[] ownerPrivateKey,
         String nostrPubKey
@@ -70,22 +72,32 @@ public class NametagMinter {
             try {
                 System.out.println("🏷️  Minting nametag: " + nametag);
 
-                // Create signing service with nonce
-                byte[] nonce = new byte[32];
-                random.nextBytes(nonce);
-                SigningService signingService = SigningService.createFromMaskedSecret(ownerPrivateKey, nonce);
+                // Create owner's signing service (deterministic, no masking)
+                SigningService ownerSigningService = SigningService.createFromSecret(ownerPrivateKey);
 
-                // Generate random token type
-                byte[] tokenTypeData = new byte[32];
-                random.nextBytes(tokenTypeData);
+                // Use FIXED token type (same as fungible tokens) - CRITICAL for address matching!
+                // The nametag's owner address must be created with the same TokenType as fungible tokens
+                // Otherwise when Alice receives a fungible token, the address won't match
+                String TOKEN_TYPE_HEX = "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509";
+                byte[] tokenTypeData = hexStringToByteArray(TOKEN_TYPE_HEX);
                 TokenType tokenType = new TokenType(tokenTypeData);
 
-                // Create address for nametag
+                // Create nametag's own address (with random nonce for nametag token)
+                byte[] nametagNonce = new byte[32];
+                random.nextBytes(nametagNonce);
+                SigningService nametagSigningService = SigningService.createFromMaskedSecret(ownerPrivateKey, nametagNonce);
                 DirectAddress nametagAddress = MaskedPredicateReference.create(
                     tokenType,
-                    signingService,
+                    nametagSigningService,
                     HashAlgorithm.SHA256,
-                    nonce
+                    nametagNonce
+                ).toAddress();
+
+                // Create owner's target address (deterministic, for receiving tokens)
+                DirectAddress ownerAddress = UnmaskedPredicateReference.create(
+                    tokenType,
+                    ownerSigningService,
+                    HashAlgorithm.SHA256
                 ).toAddress();
 
                 // Create salt
@@ -101,19 +113,19 @@ public class NametagMinter {
 
                 // Create nametag with standard constructor (no tokenData in simplified version)
                 // For now, using standard constructor - in production, would need custom implementation
-                NametagMintTransactionData<MintTransactionReason> nametagData = new NametagMintTransactionData<>(
+                MintTransaction.NametagData nametagData = new MintTransaction.NametagData(
                     nametag,        // nametag string
                     tokenType,      // token type
-                    nametagAddress, // nametag address
+                    nametagAddress, // nametag address (random masked address for nametag token itself)
                     salt,           // salt
-                    nametagAddress  // owner address (same as nametag address)
+                    ownerAddress    // owner address (deterministic unmasked address for receiving tokens)
                 );
 
-                // TODO: In production, extend NametagMintTransactionData to include tokenData
+                // TODO: In production, extend MintTransaction.NametagData to include tokenData
                 // or use a registry service for Nostr<->Nametag binding
 
                 // Create mint commitment
-                MintCommitment<NametagMintTransactionData<MintTransactionReason>> commitment =
+                MintCommitment<MintTransactionReason> commitment =
                     MintCommitment.create(nametagData);
 
                 // Submit commitment
@@ -141,16 +153,16 @@ public class NametagMinter {
                 System.out.println("✅ Inclusion proof received!");
 
                 // Create token using Token.create() with proper predicate
-                // Following SDK TokenUtils.mintNametagToken pattern
-                Token<NametagMintTransactionData<MintTransactionReason>> token = Token.create(
+                // Use the nametagSigningService (with nonce) for the nametag token's predicate
+                Token<MintTransactionReason> token = Token.create(
                     trustBase,
                     new TokenState(
                         MaskedPredicate.create(
                             commitment.getTransactionData().getTokenId(),
                             commitment.getTransactionData().getTokenType(),
-                            signingService,
+                            nametagSigningService,
                             HashAlgorithm.SHA256,
-                            nonce
+                            nametagNonce
                         ),
                         null
                     ),

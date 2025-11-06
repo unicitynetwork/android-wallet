@@ -180,11 +180,10 @@ public class TokenSplitter {
                 null
             );
 
-            Token<?> splitToken = new Token(
+            Token<?> splitToken = Token.create(
+                trustBase,
                 state,
-                commitment.toTransaction(proof),
-                List.of(),
-                List.of()
+                commitment.toTransaction(proof)
             );
 
             splitTokens.add(splitToken);
