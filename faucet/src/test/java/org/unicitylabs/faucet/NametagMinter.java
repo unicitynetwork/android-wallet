@@ -20,6 +20,7 @@ import org.unicitylabs.sdk.transaction.MintCommitment;
 import org.unicitylabs.sdk.transaction.MintTransaction;
 import org.unicitylabs.sdk.transaction.MintTransactionReason;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
+import org.apache.commons.codec.binary.Hex;
 
 import java.io.InputStream;
 import java.security.SecureRandom;
@@ -79,7 +80,7 @@ public class NametagMinter {
                 // The nametag's owner address must be created with the same TokenType as fungible tokens
                 // Otherwise when Alice receives a fungible token, the address won't match
                 String TOKEN_TYPE_HEX = "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509";
-                byte[] tokenTypeData = hexStringToByteArray(TOKEN_TYPE_HEX);
+                byte[] tokenTypeData = Hex.decodeHex(TOKEN_TYPE_HEX);
                 TokenType tokenType = new TokenType(tokenTypeData);
 
                 // Create nametag's own address (with random nonce for nametag token)
@@ -180,16 +181,5 @@ public class NametagMinter {
         });
     }
 
-    private byte[] hexStringToByteArray(String hex) {
-        if (hex.startsWith("0x") || hex.startsWith("0X")) {
-            hex = hex.substring(2);
-        }
-        int len = hex.length();
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-                                 + Character.digit(hex.charAt(i+1), 16));
-        }
-        return data;
-    }
 }
+

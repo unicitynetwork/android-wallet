@@ -419,7 +419,7 @@ public class FaucetE2ETest {
                         } catch (Exception e) {
                             System.out.println("⚠️ Decryption failed, trying hex fallback: " + e.getMessage());
                             try {
-                                byte[] contentBytes = Hex.decodeHex(content.toCharArray());
+                                byte[] contentBytes = Hex.decodeHex(content);
                                 String decodedContent = new String(contentBytes);
                                 aliceReceivedMessages.add(decodedContent);
                                 if (decodedContent.contains("token_transfer")) {

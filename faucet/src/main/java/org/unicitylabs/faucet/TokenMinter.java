@@ -25,6 +25,8 @@ import org.unicitylabs.sdk.transaction.TransferCommitment;
 import org.unicitylabs.sdk.transaction.TransferTransaction;
 import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.binary.Hex;
 
 import java.io.InputStream;
 import java.math.BigInteger;
@@ -99,11 +101,11 @@ public class TokenMinter {
                 TokenId tokenId = new TokenId(tokenIdData);
 
                 // Use token type from config
-                byte[] tokenTypeData = hexStringToByteArray(tokenTypeHex);
+                byte[] tokenTypeData = Hex.decodeHex(tokenTypeHex);
                 TokenType tokenType = new TokenType(tokenTypeData);
 
                 // Use coin ID from config
-                byte[] coinIdData = hexStringToByteArray(coinIdHex);
+                byte[] coinIdData = Hex.decodeHex(coinIdHex);
 
                 Map<CoinId, BigInteger> coins = new HashMap<>();
                 coins.put(new CoinId(coinIdData), amount); // amount is already BigInteger
@@ -186,7 +188,7 @@ public class TokenMinter {
                 );
 
                 System.out.println("✅ Token minted successfully!");
-                System.out.println("   Token ID: " + bytesToHex(tokenIdData));
+                System.out.println("   Token ID: " + Hex.encodeHexString(tokenIdData));
 
                 return token;
             } catch (Exception e) {
@@ -276,18 +278,6 @@ public class TokenMinter {
         });
     }
 
-    /**
-     * Helper method to convert hex string to byte array
-     */
-    private static byte[] hexStringToByteArray(String hex) {
-        int len = hex.length();
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-                                 + Character.digit(hex.charAt(i + 1), 16));
-        }
-        return data;
-    }
 
     /**
      * Container for transfer information that recipient needs
@@ -320,29 +310,4 @@ public class TokenMinter {
         }
     }
 
-    /**
-     * Convert hex string to byte array
-     */
-    private byte[] hexToBytes(String hex) {
-        // Take first 32 bytes (64 hex chars)
-        hex = hex.substring(0, Math.min(64, hex.length()));
-        int len = hex.length();
-        byte[] data = new byte[32];
-        for (int i = 0; i < len && i < 64; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-                    + Character.digit(hex.charAt(i + 1), 16));
-        }
-        return data;
-    }
-
-    /**
-     * Convert byte array to hex string
-     */
-    private String bytesToHex(byte[] bytes) {
-        StringBuilder result = new StringBuilder();
-        for (byte b : bytes) {
-            result.append(String.format("%02x", b));
-        }
-        return result.toString();
-    }
 }

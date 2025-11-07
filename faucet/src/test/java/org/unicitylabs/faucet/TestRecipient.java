@@ -10,6 +10,7 @@ import org.unicitylabs.sdk.token.Token;
 import org.unicitylabs.sdk.token.TokenState;
 import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.transaction.TransferTransaction;
+import org.apache.commons.codec.binary.Hex;
 
 import java.security.SecureRandom;
 
@@ -39,7 +40,7 @@ public class TestRecipient {
         Transaction<TransferTransaction.Data> transferTx = transferInfo.getTransferTransaction();
 
         System.out.println("Finalizing received token...");
-        System.out.println("  Source token ID: " + bytesToHex(sourceToken.getId().getBytes()));
+        System.out.println("  Source token ID: " + Hex.encodeHexString(sourceToken.getId().getBytes()));
         System.out.println("  Transfer recipient: " + transferTx.getData().getRecipient().getAddress());
 
         // Get token ID and type from source
@@ -49,8 +50,8 @@ public class TestRecipient {
         org.unicitylabs.sdk.token.TokenType nametagTokenType = nametagToken != null ?
             nametagToken.getType() : sourcePredicate.getTokenType();
 
-        System.out.println("  Source token type: " + bytesToHex(sourcePredicate.getTokenType().getBytes()).substring(0, 16) + "...");
-        System.out.println("  Nametag token type: " + bytesToHex(nametagTokenType.getBytes()).substring(0, 16) + "...");
+        System.out.println("  Source token type: " + Hex.encodeHexString(sourcePredicate.getTokenType().getBytes()).substring(0, 16) + "...");
+        System.out.println("  Nametag token type: " + Hex.encodeHexString(nametagTokenType.getBytes()).substring(0, 16) + "...");
 
         // Create recipient's predicate using the salt from transfer
         // Use UnmaskedPredicate for received transfers
@@ -63,7 +64,7 @@ public class TestRecipient {
         );
 
         System.out.println("  Recipient predicate created (Unmasked)");
-        System.out.println("  Recipient public key: " + bytesToHex(recipientPredicate.getPublicKey()).substring(0, 16) + "...");
+        System.out.println("  Recipient public key: " + Hex.encodeHexString(recipientPredicate.getPublicKey()).substring(0, 16) + "...");
 
         // Check what address the recipient predicate creates
         String recipientAddress = recipientPredicate.getReference().toAddress().getAddress();
@@ -71,6 +72,7 @@ public class TestRecipient {
         System.out.println("  Transfer recipient (expected): " + transferTx.getData().getRecipient().getAddress());
 
         if (nametagToken != null) {
+            System.out.println("  Nametag token ID: " + Hex.encodeHexString(nametagToken.getId().getBytes()).substring(0, 32) + "...");
             System.out.println("  Nametag proxy: " + org.unicitylabs.sdk.address.ProxyAddress.create(nametagToken.getId()).getAddress());
 
             // Get target address from nametag token
@@ -106,11 +108,4 @@ public class TestRecipient {
         }
     }
 
-    private String bytesToHex(byte[] bytes) {
-        StringBuilder result = new StringBuilder();
-        for (byte b : bytes) {
-            result.append(String.format("%02x", b));
-        }
-        return result.toString();
-    }
 }
