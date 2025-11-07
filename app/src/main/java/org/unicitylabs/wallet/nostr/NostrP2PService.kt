@@ -31,7 +31,8 @@ import org.unicitylabs.nostr.nametag.NametagBinding
 import org.unicitylabs.nostr.protocol.EventKinds
 
 // Apache Commons Codec for hex encoding
-import org.apache.commons.codec.binary.Hex
+import org.unicitylabs.wallet.util.HexUtils
+import org.apache.commons.codec.DecoderException
 
 import java.security.MessageDigest
 import java.util.UUID
@@ -466,7 +467,7 @@ class NostrP2PService(
         val result = ByteArray(32)
         hash.doFinal(result, 0)
 
-        return String(Hex.encodeHex(result))
+        return HexUtils.encodeHexString(result)
     }
 
     /**
@@ -474,9 +475,9 @@ class NostrP2PService(
      * Nostr uses Schnorr signatures (BIP-340) for events
      */
     private fun signEvent(eventId: String): String {
-        val messageBytes = Hex.decodeHex(eventId.toCharArray())
+        val messageBytes = HexUtils.decodeHex(eventId)
         val signature = keyManager.sign(messageBytes)
-        return String(Hex.encodeHex(signature))
+        return HexUtils.encodeHexString(signature)
     }
 
     /**
@@ -637,7 +638,7 @@ class NostrP2PService(
         return try {
             val tagBytes = tag.toByteArray()
             val hash = MessageDigest.getInstance("SHA-256").digest(tagBytes)
-            val pubkey = String(Hex.encodeHex(hash))
+            val pubkey = HexUtils.encodeHexString(hash)
             Log.d(TAG, "=== RESOLVE DEBUG: Generated fallback pubkey for $tag: ${pubkey.take(20)}... ===")
             pubkey
         } catch (e: Exception) {
@@ -648,7 +649,7 @@ class NostrP2PService(
 
     private fun createEncryptedMessage(recipientPubkey: String, content: String): Event {
         // Implement NIP-04 encryption with auto-compression (SDK)
-        val recipientPubkeyBytes = Hex.decodeHex(recipientPubkey.toCharArray())
+        val recipientPubkeyBytes = HexUtils.decodeHex(recipientPubkey)
         val encryptedContent = keyManager.encryptMessage(content, recipientPubkeyBytes)
 
         return createEvent(
@@ -661,7 +662,7 @@ class NostrP2PService(
     private fun handleEncryptedMessage(event: Event) {
         // Decrypt NIP-04 message with auto-decompression (SDK)
         try {
-            val senderPubkeyBytes = Hex.decodeHex(event.pubkey.toCharArray())
+            val senderPubkeyBytes = HexUtils.decodeHex(event.pubkey)
             val decryptedContent = keyManager.decryptMessage(event.content, senderPubkeyBytes)
 
             Log.d(TAG, "Received encrypted message from ${event.pubkey}: $decryptedContent")
@@ -717,12 +718,12 @@ class NostrP2PService(
                 val decryptedContent = try {
                     // Try NIP-04 decryption first (SDK handles auto-decompression)
                     try {
-                        val senderPubkeyBytes = Hex.decodeHex(event.pubkey.toCharArray())
+                        val senderPubkeyBytes = HexUtils.decodeHex(event.pubkey)
                         keyManager.decryptMessage(event.content, senderPubkeyBytes)
                     } catch (nip04Error: Exception) {
                         // Fall back to simple hex decoding (legacy format)
                         try {
-                            String(Hex.decodeHex(event.content.toCharArray()), Charsets.UTF_8)
+                            String(HexUtils.decodeHex(event.content), Charsets.UTF_8)
                         } catch (hexError: Exception) {
                             throw Exception("Failed both NIP-04 and hex decryption", nip04Error)
                         }
@@ -942,7 +943,7 @@ class NostrP2PService(
                 return null
             }
 
-            val secret = hexToBytes(identity.privateKey)
+            val secret = HexUtils.decodeHex(identity.privateKey)
             val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
 
             // Create recipient predicate
@@ -950,9 +951,9 @@ class NostrP2PService(
 
             Log.d(TAG, "Creating recipient predicate:")
             Log.d(TAG, "  Identity pubkey: ${identity.publicKey}")
-            Log.d(TAG, "  Source TokenId: ${bytesToHex(sourceToken.id.bytes).take(16)}...")
+            Log.d(TAG, "  Source TokenId: ${HexUtils.encodeHexString(sourceToken.id.bytes).take(16)}...")
             Log.d(TAG, "  TokenType: ${sourceToken.type}")
-            Log.d(TAG, "  Transfer Salt: ${bytesToHex(transferSalt).take(16)}...")
+            Log.d(TAG, "  Transfer Salt: ${HexUtils.encodeHexString(transferSalt).take(16)}...")
 
             val recipientPredicate = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate.create(
                 sourceToken.id,
@@ -962,7 +963,7 @@ class NostrP2PService(
                 transferSalt
             )
 
-            Log.d(TAG, "✅ Predicate created - PublicKey: ${bytesToHex(recipientPredicate.publicKey).take(32)}...")
+            Log.d(TAG, "✅ Predicate created - PublicKey: ${HexUtils.encodeHexString(recipientPredicate.publicKey).take(32)}...")
 
             val recipientState = org.unicitylabs.sdk.token.TokenState(recipientPredicate, null)
 
@@ -1146,18 +1147,6 @@ class NostrP2PService(
         }
     }
 
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        for (i in 0 until len step 2) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-        }
-        return data
-    }
-
-    private fun bytesToHex(bytes: ByteArray): String {
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
 
     private fun handleFileMetadata(event: Event) {
         // TODO: Handle file metadata
@@ -1193,7 +1182,7 @@ class NostrP2PService(
             val content = "token_transfer:$tokenJson"
 
             // Encrypt the content for the recipient (SDK handles auto-compression)
-            val recipientPubkeyBytes = Hex.decodeHex(recipientPubkey.toCharArray())
+            val recipientPubkeyBytes = HexUtils.decodeHex(recipientPubkey)
             val encryptedContent = keyManager.encryptMessage(content, recipientPubkeyBytes)
 
             // Create token transfer event

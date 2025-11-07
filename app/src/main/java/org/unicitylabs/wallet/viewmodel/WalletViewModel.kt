@@ -19,6 +19,7 @@ import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.data.repository.WalletRepository
 import org.unicitylabs.wallet.data.service.CryptoPriceService
 import org.unicitylabs.wallet.model.CryptoCurrency
+import org.unicitylabs.wallet.util.HexUtils
 
 class WalletViewModel(application: Application) : AndroidViewModel(application) {
     val repository = WalletRepository.getInstance(application)
@@ -584,7 +585,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             
             // Get recipient address from identity
             val recipientSecret = recipientSecretString.toByteArray()
-            val recipientNonce = hexStringToByteArray(recipientNonceBytes.toHexString())
+            val recipientNonce = HexUtils.decodeHex(recipientNonceBytes.toHexString())
             
             // Parse token data to get tokenId and tokenType
             val objectMapper = com.fasterxml.jackson.databind.ObjectMapper()
@@ -596,8 +597,8 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             
             // Create recipient's predicate to get correct address
             val recipientSigningService = org.unicitylabs.sdk.signing.SigningService.createFromMaskedSecret(recipientSecret, recipientNonce)
-            val tokenType = org.unicitylabs.sdk.token.TokenType(hexStringToByteArray(tokenTypeHex))
-            val tokenId = org.unicitylabs.sdk.token.TokenId(hexStringToByteArray(tokenIdHex))
+            val tokenType = org.unicitylabs.sdk.token.TokenType(HexUtils.decodeHex(tokenTypeHex))
+            val tokenId = org.unicitylabs.sdk.token.TokenId(HexUtils.decodeHex(tokenIdHex))
 
             // Create salt for UnmaskedPredicate
             val salt = ByteArray(32)
@@ -660,16 +661,6 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         return joinToString("") { "%02x".format(it) }
     }
     
-    private fun hexStringToByteArray(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
     
     override fun onCleared() {
         super.onCleared()

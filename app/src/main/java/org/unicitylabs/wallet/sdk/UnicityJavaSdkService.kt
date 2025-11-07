@@ -21,6 +21,7 @@ import org.unicitylabs.sdk.transaction.MintTransaction
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.util.InclusionProofUtils
 import org.unicitylabs.wallet.di.ServiceProvider
+import org.unicitylabs.wallet.util.HexUtils
 import java.math.BigInteger
 import java.security.SecureRandom
 import java.util.Base64
@@ -323,14 +324,4 @@ class UnicityJavaSdkService(
         return joinToString("") { "%02x".format(it) }
     }
     
-    private fun hexStringToByteArray(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
 }

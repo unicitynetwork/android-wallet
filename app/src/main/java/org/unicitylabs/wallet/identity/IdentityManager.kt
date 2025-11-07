@@ -20,6 +20,7 @@ import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
 import org.unicitylabs.wallet.data.model.UserIdentity
 import org.unicitylabs.wallet.utils.WalletConstants
+import org.unicitylabs.wallet.util.HexUtils
 import java.math.BigInteger
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -109,12 +110,12 @@ class IdentityManager(private val context: Context) {
     suspend fun getWalletAddress(): org.unicitylabs.sdk.address.DirectAddress? = withContext(Dispatchers.IO) {
         val identity = getCurrentIdentity() ?: return@withContext null
 
-        val secret = hexToBytes(identity.privateKey)
+        val secret = HexUtils.decodeHex(identity.privateKey)
 
         // Use createFromSecret for UnmaskedPredicate (not createFromMaskedSecret)
         val signingService = SigningService.createFromSecret(secret)
 
-        val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
+        val tokenType = TokenType(HexUtils.decodeHex(WalletConstants.UNICITY_TOKEN_TYPE))
 
         // Create UnmaskedPredicateReference without TokenId - this is the wallet's identity
         val predicateRef = org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicateReference.create(
@@ -135,14 +136,14 @@ class IdentityManager(private val context: Context) {
     suspend fun getWalletPredicate(tokenId: TokenId, tokenType: TokenType, salt: ByteArray): UnmaskedPredicate? = withContext(Dispatchers.IO) {
         val identity = getCurrentIdentity() ?: return@withContext null
 
-        val secret = hexToBytes(identity.privateKey)
+        val secret = HexUtils.decodeHex(identity.privateKey)
 
         // Use createFromSecret for UnmaskedPredicate (not createFromMaskedSecret)
         val signingService = SigningService.createFromSecret(secret)
 
         Log.d(TAG, "getWalletPredicate called:")
         Log.d(TAG, "  Identity pubkey: ${identity.publicKey}")
-        Log.d(TAG, "  SigningService pubkey: ${bytesToHex(signingService.publicKey)}")
+        Log.d(TAG, "  SigningService pubkey: ${HexUtils.encodeHexString(signingService.publicKey)}")
 
         // Use the provided salt (from transaction)
         val predicate = UnmaskedPredicate.create(
@@ -153,7 +154,7 @@ class IdentityManager(private val context: Context) {
             salt
         )
 
-        Log.d(TAG, "  Created predicate pubkey: ${bytesToHex(predicate.publicKey)}")
+        Log.d(TAG, "  Created predicate pubkey: ${HexUtils.encodeHexString(predicate.publicKey)}")
 
         predicate
     }
@@ -206,12 +207,12 @@ class IdentityManager(private val context: Context) {
         // Generate address from unmasked predicate with testnet token type
         val address = deriveAddress(secret, nonce)
         
-        Log.d(TAG, "Identity derived - Public key: ${bytesToHex(publicKey)}, Address: $address")
+        Log.d(TAG, "Identity derived - Public key: ${HexUtils.encodeHexString(publicKey)}, Address: $address")
         
         return UserIdentity(
-            privateKey = bytesToHex(secret),
-            nonce = bytesToHex(nonce),
-            publicKey = bytesToHex(publicKey),
+            privateKey = HexUtils.encodeHexString(secret),
+            nonce = HexUtils.encodeHexString(nonce),
+            publicKey = HexUtils.encodeHexString(publicKey),
             address = address
         )
     }
@@ -261,7 +262,7 @@ class IdentityManager(private val context: Context) {
             val signingService = SigningService.createFromSecret(secret)
             
             // Use the currently active chain's token type and generate a token ID
-            val tokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
+            val tokenType = TokenType(HexUtils.decodeHex(WalletConstants.UNICITY_TOKEN_TYPE))
             val tokenId = TokenId(ByteArray(32).apply {
                 SecureRandom().nextBytes(this)
             })
@@ -285,7 +286,7 @@ class IdentityManager(private val context: Context) {
             // Return a hash of the public key as fallback
             val publicKey = derivePublicKey(secret)
             val addressHash = MessageDigest.getInstance("SHA-256").digest(publicKey)
-            bytesToHex(addressHash.take(20).toByteArray())
+            HexUtils.encodeHexString(addressHash.take(20).toByteArray())
         }
     }
     
@@ -347,20 +348,7 @@ class IdentityManager(private val context: Context) {
         
         return cipher.doFinal(ciphertext)
     }
-    
-    private fun bytesToHex(bytes: ByteArray): String {
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-    
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        for (i in 0 until len step 2) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-        }
-        return data
-    }
-    
+
     private data class EncryptedData(
         val ciphertext: ByteArray,
         val iv: ByteArray

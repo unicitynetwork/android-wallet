@@ -9,6 +9,7 @@ import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import org.unicitylabs.wallet.ui.receive.ReceiveActivity
 import org.unicitylabs.wallet.util.JsonMapper
+import org.unicitylabs.wallet.util.HexUtils
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
@@ -897,7 +898,7 @@ class HostCardEmulatorLogic(
                 // Parse receiver identity
                 val identityJson = JsonMapper.fromJson(receiverIdentityJson, Map::class.java)
                 val receiverSecret = (identityJson["secret"] as? String ?: "").toByteArray()
-                val receiverNonce = hexStringToByteArray(identityJson["nonce"] as? String ?: "")
+                val receiverNonce = HexUtils.decodeHex(identityJson["nonce"] as? String ?: "")
                 
                 val processedToken = sdkService.completeOfflineTransfer(
                     finalTransactionData,
@@ -1063,14 +1064,4 @@ class HostCardEmulatorLogic(
         }
     }
     
-    private fun hexStringToByteArray(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
 }

@@ -24,6 +24,7 @@ import org.unicitylabs.wallet.nametag.NametagService
 import java.security.SecureRandom
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
+import org.unicitylabs.wallet.util.HexUtils
 
 /**
  * End-to-end test for nametag minting against the real Unicity test aggregator.
@@ -169,8 +170,8 @@ class NametagMintingE2ETest {
         identity: org.unicitylabs.wallet.data.model.UserIdentity
     ): DirectAddress {
         // Convert hex strings to byte arrays
-        val secret = hexToBytes(identity.privateKey)
-        val nonce = hexToBytes(identity.nonce)
+        val secret = HexUtils.decodeHex(identity.privateKey)
+        val nonce = HexUtils.decodeHex(identity.nonce)
         
         // Create signing service and predicate
         val signingService = SigningService.createFromSecret(secret, nonce)
@@ -192,14 +193,6 @@ class NametagMintingE2ETest {
     /**
      * Converts hex string to byte array
      */
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        for (i in 0 until len step 2) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-        }
-        return data
-    }
     
     @Test
     fun testNametagMintingWithExistingNametag() = runBlocking {

@@ -14,6 +14,7 @@ import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
 import java.security.SecureRandom
+import org.unicitylabs.wallet.util.HexUtils
 
 /**
  * Integration tests for UnicityJavaSdkService that use the real Unicity aggregator
@@ -29,16 +30,6 @@ class UnicityJavaSdkServiceIntegrationTest {
         sdkService = UnicityJavaSdkService.getInstance()
     }
     
-    private fun hexStringToByteArray(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
     
     private fun generateTestIdentity(): Pair<ByteArray, ByteArray> {
         val random = SecureRandom()

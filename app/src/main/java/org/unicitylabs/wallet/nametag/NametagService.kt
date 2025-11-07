@@ -29,6 +29,7 @@ import org.unicitylabs.sdk.verification.VerificationException
 import org.unicitylabs.wallet.di.ServiceProvider
 import org.unicitylabs.wallet.identity.IdentityManager
 import org.unicitylabs.wallet.utils.WalletConstants
+import org.unicitylabs.wallet.util.HexUtils
 import java.io.File
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -95,9 +96,9 @@ class NametagService(
             val identity = identityManager.getCurrentIdentity()
                 ?: throw IllegalStateException("No wallet identity found")
 
-            val secret = hexToBytes(identity.privateKey)
+            val secret = HexUtils.decodeHex(identity.privateKey)
             val signingService = SigningService.createFromSecret(secret)
-            val nametagTokenType = TokenType(hexToBytes(WalletConstants.UNICITY_TOKEN_TYPE))
+            val nametagTokenType = TokenType(HexUtils.decodeHex(WalletConstants.UNICITY_TOKEN_TYPE))
 
             // Get the wallet's direct address as the target for this nametag
             val nametagAddress = identityManager.getWalletAddress()
@@ -434,12 +435,4 @@ class NametagService(
         return android.util.Base64.encodeToString(this, android.util.Base64.NO_WRAP)
     }
     
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        for (i in 0 until len step 2) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-        }
-        return data
-    }
 }

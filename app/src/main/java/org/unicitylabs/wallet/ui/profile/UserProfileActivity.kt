@@ -48,6 +48,7 @@ import org.unicitylabs.wallet.identity.IdentityManager
 import org.unicitylabs.wallet.nametag.NametagService
 import org.unicitylabs.wallet.network.AgentApiService
 import org.unicitylabs.wallet.utils.WalletConstants
+import org.unicitylabs.wallet.util.HexUtils
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
@@ -666,14 +667,6 @@ class UserProfileActivity : AppCompatActivity() {
         }
     }
     
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        for (i in 0 until len step 2) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-        }
-        return data
-    }
     
     private fun setupNametagButtons(nametagString: String) {
         currentNametagString = nametagString
@@ -943,7 +936,7 @@ class UserProfileActivity : AppCompatActivity() {
                     Log.e("UserProfileActivity", "No wallet identity found for validation")
                     return
                 }
-                hexToBytes(identity.publicKey)
+                HexUtils.decodeHex(identity.publicKey)
             }
 
             Log.d("UserProfileActivity", "Using public key from predicate for validation: ${publicKeyBytes.take(8).joinToString("") { "%02x".format(it) }}...")

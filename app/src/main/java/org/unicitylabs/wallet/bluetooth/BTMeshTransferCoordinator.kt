@@ -18,6 +18,7 @@ import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
 import org.unicitylabs.wallet.util.JsonMapper
 import org.unicitylabs.wallet.utils.WalletConstants
+import org.unicitylabs.wallet.util.HexUtils
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -766,7 +767,7 @@ object BTMeshTransferCoordinator {
                 val senderIdentityJson = getSenderIdentity()
                 val senderIdentity = com.google.gson.JsonParser.parseString(senderIdentityJson).asJsonObject
                 val senderSecret = senderIdentity.get("secret").asString.toByteArray()
-                val senderNonce = hexStringToByteArray(senderIdentity.get("nonce").asString)
+                val senderNonce = HexUtils.decodeHex(senderIdentity.get("nonce").asString)
                 
                 // Create offline transfer package
                 val tokenJsonData = transfer.tokenData?.jsonData
@@ -817,7 +818,7 @@ object BTMeshTransferCoordinator {
                 val recipientIdentityJson = getRecipientIdentity()
                 val recipientIdentity = com.google.gson.JsonParser.parseString(recipientIdentityJson).asJsonObject
                 val recipientSecret = recipientIdentity.get("secret").asString.toByteArray()
-                val recipientNonce = hexStringToByteArray(recipientIdentity.get("nonce").asString)
+                val recipientNonce = HexUtils.decodeHex(recipientIdentity.get("nonce").asString)
                 
                 // Complete the transfer
                 val receivedToken = sdkService.completeOfflineTransfer(
@@ -1068,12 +1069,12 @@ object BTMeshTransferCoordinator {
             val identityData = com.google.gson.JsonParser.parseString(recipientIdentity).asJsonObject
             val secret = identityData.get("secret").asString.toByteArray()
             val nonceHex = identityData.get("nonce").asString
-            val nonce = hexStringToByteArray(nonceHex)
+            val nonce = HexUtils.decodeHex(nonceHex)
             
             // Create signing service and predicate
             val signingService = org.unicitylabs.sdk.signing.SigningService.createFromMaskedSecret(secret, nonce)
-            val tokenIdBytes = hexStringToByteArray(tokenId)
-            val tokenTypeBytes = hexStringToByteArray(WalletConstants.UNICITY_TOKEN_TYPE)
+            val tokenIdBytes = HexUtils.decodeHex(tokenId)
+            val tokenTypeBytes = HexUtils.decodeHex(WalletConstants.UNICITY_TOKEN_TYPE)
 
             val tokenId = org.unicitylabs.sdk.token.TokenId(tokenIdBytes)
             val tokenType = org.unicitylabs.sdk.token.TokenType(tokenTypeBytes)
@@ -1165,16 +1166,6 @@ object BTMeshTransferCoordinator {
         return activeTransfers[transferId]
     }
 
-    private fun hexStringToByteArray(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
     
     private fun generateShortId(): String {
         // Generate a 6-character ID

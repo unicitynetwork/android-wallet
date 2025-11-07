@@ -72,6 +72,7 @@ import org.unicitylabs.wallet.util.JsonMapper
 import org.unicitylabs.wallet.utils.PermissionUtils
 import org.unicitylabs.wallet.viewmodel.WalletViewModel
 import java.io.File
+import org.unicitylabs.wallet.util.HexUtils
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -1691,7 +1692,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "Available tokens: ${tokensForCoin.size}")
 
                 // Convert hex string coinId to bytes (not UTF-8 bytes of the string!)
-                val coinId = org.unicitylabs.sdk.token.fungible.CoinId(hexStringToByteArray(asset.coinId))
+                val coinId = org.unicitylabs.sdk.token.fungible.CoinId(HexUtils.decodeHex(asset.coinId))
                 Log.d("MainActivity", "CoinId bytes: ${coinId.bytes.joinToString { it.toString() }}")
 
                 // Convert wallet tokens to SDK tokens
@@ -1774,7 +1775,7 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val secret = hexStringToByteArray(identity.privateKey)
+                val secret = HexUtils.decodeHex(identity.privateKey)
                 val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
 
                 // Step 5: Execute split if needed
@@ -2062,7 +2063,7 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val secret = hexStringToByteArray(identity.privateKey)
+                val secret = HexUtils.decodeHex(identity.privateKey)
                 val signingService = org.unicitylabs.sdk.signing.SigningService.createFromSecret(secret)
 
                 val salt = ByteArray(32)
@@ -3149,7 +3150,7 @@ class MainActivity : AppCompatActivity() {
         // Parse receiver identity
         val identityMap = JsonMapper.fromJson(receiverIdentityJson, Map::class.java)
         val receiverSecret = (identityMap["secret"] as? String ?: "").toByteArray()
-        val receiverNonce = hexStringToByteArray(identityMap["nonce"] as? String ?: "")
+        val receiverNonce = HexUtils.decodeHex(identityMap["nonce"] as? String ?: "")
         
         val receivedToken = sdkService.completeOfflineTransfer(
             offlineTransactionJson,
@@ -3165,16 +3166,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun hexStringToByteArray(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
     
     private fun shareToken(token: Token) {
         // Show dialog to choose between saving to filesystem or sharing

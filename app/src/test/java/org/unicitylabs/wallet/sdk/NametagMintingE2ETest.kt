@@ -25,6 +25,7 @@ import org.unicitylabs.sdk.transaction.MintTransaction
 import org.unicitylabs.sdk.transaction.MintTransactionReason
 import org.unicitylabs.sdk.util.InclusionProofUtils
 import org.unicitylabs.wallet.di.ServiceProvider
+import org.unicitylabs.wallet.util.HexUtils
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom
@@ -186,7 +187,7 @@ class NametagMintingE2ETest {
 
             // Use FIXED token type (same as all tokens in the system)
             val UNICITY_TOKEN_TYPE = "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509"
-            val tokenType = TokenType(hexToBytes(UNICITY_TOKEN_TYPE))
+            val tokenType = TokenType(HexUtils.decodeHex(UNICITY_TOKEN_TYPE))
 
             // Create nametag's own address (with random nonce)
             val nametagNonce = ByteArray(32).apply { SecureRandom().nextBytes(this) }
@@ -267,12 +268,4 @@ class NametagMintingE2ETest {
         }
     }
 
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        for (i in 0 until len step 2) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-        }
-        return data
-    }
 }

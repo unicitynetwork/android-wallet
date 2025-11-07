@@ -8,6 +8,7 @@ import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.wallet.utils.WalletConstants
+import org.unicitylabs.wallet.util.HexUtils
 import java.io.InputStream
 
 /**
@@ -101,7 +102,7 @@ object ServiceProvider {
         // Fallback to minimal test trust base if file not found
         // Create minimal test trustbase JSON matching the actual format
         val testSigningService = SigningService(SigningService.generatePrivateKey())
-        val testSigKeyHex = org.apache.commons.codec.binary.Hex.encodeHexString(testSigningService.publicKey)
+        val testSigKeyHex = HexUtils.encodeHexString(testSigningService.publicKey)
         val testTrustBaseJson = """
         {
             "version": 1,

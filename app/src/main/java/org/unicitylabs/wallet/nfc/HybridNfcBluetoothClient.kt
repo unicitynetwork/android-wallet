@@ -17,6 +17,7 @@ import org.json.JSONObject
 import org.unicitylabs.wallet.bluetooth.BluetoothMeshTransferService
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.sdk.UnicityJavaSdkService
+import org.unicitylabs.wallet.util.HexUtils
 import java.util.UUID
 
 /**
@@ -36,16 +37,6 @@ class HybridNfcBluetoothClient(
     private val onProgress: ((current: Int, total: Int) -> Unit)? = null
 ) {
     
-    private fun hexStringToByteArray(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
     
     companion object {
         private const val TAG = "HybridNfcBtClient"
@@ -332,7 +323,7 @@ class HybridNfcBluetoothClient(
                 // Parse sender identity to get secret and nonce
                 val identityJson = JSONObject(senderIdentity)
                 val senderSecret = identityJson.getString("secret").toByteArray()
-                val senderNonce = hexStringToByteArray(identityJson.getString("nonce"))
+                val senderNonce = HexUtils.decodeHex(identityJson.getString("nonce"))
                 
                 // Create offline transfer package using SDK
                 val transferPackage = sdkService.createOfflineTransfer(
@@ -395,7 +386,7 @@ class HybridNfcBluetoothClient(
                 // Parse receiver identity to get secret and nonce
                 val identityJson = JSONObject(receiverIdentity)
                 val receiverSecret = identityJson.getString("secret").toByteArray()
-                val receiverNonce = hexStringToByteArray(identityJson.getString("nonce"))
+                val receiverNonce = HexUtils.decodeHex(identityJson.getString("nonce"))
                 
                 // Process real transfer with SDK
                 val receivedToken = sdkService.completeOfflineTransfer(
