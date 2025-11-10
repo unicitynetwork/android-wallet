@@ -274,11 +274,35 @@ public class FaucetE2ETest {
         // Verify it's a MINT transaction by checking for MINT-specific fields
         assertNotNull("Genesis should have tokenId", genesisTxData.get("tokenId"));
         assertNotNull("Genesis should have tokenType", genesisTxData.get("tokenType"));
-        // Check for coins (field might be "coinData" in new SDK)
-        Object coins = genesisTxData.get("coins");
-        Object coinData = genesisTxData.get("coinData");
-        assertTrue("Genesis should have coins or coinData (fungible token)", coins != null || coinData != null);
-        System.out.println("📜 Genesis transaction: MINT (verified by structure)");
+        // Verify coinData structure and parse it like the wallet does
+        Object coinDataObj = genesisTxData.get("coinData");
+        System.out.println("CoinData type: " + (coinDataObj != null ? coinDataObj.getClass().getName() : "null"));
+        System.out.println("CoinData value: " + coinDataObj);
+        assertNotNull("Genesis should have coinData (fungible token)", coinDataObj);
+
+        // Try to parse coinData - might be null, empty, or a map
+        if (coinDataObj instanceof java.util.Map) {
+            var coinDataMap = (java.util.Map<?, ?>) coinDataObj;
+            assertNotNull("CoinData should have coins map", coinDataMap.get("coins"));
+
+            var coinsMap = (java.util.Map<?, ?>) coinDataMap.get("coins");
+            assertFalse("Coins map should not be empty", coinsMap.isEmpty());
+
+            // Extract and verify we can get coinId and amount (like wallet does)
+            var firstCoinEntry = coinsMap.entrySet().iterator().next();
+            String extractedCoinId = (String) firstCoinEntry.getKey();
+            String extractedAmount = firstCoinEntry.getValue().toString();
+
+            assertNotNull("Should extract coinId", extractedCoinId);
+            assertNotNull("Should extract amount", extractedAmount);
+            assertTrue("Amount should be numeric", extractedAmount.matches("\\d+"));
+
+            System.out.println("📜 Genesis transaction: MINT (verified structure)");
+            System.out.println("   CoinId: " + extractedCoinId.substring(0, 16) + "...");
+            System.out.println("   Amount: " + extractedAmount);
+        } else {
+            fail("CoinData is not a Map, it's: " + (coinDataObj != null ? coinDataObj.getClass().getName() : "null") + " = " + coinDataObj);
+        }
 
         // Verify genesis has inclusion proof
         var genesisInclusionProof = genesis.get("inclusionProof");
