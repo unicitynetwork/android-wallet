@@ -93,53 +93,55 @@ class TokenAdapter(
     
     private fun extractAmountFromTokenNode(tokenNode: JsonNode): Any? {
         // Try different paths where amount might be stored
-        
+
         // Check in genesis transaction
         val genesis = tokenNode.get("genesis")
         val genesisData = genesis?.get("data")
-        val mintData = genesisData?.get("data")
-        
-        if (mintData != null && !mintData.isNull) {
-            // Direct amount field in our new format
-            mintData.get("amount")?.let { 
-                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
+
+        if (genesisData != null && !genesisData.isNull) {
+            // Direct amount field
+            genesisData.get("amount")?.let {
+                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText()
             }
-            
-            // For TokenCoinData structure (coins field)
-            val coins = mintData.get("coins")
-            if (coins != null && !coins.isNull && coins.isObject) {
-                // Sum all coin values
-                var totalAmount = 0L
-                coins.fields().forEach { entry ->
-                    try {
-                        val value = entry.value
-                        totalAmount += when {
-                            value.isNumber -> value.asLong()
-                            value.isTextual -> value.asText().toLong()
-                            else -> 0L
+
+            // Check for coinData field (new SDK structure)
+            val coinData = genesisData.get("coinData")
+            if (coinData != null && !coinData.isNull) {
+                val coins = coinData.get("coins")
+                if (coins != null && !coins.isNull && coins.isObject) {
+                    // Sum all coin values
+                    var totalAmount = 0L
+                    coins.fields().forEach { entry ->
+                        try {
+                            val value = entry.value
+                            totalAmount += when {
+                                value.isNumber -> value.asLong()
+                                value.isTextual -> value.asText().toLong()
+                                else -> 0L
+                            }
+                        } catch (e: Exception) {
+                            // Ignore parsing errors
                         }
-                    } catch (e: Exception) {
-                        // Ignore parsing errors
                     }
+                    if (totalAmount > 0) return totalAmount
                 }
-                if (totalAmount > 0) return totalAmount
             }
-            
-            // Other possible fields
-            mintData.get("value")?.let { 
-                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
+
+            // Other possible fields in data
+            genesisData.get("value")?.let {
+                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText()
             }
             
             // Check message field for custom data that might contain amount
-            val message = mintData.get("message")
+            val message = genesisData.get("message")
             if (message != null && message.isTextual) {
                 // Try to parse message as JSON
                 try {
                     val messageData = JsonMapper.mapper.readTree(message.asText())
-                    messageData?.get("amount")?.let { 
-                        if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
+                    messageData?.get("amount")?.let {
+                        if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText()
                     }
-                    messageData?.get("value")?.let { 
+                    messageData?.get("value")?.let {
                         if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
                     }
                 } catch (e: Exception) {

@@ -795,9 +795,9 @@ class NostrP2PService(
                 }
 
                 Log.d(TAG, "Parsing source token...")
-                // Parse source token using UnicityObjectMapper
+                // Parse source token using SDK's fromJson
                 val sourceToken = try {
-                    UnicityObjectMapper.JSON.readValue(sourceTokenJson, org.unicitylabs.sdk.token.Token::class.java)
+                    org.unicitylabs.sdk.token.Token.fromJson(sourceTokenJson)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse source token", e)
                     Log.e(TAG, "Token JSON preview: ${sourceTokenJson.take(500)}")
@@ -806,10 +806,8 @@ class NostrP2PService(
                 }
 
                 Log.d(TAG, "Parsing transfer transaction...")
-                // Parse transfer transaction with proper type reference
                 val transferTx = try {
-                    val typeRef = object : com.fasterxml.jackson.core.type.TypeReference<org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>>() {}
-                    UnicityObjectMapper.JSON.readValue(transferTxJson, typeRef)
+                    org.unicitylabs.sdk.transaction.TransferTransaction.fromJson(transferTxJson)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse transfer transaction", e)
                     Log.e(TAG, "Tx JSON preview: ${transferTxJson.take(500)}")
@@ -887,7 +885,7 @@ class NostrP2PService(
      */
     private suspend fun finalizeTransfer(
         sourceToken: org.unicitylabs.sdk.token.Token<*>,
-        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>
+        transferTx: org.unicitylabs.sdk.transaction.TransferTransaction
     ): org.unicitylabs.sdk.token.Token<*>? {
         try {
             // Get recipient address from transfer
@@ -982,8 +980,8 @@ class NostrP2PService(
                         trustBase,
                         sourceToken,
                         recipientState,
-                        transferTx as org.unicitylabs.sdk.transaction.TransferTransaction,
-                        listOf(myNametagToken)  // Include nametag for proxy resolution
+                        transferTx,
+                        listOf(myNametagToken)
                     )
                 }
             } catch (ve: org.unicitylabs.sdk.verification.VerificationException) {
@@ -1020,7 +1018,7 @@ class NostrP2PService(
      */
     private suspend fun saveFailedTransfer(
         sourceToken: org.unicitylabs.sdk.token.Token<*>,
-        transferTx: org.unicitylabs.sdk.transaction.Transaction<org.unicitylabs.sdk.transaction.TransferTransaction.Data>,
+        transferTx: org.unicitylabs.sdk.transaction.TransferTransaction,
         nametag: String,
         verificationError: String
     ) {
@@ -1054,68 +1052,53 @@ class NostrP2PService(
      */
     private suspend fun saveReceivedToken(token: org.unicitylabs.sdk.token.Token<*>) {
         try {
-            // Serialize token
-            val tokenJson = UnicityObjectMapper.JSON.writeValueAsString(token)
+            // Serialize token using SDK's toJson method
+            val tokenJson = token.toJson()
 
-            // Extract metadata from token for wallet display
+            // Extract metadata from token for wallet display using SDK methods directly
             val registry = UnicityTokenRegistry.getInstance(context)
-            var amount: String? = null // BigInteger as String (arbitrary precision)
+            var amount: String? = null
             var coinIdHex: String? = null
             var symbol: String? = null
             var iconUrl: String? = null
 
-            // Parse genesis to extract coin data
-            val tokenJsonObj = JsonMapper.fromJson(tokenJson, Map::class.java) as Map<*, *>
-            Log.d(TAG, "Token JSON keys: ${tokenJsonObj.keys}")
+            // Extract coin data from SDK Token object directly (not from JSON map)
+            val genesis = token.getGenesis()
+            val coinDataOptional = genesis.getData().getCoinData()
 
-            val genesis = tokenJsonObj["genesis"] as? Map<*, *>
-            Log.d(TAG, "Genesis keys: ${genesis?.keys}")
+            Log.d(TAG, "Token has coinData: ${coinDataOptional.isPresent}")
 
-            if (genesis != null) {
-                val genesisData = genesis["data"] as? Map<*, *>
-                Log.d(TAG, "Genesis data keys: ${genesisData?.keys}")
+            if (coinDataOptional.isPresent) {
+                val tokenCoinData = coinDataOptional.get()
+                val coinsMap = tokenCoinData.getCoins()
+                Log.d(TAG, "Coins map from SDK: $coinsMap")
 
-                if (genesisData != null) {
-                    // Coins are directly in genesis.data.coins as an array: [["coinId", "amount"]]
-                    val coinsArray = genesisData["coins"] as? List<*>
-                    Log.d(TAG, "Coins array: $coinsArray")
+                if (coinsMap.isNotEmpty()) {
+                    // Get first coin entry - coinsMap is Map<CoinId, BigInteger>
+                    val firstEntry = coinsMap.entries.first()
+                    val coinId = firstEntry.key
+                    val amountBigInt = firstEntry.value
 
-                    if (coinsArray != null && coinsArray.isNotEmpty()) {
-                        // Each entry is [coinId, amount]
-                        val firstCoin = coinsArray[0] as? List<*>
-                        if (firstCoin != null && firstCoin.size >= 2) {
-                            coinIdHex = firstCoin[0] as? String
-                            // Store amount as String to support BigInteger (arbitrary precision)
-                            amount = when (val amountValue = firstCoin[1]) {
-                                is java.math.BigInteger -> amountValue.toString()
-                                is java.math.BigDecimal -> amountValue.toBigInteger().toString()
-                                is String -> amountValue
-                                is Number -> amountValue.toString()
-                                else -> {
-                                    Log.e(TAG, "Unknown amount type: ${amountValue?.javaClass}")
-                                    null
-                                }
-                            }
+                    // Convert CoinId to hex string
+                    coinIdHex = HexUtils.encodeHexString(coinId.getBytes())
+                    amount = amountBigInt.toString()
 
-                            Log.d(TAG, "Extracted: coinId=$coinIdHex, amount=$amount")
+                    Log.d(TAG, "Extracted from SDK: coinId=$coinIdHex, amount=$amount")
 
-                            if (coinIdHex != null) {
-                                val coinDef = registry.getCoinDefinition(coinIdHex)
-                                if (coinDef != null) {
-                                    symbol = coinDef.symbol
-                                    iconUrl = coinDef.getIconUrl()
-                                    Log.d(TAG, "Found coin definition: ${coinDef.name} ($symbol)")
-                                } else {
-                                    Log.w(TAG, "Coin definition not found in registry for: $coinIdHex")
-                                }
-                            }
-                        } else {
-                            Log.w(TAG, "Invalid coin entry format: $firstCoin")
-                        }
+                    // Look up coin metadata from registry
+                    val coinDef = registry.getCoinDefinition(coinIdHex)
+                    if (coinDef != null) {
+                        symbol = coinDef.symbol
+                        iconUrl = coinDef.getIconUrl()
+                        Log.d(TAG, "Found coin definition: ${coinDef.name} ($symbol)")
                     } else {
-                        Log.w(TAG, "No coins found in genesis data")
+                        Log.w(TAG, "Coin definition not found in registry for: $coinIdHex")
                     }
+                } else {
+                    Log.w(TAG, "Coins map is empty")
                 }
+            } else {
+                Log.w(TAG, "Token has no coinData - cannot extract amount/symbol")
             }
 
             Log.d(TAG, "Final metadata: symbol=$symbol, amount=$amount, coinId=$coinIdHex")
