@@ -129,7 +129,8 @@ class ContactsHelper(private val context: Context) {
                 
                 if (hasUnicityInNotes && contactInfo.notes != null) {
                     val notes = contactInfo.notes ?: ""
-                    val noteMatch = Regex("(\\w+)@unicity", RegexOption.IGNORE_CASE).find(notes)
+                    // Match word characters, hyphens, and dots before @unicity
+                    val noteMatch = Regex("([\\w.-]+)@unicity", RegexOption.IGNORE_CASE).find(notes)
                     if (noteMatch != null) {
                         unicityTagFromNotes = noteMatch.groupValues[0] // Get the full match including @unicity
                     }
