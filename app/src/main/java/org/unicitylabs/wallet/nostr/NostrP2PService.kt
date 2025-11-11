@@ -1366,19 +1366,18 @@ class NostrP2PService(
 
     /**
      * Send a token transfer message to a Nostr pubkey
-     * Uses simple hex encoding (compatible with faucet) and KIND_TOKEN_TRANSFER
+     * Uses NIP-04 encryption for secure token transfers with KIND_TOKEN_TRANSFER
      */
     fun sendDirectMessage(recipientPubkey: String, message: String): Boolean {
         return try {
-            // Use simple hex encoding (compatible with faucet and wallet receiver)
-            val hexEncodedContent = message.toByteArray().joinToString("") {
-                "%02x".format(it)
-            }
+            // Use NIP-04 encryption for secure token transfers
+            val recipientPubkeyBytes = HexUtils.decodeHex(recipientPubkey)
+            val encryptedContent = keyManager.encryptMessage(message, recipientPubkeyBytes)
 
             // Create token transfer event (kind 31113, same as faucet)
             val event = createEvent(
                 kind = KIND_TOKEN_TRANSFER,  // Use token transfer kind (31113)
-                content = hexEncodedContent,  // Hex-encoded content
+                content = encryptedContent,  // NIP-04 encrypted content
                 tags = listOf(
                     listOf("p", recipientPubkey)  // Recipient pubkey tag
                 )
@@ -1387,7 +1386,7 @@ class NostrP2PService(
             // Publish the event
             publishEvent(event)
 
-            Log.d(TAG, "Token transfer message sent to $recipientPubkey (kind $KIND_TOKEN_TRANSFER)")
+            Log.d(TAG, "Token transfer message sent to $recipientPubkey (kind $KIND_TOKEN_TRANSFER) - encrypted")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send token transfer message", e)
