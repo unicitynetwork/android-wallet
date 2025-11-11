@@ -21,9 +21,8 @@ dependencies {
     // Using composite build from sibling directory
     implementation("org.unicitylabs:unicity-nostr-sdk:1.0.0")
 
-    // Unicity SDK: Using local JAR build (Java 8-compatible)
-    // TODO: Switch back to JitPack once Java 8-compatible version is published
-    implementation(files("libs/java-state-transition-sdk.jar"))
+    // Unicity SDK
+    implementation("org.unicitylabs:java-state-transition-sdk:1.4.1")
 
     // Jackson for JSON and CBOR (also used by Nostr SDK and SDK)
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")

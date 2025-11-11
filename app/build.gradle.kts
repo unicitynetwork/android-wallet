@@ -137,9 +137,8 @@ dependencies {
     // Unicity Nostr SDK (includes Nostr client, crypto, nametag binding, token transfer)
     implementation(project(":unicity-nostr-sdk"))
 
-    // Unicity Java SDK: Using local JAR build (Android-compatible with Java 8)
-    // TODO: Switch back to JitPack once Android-compatible version is published
-    implementation(files("../../java-state-transition-sdk/build/libs/java-state-transition-sdk.jar"))
+    // Unicity Java SDK
+    implementation("org.unicitylabs:java-state-transition-sdk:1.4.1")
 
     // Apache Commons Codec for hex encoding (used by Nostr SDK and wallet)
     implementation("commons-codec:commons-codec:1.16.0")
