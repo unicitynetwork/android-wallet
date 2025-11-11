@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: faucet/Dockerfile
+      network: host
     container_name: unicity-faucet
     ports:
       - "8081:8080"

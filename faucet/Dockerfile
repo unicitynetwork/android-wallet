@@ -9,8 +9,11 @@ WORKDIR /build
 # Copy the unicity-nostr-sdk dependency first
 COPY unicity-nostr-sdk /unicity-nostr-sdk
 
-# Copy faucet Gradle files and libs (for caching)
+# Copy faucet Gradle files (for caching)
 COPY faucet/build.gradle.kts faucet/settings.gradle.kts ./
+
+# Copy libs directory (may be empty, used for custom JARs)
+# Note: Ensure faucet/libs/.gitkeep exists to track empty directory in git
 COPY faucet/libs ./libs
 
 # Copy faucet source code
