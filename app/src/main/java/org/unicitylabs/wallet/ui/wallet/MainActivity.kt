@@ -1629,7 +1629,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val incomingEvents = incoming.map {
-            org.unicitylabs.wallet.model.TransactionEvent(it, org.unicitylabs.wallet.model.TransactionType.RECEIVED)
+            org.unicitylabs.wallet.model.TransactionEvent(
+                token = it,
+                type = org.unicitylabs.wallet.model.TransactionType.RECEIVED,
+                timestamp = it.timestamp
+            )
         }
         val adapter = TokenHistoryAdapter(incomingEvents, viewModel.aggregatedAssets.value)
         recyclerView.adapter = adapter
@@ -1654,7 +1658,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val outgoingEvents = outgoing.map {
-            org.unicitylabs.wallet.model.TransactionEvent(it, org.unicitylabs.wallet.model.TransactionType.SENT)
+            org.unicitylabs.wallet.model.TransactionEvent(
+                token = it,
+                type = org.unicitylabs.wallet.model.TransactionType.SENT,
+                timestamp = it.transferredAt ?: it.timestamp
+            )
         }
         val adapter = TokenHistoryAdapter(outgoingEvents, viewModel.aggregatedAssets.value)
         recyclerView.adapter = adapter
@@ -1824,8 +1832,34 @@ class MainActivity : AppCompatActivity() {
                     )
 
                     // Update local wallet with new sender tokens
+                    Log.d("MainActivity", "=== Adding split tokens to wallet ===")
+                    Log.d("MainActivity", "Tokens kept by sender: ${splitResult.tokensKeptBySender.size}")
+                    Log.d("MainActivity", "Tokens for recipient: ${splitResult.tokensForRecipient.size}")
+                    Log.d("MainActivity", "Burned tokens: ${splitResult.burnedTokens.size}")
+
+                    val burnedToken = splitResult.burnedTokens.firstOrNull()
+                    val sentAmount = splitResult.tokensForRecipient.firstOrNull()?.getCoins()?.map { coinData ->
+                        coinData.coins.values.firstOrNull()
+                    }?.orElse(null)
+
                     splitResult.tokensKeptBySender.forEach { newToken ->
-                        viewModel.addNewTokenFromSplit(newToken)
+                        val amount = newToken.getCoins().map { coinData ->
+                            coinData.coins.values.firstOrNull()
+                        }.orElse(null)
+                        Log.d("MainActivity", "Adding KEPT token: ID=${newToken.id.toHexString().take(16)}... amount=$amount")
+
+                        // Track the split source token ID and sent amount for history
+                        val sourceTokenId = burnedToken?.id?.bytes?.joinToString("") { "%02x".format(it) }
+                        Log.d("MainActivity", "Split source token: $sourceTokenId, sent amount: $sentAmount")
+
+                        viewModel.addNewTokenFromSplit(newToken, sourceTokenId, sentAmount)
+                    }
+
+                    splitResult.tokensForRecipient.forEach { recipToken ->
+                        val amount = recipToken.getCoins().map { coinData ->
+                            coinData.coins.values.firstOrNull()
+                        }.orElse(null)
+                        Log.d("MainActivity", "Recipient token (NOT added to wallet): ID=${recipToken.id.toHexString().take(16)}... amount=$amount")
                     }
                 }
 

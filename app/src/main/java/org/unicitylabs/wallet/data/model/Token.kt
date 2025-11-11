@@ -29,7 +29,10 @@ data class Token(
     val amount: String? = null,         // Amount as string (supports BigInteger > Long.MAX_VALUE)
     val coinId: String? = null,         // Hex string coin ID from registry
     val symbol: String? = null,         // e.g., "SOL"
-    val iconUrl: String? = null         // Icon URL from registry
+    val iconUrl: String? = null,        // Icon URL from registry
+    val transferredAt: Long? = null,    // Timestamp when token was transferred/sent
+    val splitSourceTokenId: String? = null, // ID of the original token that was split (for tracking SENT amount)
+    val splitSentAmount: String? = null     // Amount that was sent from the split (for SENT history entry)
 ) {
     fun getFormattedSize(): String {
         return when {

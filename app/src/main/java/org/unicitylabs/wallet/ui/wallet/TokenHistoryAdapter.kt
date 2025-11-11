@@ -37,7 +37,7 @@ class TokenHistoryAdapter(
         fun bind(event: org.unicitylabs.wallet.model.TransactionEvent) {
             val token = event.token
             val dateFormatter = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
-            val date = dateFormatter.format(Date(token.timestamp))
+            val date = dateFormatter.format(Date(event.timestamp))
 
             // Format amount with proper decimals
             val asset = token.coinId?.let { aggregatedMap[it] }

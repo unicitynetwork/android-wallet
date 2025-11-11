@@ -8,7 +8,7 @@ import org.unicitylabs.wallet.data.model.Token
 data class TransactionEvent(
     val token: Token,
     val type: TransactionType,
-    val timestamp: Long = token.timestamp
+    val timestamp: Long  // Event-specific timestamp (not defaulted to token.timestamp)
 )
 
 enum class TransactionType {

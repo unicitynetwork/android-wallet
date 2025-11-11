@@ -46,37 +46,65 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             val events = mutableListOf<org.unicitylabs.wallet.model.TransactionEvent>()
 
             tokenList.forEach { token ->
-                Log.d("WalletViewModel", "Token: ${token.name}, status=${token.status}")
+                Log.d("WalletViewModel", "Token: ${token.name}, status=${token.status}, splitSentAmount=${token.splitSentAmount}")
 
-                // Skip burned tokens (never received by user)
+                // Check if this token has a SENT event to record (from a split operation)
+                // IMPORTANT: Check this BEFORE skipping burned tokens!
+                if (token.splitSentAmount != null) {
+                    // Create a virtual token representing the sent amount
+                    val sentToken = token.copy(
+                        amount = token.splitSentAmount,
+                        status = org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED
+                    )
+                    val sentTimestamp = token.timestamp // Use the split timestamp
+                    events.add(
+                        org.unicitylabs.wallet.model.TransactionEvent(
+                            token = sentToken,
+                            type = org.unicitylabs.wallet.model.TransactionType.SENT,
+                            timestamp = sentTimestamp
+                        )
+                    )
+                    Log.d("WalletViewModel", "Added SENT event for split: amount=${token.splitSentAmount} at $sentTimestamp")
+                }
+
+                // Skip burned tokens for other events (they're not in wallet anymore)
+                // But we still processed their splitSentAmount above!
                 if (token.status == org.unicitylabs.wallet.data.model.TokenStatus.BURNED) {
-                    Log.d("WalletViewModel", "Skipping BURNED token")
+                    Log.d("WalletViewModel", "Skipping BURNED token (already processed splitSentAmount if present)")
                     return@forEach
                 }
 
-                // Every token was received at some point
-                events.add(
-                    org.unicitylabs.wallet.model.TransactionEvent(
-                        token = token,
-                        type = org.unicitylabs.wallet.model.TransactionType.RECEIVED
-                    )
-                )
-                Log.d("WalletViewModel", "Added RECEIVED event")
-
-                // If transferred, also add sent event
-                if (token.status == org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED) {
+                // Every token was received at some point (unless it's a remainder from split)
+                // Don't show "Received" for split remainder tokens - they're just internal accounting
+                if (token.splitSourceTokenId == null) {
+                    // Use token.timestamp for RECEIVED events (when token was created/received)
                     events.add(
                         org.unicitylabs.wallet.model.TransactionEvent(
                             token = token,
-                            type = org.unicitylabs.wallet.model.TransactionType.SENT
+                            type = org.unicitylabs.wallet.model.TransactionType.RECEIVED,
+                            timestamp = token.timestamp
                         )
                     )
-                    Log.d("WalletViewModel", "Added SENT event")
+                    Log.d("WalletViewModel", "Added RECEIVED event at ${token.timestamp}")
+                }
+
+                // If transferred, also add sent event
+                // Use token.transferredAt for SENT events (when token was actually sent)
+                if (token.status == org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED) {
+                    val sentTimestamp = token.transferredAt ?: token.timestamp
+                    events.add(
+                        org.unicitylabs.wallet.model.TransactionEvent(
+                            token = token,
+                            type = org.unicitylabs.wallet.model.TransactionType.SENT,
+                            timestamp = sentTimestamp
+                        )
+                    )
+                    Log.d("WalletViewModel", "Added SENT event at $sentTimestamp")
                 }
             }
 
             Log.d("WalletViewModel", "Total events created: ${events.size}")
-            // Sort by timestamp (most recent first)
+            // Sort by event timestamp (most recent first)
             events.sortedByDescending { it.timestamp }
         }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
@@ -114,7 +142,10 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun markTokenAsTransferred(token: Token) {
         viewModelScope.launch {
-            val updatedToken = token.copy(status = org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED)
+            val updatedToken = token.copy(
+                status = org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED,
+                transferredAt = System.currentTimeMillis()
+            )
             repository.updateToken(updatedToken)
         }
     }
@@ -731,9 +762,10 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Helper methods for token splitting operations
-    fun addNewTokenFromSplit(sdkToken: org.unicitylabs.sdk.token.Token<*>) {
+    fun addNewTokenFromSplit(sdkToken: org.unicitylabs.sdk.token.Token<*>, splitSourceTokenId: String? = null, splitSentAmount: java.math.BigInteger? = null) {
         viewModelScope.launch {
             try {
+                Log.d("WalletViewModel", "=== addNewTokenFromSplit called ===")
                 // Convert SDK token to wallet token format
                 val tokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(sdkToken)
 
@@ -758,6 +790,11 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 // Use actual SDK token ID (not random nonsense)
                 val tokenIdHex = sdkToken.id.bytes.joinToString("") { "%02x".format(it) }
 
+                Log.d("WalletViewModel", "Split token details:")
+                Log.d("WalletViewModel", "  ID: ${tokenIdHex.take(16)}...")
+                Log.d("WalletViewModel", "  Amount: $amount")
+                Log.d("WalletViewModel", "  CoinId: $coinIdHex")
+
                 // Get symbol and icon from registry
                 val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(getApplication())
                 val coinDef = registry.getCoinDefinition(coinIdHex)
@@ -773,11 +810,19 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     symbol = symbol,
                     iconUrl = iconUrl,
                     jsonData = tokenJson,
-                    status = org.unicitylabs.wallet.data.model.TokenStatus.CONFIRMED
+                    status = org.unicitylabs.wallet.data.model.TokenStatus.CONFIRMED,
+                    splitSourceTokenId = splitSourceTokenId,
+                    splitSentAmount = splitSentAmount?.toString()
                 )
 
                 repository.addToken(walletToken)
-                Log.d("WalletViewModel", "Added split token: $symbol (${amount}) - ${walletToken.id}")
+                Log.d("WalletViewModel", "✅ Added split token to wallet: $symbol amount=$amount id=${walletToken.id.take(16)}...")
+
+                // Log current wallet state
+                Log.d("WalletViewModel", "Current wallet tokens count: ${repository.tokens.value.size}")
+                repository.tokens.value.forEach { token ->
+                    Log.d("WalletViewModel", "  - ${token.symbol} ${token.amount} (status=${token.status}, id=${token.id.take(16)}...)")
+                }
             } catch (e: Exception) {
                 Log.e("WalletViewModel", "Error adding split token", e)
             }
@@ -871,9 +916,12 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 if (tokenToTransfer != null) {
-                    val transferredToken = tokenToTransfer.copy(status = org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED)
+                    val transferredToken = tokenToTransfer.copy(
+                        status = org.unicitylabs.wallet.data.model.TokenStatus.TRANSFERRED,
+                        transferredAt = System.currentTimeMillis()
+                    )
                     repository.updateToken(transferredToken)
-                    Log.d("WalletViewModel", "✅ Marked token as TRANSFERRED: ${tokenToTransfer.id}, status=${transferredToken.status}")
+                    Log.d("WalletViewModel", "✅ Marked token as TRANSFERRED: ${tokenToTransfer.id}, status=${transferredToken.status}, transferredAt=${transferredToken.transferredAt}")
                 } else {
                     Log.e("WalletViewModel", "❌ Token not found in wallet for transfer marking!")
                 }
