@@ -20,12 +20,14 @@ public class FaucetServer {
     private final ObjectMapper objectMapper;
     private final String apiKey;
     private final int port;
+    private final String aggregatorUrl;
 
-    public FaucetServer(FaucetService faucetService, String apiKey, int port) {
+    public FaucetServer(FaucetService faucetService, String apiKey, int port, String aggregatorUrl) {
         this.faucetService = faucetService;
         this.objectMapper = new ObjectMapper();
         this.apiKey = apiKey;
         this.port = port;
+        this.aggregatorUrl = aggregatorUrl;
     }
 
     /**
@@ -54,10 +56,11 @@ public class FaucetServer {
         app.start(port);
 
         System.out.println("╔══════════════════════════════════════════════════╗");
-        System.out.println("║   Unicity Token Faucet Server v1.0.0           ║");
+        System.out.println("║   Unicity Token Faucet Server v1.0.0             ║");
         System.out.println("╚══════════════════════════════════════════════════╝");
         System.out.println();
         System.out.println("🌐 Server running on http://localhost:" + port);
+        System.out.println("🔗 Aggregator URL: " + aggregatorUrl);
         System.out.println();
         System.out.println("📍 Endpoints:");
         System.out.println("   Web UI:        http://localhost:" + port + "/faucet/index.html");
@@ -360,7 +363,7 @@ public class FaucetServer {
             FaucetService faucetService = new FaucetService(config, dataDir);
 
             // Start server
-            FaucetServer server = new FaucetServer(faucetService, apiKey, port);
+            FaucetServer server = new FaucetServer(faucetService, apiKey, port, config.aggregatorUrl);
             server.start();
 
         } catch (Exception e) {
