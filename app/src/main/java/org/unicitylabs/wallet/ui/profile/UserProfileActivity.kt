@@ -575,7 +575,7 @@ class UserProfileActivity : AppCompatActivity() {
                     if (nametagToken != null) {
                         // Publish nametag binding to Nostr relay
                         try {
-                            val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(this)
+                            val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(this)
                             if (nostrService != null) {
                                 // Start the service if not running
                                 if (!nostrService.isRunning()) {
@@ -874,7 +874,7 @@ class UserProfileActivity : AppCompatActivity() {
      */
     private suspend fun recreateNostrBinding(nametagString: String, nametagToken: Token<*>) {
         try {
-            val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext) ?: return
+            val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext) ?: return
 
             // Ensure the service is started
             if (!nostrService.isRunning()) {
@@ -951,7 +951,7 @@ class UserProfileActivity : AppCompatActivity() {
             Log.d("UserProfileActivity", "Blockchain nametag token status: $blockchainStatus")
 
             // Also check Nostr relay binding
-            val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+            val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext)
             var nostrBindingExists = false
 
             if (nostrService != null) {

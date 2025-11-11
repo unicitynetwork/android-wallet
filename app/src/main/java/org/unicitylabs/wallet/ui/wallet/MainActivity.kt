@@ -1703,8 +1703,8 @@ class MainActivity : AppCompatActivity() {
                 val coinId = org.unicitylabs.sdk.token.fungible.CoinId(HexUtils.decodeHex(asset.coinId))
                 Log.d("MainActivity", "CoinId bytes: ${coinId.bytes.joinToString { it.toString() }}")
 
-                // Convert wallet tokens to SDK tokens
-                val sdkTokens = tokensForCoin.mapNotNull { token ->
+                // Convert wallet tokens to SDK tokens and DEDUPLICATE by SDK token ID
+                val sdkTokensWithDuplicates = tokensForCoin.mapNotNull { token ->
                     try {
                         val sdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
                             token.jsonData,
@@ -1724,7 +1724,17 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                Log.d("MainActivity", "Successfully parsed ${sdkTokens.size} SDK tokens")
+                // CRITICAL: Deduplicate by SDK token ID to avoid REQUEST_ID_EXISTS errors
+                val sdkTokens = sdkTokensWithDuplicates.distinctBy { token ->
+                    token.id.bytes.joinToString("") { "%02x".format(it) }
+                }
+
+                if (sdkTokensWithDuplicates.size != sdkTokens.size) {
+                    Log.w("MainActivity", "⚠️ WARNING: Found ${sdkTokensWithDuplicates.size - sdkTokens.size} duplicate SDK tokens in wallet!")
+                    Log.w("MainActivity", "This indicates wallet storage corruption - same token stored multiple times")
+                }
+
+                Log.d("MainActivity", "Successfully parsed ${sdkTokens.size} unique SDK tokens (${sdkTokensWithDuplicates.size} total)")
 
                 // Calculate total available balance
                 val totalAvailable = sdkTokens.mapNotNull { token ->
@@ -1792,7 +1802,7 @@ class MainActivity : AppCompatActivity() {
                 var splitResult: org.unicitylabs.wallet.transfer.TokenSplitExecutor.SplitExecutionResult? = null
 
                 // Get Nostr service early (needed for both paths)
-                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext)
                 if (nostrService == null) {
                     progressDialog.dismiss()
                     Toast.makeText(this@MainActivity, "Nostr service not available", Toast.LENGTH_LONG).show()
@@ -1917,13 +1927,12 @@ class MainActivity : AppCompatActivity() {
                                 "transferTx" to transferTxJson
                             )
                             val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
-                            val transferPackage = "token_transfer:$payloadJson"
 
-                            Log.d("MainActivity", "Transfer payload size: ${transferPackage.length / 1024}KB")
+                            Log.d("MainActivity", "Transfer payload size: ${payloadJson.length / 1024}KB")
 
-                            // Send via sendDirectMessage (not sendTokenTransfer) for proper format
+                            // Send using SDK's sendTokenTransfer (adds "token_transfer:" prefix and encrypts)
                             val sent = try {
-                                nostrService.sendDirectMessage(recipientPubkey!!, transferPackage)
+                                nostrService.sendTokenTransfer(recipientPubkey!!, payloadJson)
                             } catch (e: Exception) {
                                 Log.e("MainActivity", "Failed to send token: ${e.message}", e)
                                 false
@@ -1949,7 +1958,7 @@ class MainActivity : AppCompatActivity() {
                 if (splitPlan.requiresSplit && splitResult != null) {
                     progressDialog.setMessage("Sending split tokens to recipient...")
 
-                    val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                    val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext)
                     if (nostrService != null && nostrService.isRunning()) {
                         // For split tokens, we need to send sourceToken + transferTx (same as regular transfers)
                         // The splitResult has parallel lists: tokensForRecipient and recipientTransferTxs
@@ -1967,11 +1976,10 @@ class MainActivity : AppCompatActivity() {
                                     "transferTx" to transferTxJson
                                 )
                                 val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
-                                val transferPackage = "token_transfer:$payloadJson"
 
-                                Log.d("MainActivity", "Split token transfer payload size: ${transferPackage.length / 1024}KB")
+                                Log.d("MainActivity", "Split token transfer payload size: ${payloadJson.length / 1024}KB")
 
-                                val sent = nostrService.sendDirectMessage(recipientPubkey!!, transferPackage)
+                                val sent = nostrService.sendTokenTransfer(recipientPubkey!!, payloadJson)
                                 if (!sent) {
                                     Log.e("MainActivity", "Failed to send split token via Nostr")
                                 }
@@ -2059,7 +2067,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "Starting transfer to nametag: $recipientNametag")
 
                 // Step 2: Query recipient's Nostr pubkey
-                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext)
                 if (nostrService == null) {
                     Toast.makeText(this@MainActivity, "Nostr service not available", Toast.LENGTH_LONG).show()
                     return@launch
@@ -2144,12 +2152,11 @@ class MainActivity : AppCompatActivity() {
                     "transferTx" to transferTxJson
                 )
                 val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
-                val transferPackage = "token_transfer:$payloadJson"
 
-                Log.d("MainActivity", "Transfer package created (${transferPackage.length} chars)")
+                Log.d("MainActivity", "Transfer package created (${payloadJson.length} chars)")
 
-                // Step 10: Send via Nostr
-                val sent = nostrService.sendDirectMessage(recipientPubkey, transferPackage)
+                // Step 10: Send via Nostr using SDK (adds "token_transfer:" prefix and encrypts)
+                val sent = nostrService.sendTokenTransfer(recipientPubkey, payloadJson)
 
                 if (sent) {
                     Toast.makeText(this@MainActivity, "✅ Sent to ${recipient.name}!", Toast.LENGTH_SHORT).show()
@@ -3866,7 +3873,7 @@ class MainActivity : AppCompatActivity() {
                 loadingDialog.show()
 
                 // Get Nostr service
-                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext)
                 if (nostrService == null) {
                     loadingDialog.dismiss()
                     Toast.makeText(this@MainActivity, "Nostr service not available", Toast.LENGTH_LONG).show()
@@ -4194,11 +4201,11 @@ class MainActivity : AppCompatActivity() {
                 val cryptoTransferData = createCryptoTransferData(crypto, amount)
 
                 // Get Nostr P2P service
-                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(this@MainActivity)
+                val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(this@MainActivity)
 
                 if (nostrService == null) {
                     Toast.makeText(this@MainActivity, "Nostr service not initialized", Toast.LENGTH_LONG).show()
-                    Log.e("MainActivity", "NostrP2PService is null")
+                    Log.e("MainActivity", "NostrSdkService is null")
                     return@launch
                 }
 
@@ -4292,7 +4299,7 @@ class MainActivity : AppCompatActivity() {
             val unicityTag = prefs.getString("unicity_tag", "") ?: ""
 
             if (unicityTag.isNotEmpty()) {
-                val nostrService = org.unicitylabs.wallet.nostr.NostrP2PService.getInstance(applicationContext)
+                val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext)
                 if (nostrService != null && !nostrService.isRunning()) {
                     nostrService.start()
                     android.util.Log.d("MainActivity", "Nostr P2P service started to listen for token transfers")

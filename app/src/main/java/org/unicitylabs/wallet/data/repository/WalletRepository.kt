@@ -95,10 +95,45 @@ class WalletRepository private constructor(context: Context) {
             return
         }
 
-        // Check for duplicates by token ID
+        // Check for duplicates by wallet token ID
         if (currentWallet.tokens.any { it.id == token.id }) {
             Log.w(TAG, "Token with ID ${token.id} already exists, skipping duplicate")
             return
+        }
+
+        // CRITICAL: Also check for duplicate SDK token IDs (prevent blockchain REQUEST_ID_EXISTS)
+        if (token.jsonData != null) {
+            try {
+                val newSdkToken = UnicityObjectMapper.JSON.readValue(
+                    token.jsonData,
+                    org.unicitylabs.sdk.token.Token::class.java
+                )
+                val newSdkTokenId = newSdkToken.id.bytes.joinToString("") { "%02x".format(it) }
+
+                val hasDuplicateSdkToken = currentWallet.tokens.any { existingToken ->
+                    existingToken.jsonData?.let { jsonData ->
+                        try {
+                            val existingSdkToken = UnicityObjectMapper.JSON.readValue(
+                                jsonData,
+                                org.unicitylabs.sdk.token.Token::class.java
+                            )
+                            val existingSdkTokenId = existingSdkToken.id.bytes.joinToString("") { "%02x".format(it) }
+                            existingSdkTokenId == newSdkTokenId
+                        } catch (e: Exception) {
+                            false
+                        }
+                    } ?: false
+                }
+
+                if (hasDuplicateSdkToken) {
+                    Log.w(TAG, "⚠️ SDK token with ID ${newSdkTokenId.take(16)}... already exists in wallet!")
+                    Log.w(TAG, "Skipping duplicate to prevent REQUEST_ID_EXISTS errors on blockchain")
+                    return
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check for duplicate SDK token", e)
+                // Continue anyway if we can't parse
+            }
         }
 
         Log.d(TAG, "Current tokens count: ${currentWallet.tokens.size}")

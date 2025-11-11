@@ -11,7 +11,7 @@ import org.junit.Ignore
 import org.junit.Test
 import org.spongycastle.crypto.digests.SHA256Digest
 import org.spongycastle.util.encoders.Hex
-import org.unicitylabs.wallet.nostr.Event
+import org.unicitylabs.nostr.protocol.Event
 import org.unicitylabs.nostr.protocol.EventKinds
 import org.unicitylabs.wallet.util.JsonMapper
 import java.security.MessageDigest
@@ -133,15 +133,15 @@ class NostrNametagBindingTest {
                     when (message[0]) {
                         "EVENT" -> {
                             val eventData = message[2] as Map<*, *>
-                            val event = Event(
-                                id = eventData["id"] as String,
-                                pubkey = eventData["pubkey"] as String,
-                                created_at = (eventData["created_at"] as Number).toLong(),
-                                kind = (eventData["kind"] as Number).toInt(),
-                                tags = (eventData["tags"] as List<*>).map { it as List<String> },
-                                content = eventData["content"] as String,
-                                sig = eventData["sig"] as String
-                            )
+                            val event = Event().apply {
+                                setId(eventData["id"] as String)
+                                setPubkey(eventData["pubkey"] as String)
+                                setCreatedAt((eventData["created_at"] as Number).toLong())
+                                setKind((eventData["kind"] as Number).toInt())
+                                setTags((eventData["tags"] as List<*>).map { it as List<String> })
+                                setContent(eventData["content"] as String)
+                                setSig(eventData["sig"] as String)
+                            }
                             client.receivedEvents.add(event)
                             client.latch.countDown()
                         }
@@ -209,15 +209,15 @@ class NostrNametagBindingTest {
         val signature = secp256k1.signSchnorr(eventIdBytes, client.privateKey, null)
         val signatureHex = Hex.toHexString(signature)
 
-        return Event(
-            id = eventId,
-            pubkey = client.publicKey,
-            created_at = createdAt,
-            kind = EventKinds.APP_DATA,  // KIND_NAMETAG_BINDING = 30078 = APP_DATA
-            tags = tags,
-            content = content,
-            sig = signatureHex
-        )
+        return Event().apply {
+            setId(eventId)
+            setPubkey(client.publicKey)
+            setCreatedAt(createdAt)
+            setKind(EventKinds.APP_DATA)  // KIND_NAMETAG_BINDING = 30078 = APP_DATA
+            setTags(tags)
+            setContent(content)
+            setSig(signatureHex)
+        }
     }
 
     private fun publishEvent(client: TestClient, event: Event) {
@@ -252,7 +252,7 @@ class NostrNametagBindingTest {
 
         // Parse nametag from received event
         val event = client.receivedEvents.firstOrNull()
-        return event?.tags?.firstOrNull { it[0] == "nametag" }?.get(1)
+        return event?.getTags()?.firstOrNull { it[0] == "nametag" }?.get(1)
     }
 
     private fun queryPubkeyByNametag(client: TestClient, nametagId: String): String? {
@@ -279,6 +279,6 @@ class NostrNametagBindingTest {
         client.webSocket?.send(JsonMapper.toJson(closeMessage))
 
         // Return pubkey from received event
-        return client.receivedEvents.firstOrNull()?.pubkey
+        return client.receivedEvents.firstOrNull()?.getPubkey()
     }
 }

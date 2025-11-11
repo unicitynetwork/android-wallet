@@ -163,8 +163,28 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             // Get token registry for decimals lookup
             val registry = org.unicitylabs.wallet.token.UnicityTokenRegistry.getInstance(getApplication())
 
-            // Group by coinId and aggregate
-            tokensWithCoins
+            // CRITICAL: Deduplicate tokens by SDK token ID before aggregating
+            // This prevents inflated balances from duplicate wallet entries
+            val uniqueTokens = tokensWithCoins.distinctBy { token ->
+                try {
+                    token.jsonData?.let { jsonData ->
+                        val sdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
+                            jsonData,
+                            org.unicitylabs.sdk.token.Token::class.java
+                        )
+                        sdkToken.id.bytes.joinToString("") { "%02x".format(it) }
+                    } ?: token.id // Fallback to wallet ID if no jsonData
+                } catch (e: Exception) {
+                    token.id // Fallback to wallet ID if parse fails
+                }
+            }
+
+            if (tokensWithCoins.size != uniqueTokens.size) {
+                Log.w("WalletViewModel", "⚠️ Assets: Removed ${tokensWithCoins.size - uniqueTokens.size} duplicate SDK tokens from balance calculation")
+            }
+
+            // Group by coinId and aggregate (using deduplicated tokens)
+            uniqueTokens
                 .groupBy { it.coinId!! }
                 .map { (coinId, tokensForCoin) ->
                     val symbol = tokensForCoin.first().symbol ?: "UNKNOWN"
