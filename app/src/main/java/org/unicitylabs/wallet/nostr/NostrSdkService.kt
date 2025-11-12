@@ -77,39 +77,25 @@ class NostrSdkService(
     override val connectionStatus: StateFlow<Map<String, IP2PService.ConnectionStatus>> = _connectionStatus
 
     init {
-        Log.d(TAG, "Initializing NostrSdkService with SDK NostrClient")
-
-        // Initialize key manager adapter
         keyManager = NostrKeyManagerAdapter(context)
         keyManager.initializeKeys()
-
-        // Create NostrClient with key manager
         nostrClient = NostrClient(keyManager.getSdkKeyManager())
-
-        Log.d(TAG, "NostrSdkService initialized successfully")
     }
 
     override fun start() {
-        if (isRunning) {
-            Log.w(TAG, "Service already running")
-            return
-        }
+        if (isRunning) return
 
-        Log.d(TAG, "Starting NostrSdkService...")
         isRunning = true
-
         scope.launch {
-            connectToRelays()
+            ensureConnected()
         }
     }
 
     override fun stop() {
-        Log.d(TAG, "Stopping NostrSdkService")
         isRunning = false
     }
 
     override fun shutdown() {
-        Log.d(TAG, "Shutting down NostrSdkService")
         isRunning = false
         nostrClient.disconnect()
         scope.cancel()
@@ -117,19 +103,17 @@ class NostrSdkService(
 
     override fun isRunning(): Boolean = isRunning
 
-    private suspend fun connectToRelays() {
+    /**
+     * Ensures NostrClient is connected to relays.
+     * Called once at start and automatically reconnects if needed.
+     */
+    private suspend fun ensureConnected() {
+        if (nostrClient.isConnected) return
+
         try {
-            Log.d(TAG, "Connecting to ${UNICITY_RELAYS.size} Unicity relays")
-
-            // Connect to relays using SDK
-            val relayArray = UNICITY_RELAYS.toTypedArray()
-            nostrClient.connect(*relayArray).await()
-
-            Log.d(TAG, "Connected to relays: ${nostrClient.connectedRelays}")
-
-            // Subscribe to relevant events
+            nostrClient.connect(*UNICITY_RELAYS.toTypedArray()).await()
             subscribeToEvents()
-
+            Log.d(TAG, "Connected to Nostr relays")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to connect to relays", e)
         }
@@ -540,23 +524,12 @@ class NostrSdkService(
     suspend fun publishNametagBinding(nametagId: String, unicityAddress: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Publishing nametag binding: $nametagId → $unicityAddress")
-                Log.d(TAG, "NostrClient connected relays: ${nostrClient.connectedRelays}")
-                Log.d(TAG, "NostrClient isConnected: ${nostrClient.isConnected}")
-
-                if (!nostrClient.isConnected) {
-                    Log.w(TAG, "NostrClient not connected, attempting reconnect...")
-                    nostrClient.connect(*UNICITY_RELAYS.toTypedArray()).await()
-                    Log.d(TAG, "Reconnected, relays: ${nostrClient.connectedRelays}")
-                }
-
-                // Use SDK's publishNametagBinding method
+                ensureConnected()
                 nostrClient.publishNametagBinding(nametagId, unicityAddress).await()
-
-                Log.d(TAG, "Nametag binding published successfully")
+                Log.d(TAG, "Nametag binding published: $nametagId")
                 true
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to publish nametag binding: ${e.message}", e)
+                Log.e(TAG, "Failed to publish nametag binding", e)
                 false
             }
         }
@@ -568,28 +541,10 @@ class NostrSdkService(
     suspend fun queryPubkeyByNametag(nametagId: String): String? {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Querying pubkey for nametag: $nametagId")
-                Log.d(TAG, "NostrClient connected relays: ${nostrClient.connectedRelays}")
-                Log.d(TAG, "NostrClient isConnected: ${nostrClient.isConnected}")
-
-                if (!nostrClient.isConnected) {
-                    Log.w(TAG, "NostrClient not connected to any relay, attempting reconnect...")
-                    nostrClient.connect(*UNICITY_RELAYS.toTypedArray()).await()
-                    Log.d(TAG, "Reconnected, relays: ${nostrClient.connectedRelays}")
-                }
-
-                // Use SDK's queryPubkeyByNametag method
-                val pubkey = nostrClient.queryPubkeyByNametag(nametagId).await()
-
-                if (pubkey != null) {
-                    Log.d(TAG, "Found pubkey: ${pubkey.take(16)}...")
-                } else {
-                    Log.d(TAG, "No pubkey found for nametag: $nametagId")
-                }
-
-                pubkey
+                ensureConnected()
+                nostrClient.queryPubkeyByNametag(nametagId).await()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to query nametag: ${e.message}", e)
+                Log.e(TAG, "Failed to query nametag", e)
                 null
             }
         }
