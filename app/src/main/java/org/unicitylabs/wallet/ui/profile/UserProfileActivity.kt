@@ -940,14 +940,28 @@ class UserProfileActivity : AppCompatActivity() {
 
             Log.d("UserProfileActivity", "Using public key from predicate for validation: ${publicKeyBytes.take(8).joinToString("") { "%02x".format(it) }}...")
 
-            // Use withContext to run the blocking operation in IO dispatcher
-            val blockchainStatus = withContext(Dispatchers.IO) {
-                val trustBase = ServiceProvider.getRootTrustBase()
-                val statusFuture = stateTransitionClient.getTokenStatus(nametagToken, publicKeyBytes, trustBase)
-                statusFuture.get(30, TimeUnit.SECONDS) // Wait up to 30 seconds for the result
+            // Log nametag token details for debugging
+            Log.d("UserProfileActivity", "=== Nametag Token Details ===")
+            Log.d("UserProfileActivity", "Token ID: ${nametagToken.id.bytes.joinToString("") { "%02x".format(it) }}")
+            Log.d("UserProfileActivity", "Token Type: ${nametagToken.type}")
+            Log.d("UserProfileActivity", "Token JSON length: ${nametagToken.toJson().length}")
+
+            // Verify the token against trustbase
+            val trustBase = ServiceProvider.getRootTrustBase()
+            val verifyResult = nametagToken.verify(trustBase)
+            Log.d("UserProfileActivity", "Token verify() result: isSuccessful=${verifyResult.isSuccessful}")
+
+            // For nametag tokens, verify() is the ONLY correct check
+            // getTokenStatus() is WRONG because it checks a different RequestId
+            // (it creates RequestId from current publicKey + stateHash, not the original mint RequestId)
+            val blockchainStatus = if (verifyResult.isSuccessful) {
+                InclusionProofVerificationStatus.OK
+            } else {
+                Log.e("UserProfileActivity", "Token verification failed: ${verifyResult}")
+                InclusionProofVerificationStatus.PATH_INVALID
             }
 
-            Log.d("UserProfileActivity", "Blockchain nametag token status: $blockchainStatus")
+            Log.d("UserProfileActivity", "Blockchain nametag token status: $blockchainStatus (from verify())")
 
             // Also check Nostr relay binding
             val nostrService = org.unicitylabs.wallet.nostr.NostrSdkService.getInstance(applicationContext)
