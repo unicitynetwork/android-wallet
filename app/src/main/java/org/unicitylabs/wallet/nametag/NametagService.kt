@@ -15,7 +15,6 @@ import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.Token
 import org.unicitylabs.sdk.token.TokenId
@@ -237,18 +236,18 @@ class NametagService(
             // Check if jsonData is the wrapper format or direct token
             val token = try {
                 // First try to parse as wrapper format (from export)
-                val wrapper = UnicityObjectMapper.JSON.readTree(jsonData)
+                val wrapper = com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonData)
                 if (wrapper.has("token")) {
                     // It's a wrapper, extract the token
                     val tokenJson = wrapper.get("token").asText()
-                    UnicityObjectMapper.JSON.readValue(tokenJson, Token::class.java)
+                    Token.fromJson(tokenJson)
                 } else {
                     // It's a direct token JSON
-                    UnicityObjectMapper.JSON.readValue(jsonData, Token::class.java)
+                    Token.fromJson(jsonData)
                 }
             } catch (e: Exception) {
                 // If all else fails, try direct parse
-                UnicityObjectMapper.JSON.readValue(jsonData, Token::class.java)
+                Token.fromJson(jsonData)
             }
 
             // Save the imported nametag (no nonce needed for UnmaskedPredicate)
@@ -276,11 +275,11 @@ class NametagService(
             }
             
             val jsonData = file.readText()
-            val nametagData = UnicityObjectMapper.JSON.readTree(jsonData)
-            
+            val nametagData = com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonData)
+
             // Extract token data - it's stored as a string, not an object
             val tokenJson = nametagData.get("token").asText()
-            val token = UnicityObjectMapper.JSON.readValue(tokenJson, Token::class.java)
+            val token = Token.fromJson(tokenJson)
             
             Log.d(TAG, "Nametag loaded from storage: $nametagString")
             return@withContext token
@@ -347,7 +346,7 @@ class NametagService(
             nametagFiles.mapNotNull { file ->
                 try {
                     val jsonData = file.readText()
-                    val nametagData = UnicityObjectMapper.JSON.readTree(jsonData)
+                    val nametagData = com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonData)
                     nametagData.get("nametag")?.asText()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error reading nametag from file: ${file.name}", e)
@@ -405,13 +404,13 @@ class NametagService(
             // This format can be exported/imported as a .txf file
             val nametagData = mapOf(
                 "nametag" to nametagString,
-                "token" to UnicityObjectMapper.JSON.writeValueAsString(token),
+                "token" to token.toJson(),
                 "timestamp" to System.currentTimeMillis(),
                 "format" to "txf",
                 "version" to "2.0"  // Version 2.0 uses UnmaskedPredicate (no nonce)
             )
 
-            val jsonData = UnicityObjectMapper.JSON.writeValueAsString(nametagData)
+            val jsonData = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(nametagData)
             file.writeText(jsonData)
 
             Log.d(TAG, "Nametag saved to file: ${file.absolutePath}")

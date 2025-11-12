@@ -19,7 +19,6 @@ import org.unicitylabs.nostr.protocol.Event as SdkEvent
 import org.unicitylabs.nostr.protocol.EventKinds
 import org.unicitylabs.nostr.protocol.Filter
 import org.unicitylabs.nostr.token.TokenTransferProtocol
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.data.repository.WalletRepository
 import org.unicitylabs.wallet.p2p.IP2PService
 import org.unicitylabs.wallet.token.UnicityTokenRegistry
@@ -301,16 +300,10 @@ class NostrSdkService(
 
             // Parse using Unicity SDK
             Log.d(TAG, "Parsing source token...")
-            val sourceToken = UnicityObjectMapper.JSON.readValue(
-                sourceTokenJson,
-                org.unicitylabs.sdk.token.Token::class.java
-            )
+            val sourceToken = org.unicitylabs.sdk.token.Token.fromJson(sourceTokenJson)
 
             Log.d(TAG, "Parsing transfer transaction...")
-            val transferTx = UnicityObjectMapper.JSON.readValue(
-                transferTxJson,
-                org.unicitylabs.sdk.transaction.TransferTransaction::class.java
-            )
+            val transferTx = org.unicitylabs.sdk.transaction.TransferTransaction.fromJson(transferTxJson)
 
             Log.d(TAG, "✅ Parsed successfully!")
             Log.d(TAG, "Source token type: ${sourceToken.type}")
@@ -458,7 +451,7 @@ class NostrSdkService(
     private suspend fun saveReceivedToken(token: org.unicitylabs.sdk.token.Token<*>) {
         try {
             // Convert SDK token to JSON for storage
-            val tokenJson = UnicityObjectMapper.JSON.writeValueAsString(token)
+            val tokenJson = token.toJson()
 
             Log.d(TAG, "Token has coinData: ${token.getCoins().isPresent}")
 

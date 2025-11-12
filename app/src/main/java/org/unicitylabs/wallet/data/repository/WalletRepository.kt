@@ -7,7 +7,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.data.model.TokenStatus
 import org.unicitylabs.wallet.data.model.Wallet
@@ -104,19 +103,13 @@ class WalletRepository private constructor(context: Context) {
         // CRITICAL: Also check for duplicate SDK token IDs (prevent blockchain REQUEST_ID_EXISTS)
         if (token.jsonData != null) {
             try {
-                val newSdkToken = UnicityObjectMapper.JSON.readValue(
-                    token.jsonData,
-                    org.unicitylabs.sdk.token.Token::class.java
-                )
+                val newSdkToken = org.unicitylabs.sdk.token.Token.fromJson(token.jsonData)
                 val newSdkTokenId = newSdkToken.id.bytes.joinToString("") { "%02x".format(it) }
 
                 val hasDuplicateSdkToken = currentWallet.tokens.any { existingToken ->
                     existingToken.jsonData?.let { jsonData ->
                         try {
-                            val existingSdkToken = UnicityObjectMapper.JSON.readValue(
-                                jsonData,
-                                org.unicitylabs.sdk.token.Token::class.java
-                            )
+                            val existingSdkToken = org.unicitylabs.sdk.token.Token.fromJson(jsonData)
                             val existingSdkTokenId = existingSdkToken.id.bytes.joinToString("") { "%02x".format(it) }
                             existingSdkTokenId == newSdkTokenId
                         } catch (e: Exception) {
@@ -283,8 +276,8 @@ class WalletRepository private constructor(context: Context) {
         
         return if (token != null) {
             try {
-                // Convert token to JSON for storage using UnicityObjectMapper
-                val tokenJson = UnicityObjectMapper.JSON.writeValueAsString(token)
+                // Convert token to JSON for storage using SDK's toJson()
+                val tokenJson = token.toJson()
                 UnicityMintResult.success(tokenJson)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to serialize minted token", e)

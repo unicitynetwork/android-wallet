@@ -36,7 +36,6 @@ import kotlinx.coroutines.withContext
 import org.unicitylabs.sdk.address.DirectAddress
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.TokenId
 import org.unicitylabs.sdk.token.TokenType
@@ -725,7 +724,7 @@ class UserProfileActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     try {
                         // Parse the JSON to extract nametag data
-                        val nametagData = UnicityObjectMapper.JSON.readTree(jsonData)
+                        val nametagData = com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonData)
                         val nametag = nametagData.get("nametag")?.asText()
 
                         if (nametag != null) {

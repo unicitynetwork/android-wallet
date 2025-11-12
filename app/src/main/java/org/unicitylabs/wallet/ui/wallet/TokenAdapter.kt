@@ -9,7 +9,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.fasterxml.jackson.databind.JsonNode
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.R
 import org.unicitylabs.wallet.data.model.Token
 import org.unicitylabs.wallet.data.model.TokenStatus

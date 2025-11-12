@@ -48,7 +48,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.wallet.R
 import org.unicitylabs.wallet.bluetooth.BTMeshTransferCoordinator
 import org.unicitylabs.wallet.bluetooth.BluetoothMeshManager
@@ -920,7 +919,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "Token jsonData: ${token.jsonData}")
                 val senderIdentityJson = token.jsonData?.let { jsonData ->
                     try {
-                        val mintResultNode = UnicityObjectMapper.JSON.readTree(jsonData)
+                        val mintResultNode = com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonData)
                         Log.d("MainActivity", "Mint result has identity: ${mintResultNode.has("identity")}")
                         val identityNode = mintResultNode.get("identity")
                         if (identityNode != null && !identityNode.isNull) {
@@ -1706,10 +1705,7 @@ class MainActivity : AppCompatActivity() {
                 // Convert wallet tokens to SDK tokens and DEDUPLICATE by SDK token ID
                 val sdkTokensWithDuplicates = tokensForCoin.mapNotNull { token ->
                     try {
-                        val sdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                            token.jsonData,
-                            org.unicitylabs.sdk.token.Token::class.java
-                        )
+                        val sdkToken = org.unicitylabs.sdk.token.Token.fromJson(token.jsonData)
                         Log.d("MainActivity", "Parsed SDK token: id=${sdkToken.id.toHexString().take(8)}...")
                         val coins = sdkToken.getCoins()
                         if (coins.isPresent) {
@@ -1919,14 +1915,14 @@ class MainActivity : AppCompatActivity() {
                             val transferTransaction = transferCommitment.toTransaction(inclusionProof)
 
                             // Create transfer package (like old sendTokenViaNostr)
-                            val sourceTokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(tokenToTransfer)
-                            val transferTxJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(transferTransaction)
+                            val sourceTokenJson = tokenToTransfer.toJson()
+                            val transferTxJson = transferTransaction.toJson()
 
                             val payload = mapOf(
                                 "sourceToken" to sourceTokenJson,
                                 "transferTx" to transferTxJson
                             )
-                            val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
+                            val payloadJson = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload)
 
                             Log.d("MainActivity", "Transfer payload size: ${payloadJson.length / 1024}KB")
 
@@ -1968,14 +1964,14 @@ class MainActivity : AppCompatActivity() {
 
                                 Log.d("MainActivity", "Sending split token ${sourceToken.id.toHexString().take(8)}... via Nostr")
 
-                                val sourceTokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(sourceToken)
-                                val transferTxJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(transferTx)
+                                val sourceTokenJson = sourceToken.toJson()
+                                val transferTxJson = transferTx.toJson()
 
                                 val payload = mapOf(
                                     "sourceToken" to sourceTokenJson,
                                     "transferTx" to transferTxJson
                                 )
-                                val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
+                                val payloadJson = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload)
 
                                 Log.d("MainActivity", "Split token transfer payload size: ${payloadJson.length / 1024}KB")
 
@@ -2093,10 +2089,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("MainActivity", "Recipient proxy address: ${recipientProxyAddress.address}")
 
                 // Step 4: Parse token and create transfer
-                val sourceToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                    token.jsonData,
-                    org.unicitylabs.sdk.token.Token::class.java
-                )
+                val sourceToken = org.unicitylabs.sdk.token.Token.fromJson(token.jsonData)
 
                 val identityManager = org.unicitylabs.wallet.identity.IdentityManager(this@MainActivity)
                 val identity = identityManager.getCurrentIdentity()
@@ -2144,14 +2137,14 @@ class MainActivity : AppCompatActivity() {
 
                 // Step 8-9: Create transfer package
                 val transferTransaction = transferCommitment.toTransaction(inclusionProof)
-                val sourceTokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(sourceToken)
-                val transferTxJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(transferTransaction)
+                val sourceTokenJson = sourceToken.toJson()
+                val transferTxJson = transferTransaction.toJson()
 
                 val payload = mapOf(
                     "sourceToken" to sourceTokenJson,
                     "transferTx" to transferTxJson
                 )
-                val payloadJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(payload)
+                val payloadJson = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload)
 
                 Log.d("MainActivity", "Transfer package created (${payloadJson.length} chars)")
 

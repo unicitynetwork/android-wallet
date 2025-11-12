@@ -168,10 +168,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             val uniqueTokens = tokensWithCoins.distinctBy { token ->
                 try {
                     token.jsonData?.let { jsonData ->
-                        val sdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                            jsonData,
-                            org.unicitylabs.sdk.token.Token::class.java
-                        )
+                        val sdkToken = org.unicitylabs.sdk.token.Token.fromJson(jsonData)
                         sdkToken.id.bytes.joinToString("") { "%02x".format(it) }
                     } ?: token.id // Fallback to wallet ID if no jsonData
                 } catch (e: Exception) {
@@ -787,7 +784,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 Log.d("WalletViewModel", "=== addNewTokenFromSplit called ===")
                 // Convert SDK token to wallet token format
-                val tokenJson = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.writeValueAsString(sdkToken)
+                val tokenJson = sdkToken.toJson()
 
                 // Extract coin info
                 val coinsOpt = sdkToken.getCoins()
@@ -857,10 +854,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 val tokenToBurn = allTokens.find { walletToken ->
                     try {
                         walletToken.jsonData?.let { jsonData ->
-                            val walletSdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                                jsonData,
-                                org.unicitylabs.sdk.token.Token::class.java
-                            )
+                            val walletSdkToken = org.unicitylabs.sdk.token.Token.fromJson(jsonData)
                             walletSdkToken.id == sdkToken.id
                         } ?: false
                     } catch (e: Exception) {
@@ -888,10 +882,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 val tokenToRemove = allTokens.find { walletToken ->
                     try {
                         walletToken.jsonData?.let { jsonData ->
-                            val walletSdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                                jsonData,
-                                org.unicitylabs.sdk.token.Token::class.java
-                            )
+                            val walletSdkToken = org.unicitylabs.sdk.token.Token.fromJson(jsonData)
                             walletSdkToken.id == sdkToken.id
                         } ?: false
                     } catch (e: Exception) {
@@ -920,10 +911,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                 val tokenToTransfer = allTokens.find { walletToken ->
                     try {
                         walletToken.jsonData?.let { jsonData ->
-                            val walletSdkToken = org.unicitylabs.sdk.serializer.UnicityObjectMapper.JSON.readValue(
-                                jsonData,
-                                org.unicitylabs.sdk.token.Token::class.java
-                            )
+                            val walletSdkToken = org.unicitylabs.sdk.token.Token.fromJson(jsonData)
                             val matches = walletSdkToken.id == sdkToken.id
                             if (matches) {
                                 Log.d("WalletViewModel", "Found matching token: ${walletToken.id}")

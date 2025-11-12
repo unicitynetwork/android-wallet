@@ -8,7 +8,6 @@ import org.unicitylabs.sdk.api.SubmitCommitmentStatus
 import org.unicitylabs.sdk.bft.RootTrustBase
 import org.unicitylabs.sdk.hash.HashAlgorithm
 import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper
 import org.unicitylabs.sdk.signing.SigningService
 import org.unicitylabs.sdk.token.Token
 import org.unicitylabs.sdk.token.TokenId
@@ -294,8 +293,8 @@ class UnicityJavaSdkService(
             return null
         }
         return try {
-            // Use UnicityObjectMapper for proper serialization
-            UnicityObjectMapper.JSON.writeValueAsString(token)
+            // Use SDK's toJson() method
+            token.toJson()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to serialize token", e)
             null
