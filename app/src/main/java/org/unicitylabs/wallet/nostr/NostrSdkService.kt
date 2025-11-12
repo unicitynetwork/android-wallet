@@ -541,6 +541,14 @@ class NostrSdkService(
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Publishing nametag binding: $nametagId → $unicityAddress")
+                Log.d(TAG, "NostrClient connected relays: ${nostrClient.connectedRelays}")
+                Log.d(TAG, "NostrClient isConnected: ${nostrClient.isConnected}")
+
+                if (!nostrClient.isConnected) {
+                    Log.w(TAG, "NostrClient not connected, attempting reconnect...")
+                    nostrClient.connect(*UNICITY_RELAYS.toTypedArray()).await()
+                    Log.d(TAG, "Reconnected, relays: ${nostrClient.connectedRelays}")
+                }
 
                 // Use SDK's publishNametagBinding method
                 nostrClient.publishNametagBinding(nametagId, unicityAddress).await()
@@ -548,7 +556,7 @@ class NostrSdkService(
                 Log.d(TAG, "Nametag binding published successfully")
                 true
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to publish nametag binding", e)
+                Log.e(TAG, "Failed to publish nametag binding: ${e.message}", e)
                 false
             }
         }
@@ -561,6 +569,14 @@ class NostrSdkService(
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Querying pubkey for nametag: $nametagId")
+                Log.d(TAG, "NostrClient connected relays: ${nostrClient.connectedRelays}")
+                Log.d(TAG, "NostrClient isConnected: ${nostrClient.isConnected}")
+
+                if (!nostrClient.isConnected) {
+                    Log.w(TAG, "NostrClient not connected to any relay, attempting reconnect...")
+                    nostrClient.connect(*UNICITY_RELAYS.toTypedArray()).await()
+                    Log.d(TAG, "Reconnected, relays: ${nostrClient.connectedRelays}")
+                }
 
                 // Use SDK's queryPubkeyByNametag method
                 val pubkey = nostrClient.queryPubkeyByNametag(nametagId).await()
@@ -573,7 +589,7 @@ class NostrSdkService(
 
                 pubkey
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to query nametag", e)
+                Log.e(TAG, "Failed to query nametag: ${e.message}", e)
                 null
             }
         }
