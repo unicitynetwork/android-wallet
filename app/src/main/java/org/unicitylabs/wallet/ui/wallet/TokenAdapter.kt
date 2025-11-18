@@ -83,127 +83,11 @@ class TokenAdapter(
         val oldExpandedId = expandedTokenId
         expandedTokenId = null
         transferringTokenId = null
-        
+
         if (oldExpandedId != null) {
             val index = currentList.indexOfFirst { it.id == oldExpandedId }
             if (index != -1) notifyItemChanged(index)
         }
-    }
-    
-    private fun extractAmountFromTokenNode(tokenNode: JsonNode): Any? {
-        // Try different paths where amount might be stored
-
-        // Check in genesis transaction
-        val genesis = tokenNode.get("genesis")
-        val genesisData = genesis?.get("data")
-
-        if (genesisData != null && !genesisData.isNull) {
-            // Direct amount field
-            genesisData.get("amount")?.let {
-                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText()
-            }
-
-            // Check for coinData field (new SDK structure)
-            val coinData = genesisData.get("coinData")
-            if (coinData != null && !coinData.isNull) {
-                val coins = coinData.get("coins")
-                if (coins != null && !coins.isNull && coins.isObject) {
-                    // Sum all coin values
-                    var totalAmount = 0L
-                    coins.fields().forEach { entry ->
-                        try {
-                            val value = entry.value
-                            totalAmount += when {
-                                value.isNumber -> value.asLong()
-                                value.isTextual -> value.asText().toLong()
-                                else -> 0L
-                            }
-                        } catch (e: Exception) {
-                            // Ignore parsing errors
-                        }
-                    }
-                    if (totalAmount > 0) return totalAmount
-                }
-            }
-
-            // Other possible fields in data
-            genesisData.get("value")?.let {
-                if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText()
-            }
-            
-            // Check message field for custom data that might contain amount
-            val message = genesisData.get("message")
-            if (message != null && message.isTextual) {
-                // Try to parse message as JSON
-                try {
-                    val messageData = JsonMapper.mapper.readTree(message.asText())
-                    messageData?.get("amount")?.let {
-                        if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText()
-                    }
-                    messageData?.get("value")?.let {
-                        if (!it.isNull) return if (it.isNumber) it.asLong() else it.asText() 
-                    }
-                } catch (e: Exception) {
-                    // Message is not JSON, ignore
-                }
-            }
-        }
-        
-        return null
-    }
-    
-    private fun showTokenDetails(binding: ItemTokenBinding, token: Token) {
-        // Token details display simplified - most info now in collapsed view
-    }
-    
-    private fun extractDataFromTokenNode(tokenNode: JsonNode): Any? {
-        // Try different paths where custom data might be stored
-        
-        // Check in genesis transaction
-        val genesis = tokenNode.get("genesis")
-        val genesisData = genesis?.get("data")
-        val mintData = genesisData?.get("data")
-        
-        if (mintData != null && !mintData.isNull) {
-            // Check for our structured data
-            mintData.get("data")?.let { node ->
-                if (!node.isNull) {
-                    val str = if (node.isTextual) node.asText() else node.toString()
-                    if (str.isNotEmpty() && str != "null") return str
-                }
-            }
-            
-            // Check message field - this is where we store custom data
-            val message = mintData.get("message")
-            if (message != null && message.isTextual) {
-                val messageStr = message.asText()
-                // Check if it's base64 encoded
-                try {
-                    val decoded = android.util.Base64.decode(messageStr, android.util.Base64.DEFAULT)
-                    val decodedStr = String(decoded, java.nio.charset.StandardCharsets.UTF_8)
-                    if (decodedStr.isNotEmpty()) return decodedStr
-                } catch (e: Exception) {
-                    // Not base64, use as is
-                    if (messageStr.isNotEmpty() && messageStr != "null") return messageStr
-                }
-            }
-            
-            // Other possible locations
-            mintData.get("customData")?.let { node ->
-                if (!node.isNull) {
-                    val str = if (node.isTextual) node.asText() else node.toString()
-                    if (str.isNotEmpty() && str != "null") return str
-                }
-            }
-            mintData.get("tokenData")?.let { node ->
-                if (!node.isNull) {
-                    val str = if (node.isTextual) node.asText() else node.toString()
-                    if (str.isNotEmpty() && str != "null") return str
-                }
-            }
-        }
-        
-        return null
     }
     
     inner class TokenViewHolder(
@@ -259,10 +143,7 @@ class TokenAdapter(
             binding.tvTokenId.text = token.id
             binding.tvTokenTimestamp.text = "Created: ${formatDate(token.timestamp)}"
             binding.tvTokenSize.text = "Size: ${token.getFormattedSize()}"
-            
-            // Try to show amount and data - simplified approach
-            showTokenDetails(binding, token)
-            
+
             // Show token status
             updateTokenStatus(token)
             
