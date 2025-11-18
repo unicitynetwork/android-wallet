@@ -256,84 +256,80 @@ public class FaucetE2ETest {
         System.out.println("Step 7: Verifying token transaction history...");
         System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-        // Parse the received token JSON
-        var receivedTokenData = jsonMapper.readValue(receivedTokenJson, java.util.Map.class);
+        // Parse the received token using SDK's fromJson
+        var receivedToken = org.unicitylabs.sdk.token.Token.fromJson(receivedTokenJson);
+        assertNotNull("Token should be parsed", receivedToken);
 
         // Verify token version
-        String version = (String) receivedTokenData.get("version");
-        System.out.println("📦 Token version: " + version);
-        assertEquals("Token should be version 2.0", "2.0", version);
+        System.out.println("📦 Token version: " + receivedToken.getVersion());
+        assertEquals("Token should be version 2.0", "2.0", receivedToken.getVersion());
 
         // Verify genesis transaction (MINT)
-        var genesis = (java.util.Map<?, ?>) receivedTokenData.get("genesis");
+        var genesis = receivedToken.getGenesis();
         assertNotNull("Token should have genesis transaction", genesis);
+        assertNotNull("Genesis should have inclusion proof", genesis.getInclusionProof());
+        System.out.println("✅ Genesis (MINT) transaction is finalized with inclusion proof!");
 
-        var genesisTxData = (java.util.Map<?, ?>) genesis.get("data");
-        assertNotNull("Genesis should have transaction data", genesisTxData);
+        // Verify coinData using SDK API
+        var genesisData = genesis.getData();
+        assertNotNull("Genesis should have transaction data", genesisData);
 
-        // Verify it's a MINT transaction by checking for MINT-specific fields
-        assertNotNull("Genesis should have tokenId", genesisTxData.get("tokenId"));
-        assertNotNull("Genesis should have tokenType", genesisTxData.get("tokenType"));
-        // Verify coinData structure and parse it like the wallet does
-        Object coinDataObj = genesisTxData.get("coinData");
-        System.out.println("CoinData type: " + (coinDataObj != null ? coinDataObj.getClass().getName() : "null"));
-        System.out.println("CoinData value: " + coinDataObj);
-        assertNotNull("Genesis should have coinData (fungible token)", coinDataObj);
+        // Check if token has coin data (fungible token)
+        if (genesisData instanceof org.unicitylabs.sdk.transaction.MintTransaction.Data) {
+            var mintData = (org.unicitylabs.sdk.transaction.MintTransaction.Data<?>) genesisData;
+            var coinDataOpt = mintData.getCoinData();
 
-        // Try to parse coinData - might be null, empty, or a map
-        if (coinDataObj instanceof java.util.Map) {
-            var coinDataMap = (java.util.Map<?, ?>) coinDataObj;
-            assertNotNull("CoinData should have coins map", coinDataMap.get("coins"));
+            assertTrue("Token should have coin data", coinDataOpt.isPresent());
+            var coinData = coinDataOpt.get();
+            var coins = coinData.getCoins();
 
-            var coinsMap = (java.util.Map<?, ?>) coinDataMap.get("coins");
-            assertFalse("Coins map should not be empty", coinsMap.isEmpty());
+            assertFalse("Coins should not be empty", coins.isEmpty());
 
-            // Extract and verify we can get coinId and amount (like wallet does)
-            var firstCoinEntry = coinsMap.entrySet().iterator().next();
-            String extractedCoinId = (String) firstCoinEntry.getKey();
-            String extractedAmount = firstCoinEntry.getValue().toString();
+            // Get first coin entry
+            var firstCoinEntry = coins.entrySet().iterator().next();
+            String extractedCoinId = Hex.encodeHexString(firstCoinEntry.getKey().getBytes());
+            BigInteger extractedAmount = firstCoinEntry.getValue();
 
             assertNotNull("Should extract coinId", extractedCoinId);
             assertNotNull("Should extract amount", extractedAmount);
-            assertTrue("Amount should be numeric", extractedAmount.matches("\\d+"));
+            assertTrue("Amount should be positive", extractedAmount.compareTo(BigInteger.ZERO) > 0);
 
             System.out.println("📜 Genesis transaction: MINT (verified structure)");
             System.out.println("   CoinId: " + extractedCoinId.substring(0, 16) + "...");
             System.out.println("   Amount: " + extractedAmount);
         } else {
-            fail("CoinData is not a Map, it's: " + (coinDataObj != null ? coinDataObj.getClass().getName() : "null") + " = " + coinDataObj);
+            fail("Genesis data is not MintTransaction.Data");
         }
 
-        // Verify genesis has inclusion proof
-        var genesisInclusionProof = genesis.get("inclusionProof");
-        assertNotNull("Genesis transaction should have inclusion proof", genesisInclusionProof);
-        System.out.println("✅ Genesis (MINT) transaction is finalized with inclusion proof!");
-
         // Verify transfer transactions list
-        var transactions = (java.util.List<?>) receivedTokenData.get("transactions");
+        var transactions = receivedToken.getTransactions();
         assertNotNull("Token should have transactions list", transactions);
 
         System.out.println("📜 Transfer transaction count: " + transactions.size());
         assertEquals("Token should have 1 transfer transaction", 1, transactions.size());
 
         // Verify the transfer transaction
-        var transferTx = (java.util.Map<?, ?>) transactions.get(0);
-        var transferTxData = (java.util.Map<?, ?>) transferTx.get("data");
-        assertNotNull("Transfer should have transaction data", transferTxData);
+        var transferTx = transactions.get(0);
+        assertNotNull("Transfer should have inclusion proof", transferTx.getInclusionProof());
+
+        var transferData = transferTx.getData();
+        assertNotNull("Transfer should have transaction data", transferData);
 
         // Verify it's a TRANSFER transaction by checking for TRANSFER-specific fields
-        assertNotNull("Transfer should have recipient", transferTxData.get("recipient"));
-        assertNotNull("Transfer should have salt", transferTxData.get("salt"));
-        System.out.println("   Transfer transaction: TRANSFER (verified by structure)");
+        if (transferData instanceof org.unicitylabs.sdk.transaction.TransferTransaction.Data) {
+            var transferTxData = (org.unicitylabs.sdk.transaction.TransferTransaction.Data) transferData;
+            assertNotNull("Transfer should have recipient", transferTxData.getRecipient());
+            assertNotNull("Transfer should have salt", transferTxData.getSalt());
+            System.out.println("   Transfer transaction: TRANSFER (verified by structure)");
+        } else {
+            fail("Transfer data is not TransferTransaction.Data");
+        }
 
-        // Verify transfer has inclusion proof (finalized)
-        var transferInclusionProof = transferTx.get("inclusionProof");
-        assertNotNull("Transfer transaction should have inclusion proof", transferInclusionProof);
         System.out.println("✅ Transfer transaction is finalized with inclusion proof!");
 
         // Verify token state has correct owner predicate
-        var state = (java.util.Map<?, ?>) receivedTokenData.get("state");
-        var predicate = state.get("predicate");
+        var state = receivedToken.getState();
+        var predicate = state.getPredicate();
         assertNotNull("Token should have predicate", predicate);
         System.out.println("✅ Token has valid owner predicate!");
 
