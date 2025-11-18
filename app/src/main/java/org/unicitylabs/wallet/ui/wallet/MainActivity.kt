@@ -1014,17 +1014,20 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("MainActivity", "onResume called")
-        
+
+        // Update nametag display in case it was changed in profile
+        updateNametagDisplay()
+
         // Update location icon color in case settings changed
         updateLocationIconColor()
-        
+
         // Log current balances before any operations
         val cryptosBefore = viewModel.cryptocurrencies.value
         Log.d("MainActivity", "=== BALANCES ON RESUME (BEFORE) ===")
         cryptosBefore.forEach { crypto ->
             Log.d("MainActivity", "${crypto.symbol}: ${crypto.balance}")
         }
-        
+
         // Check for received crypto transfers
         checkForReceivedCrypto()
         // Refresh wallet when returning to MainActivity
