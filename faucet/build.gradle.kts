@@ -19,7 +19,7 @@ repositories {
 dependencies {
     // Unicity Nostr SDK (includes Nostr client, crypto, nametag binding, token transfer)
     // Using composite build from sibling directory
-    implementation("org.unicitylabs:unicity-nostr-sdk:1.0.0")
+    implementation("org.unicitylabs:nostr-sdk:0.0.2")
 
     // Unicity SDK
     implementation("org.unicitylabs:java-state-transition-sdk:1.4.1")
