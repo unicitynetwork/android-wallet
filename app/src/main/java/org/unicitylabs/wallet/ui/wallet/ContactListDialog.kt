@@ -91,7 +91,7 @@ class ContactListDialog(
             // Load phone contacts
             loadPhoneContacts()
         } else {
-            // Request permission or fall back to mock data
+            // Request permission
             if (onRequestPermission != null) {
                 // Show permission rationale
                 Toast.makeText(
@@ -100,12 +100,12 @@ class ContactListDialog(
                     Toast.LENGTH_LONG
                 ).show()
                 onRequestPermission.invoke(Manifest.permission.READ_CONTACTS, REQUEST_CODE_CONTACTS)
-                // For now, show mock data until permission is granted
-                allContacts = getMockContacts()
+                // Show empty list until permission is granted
+                allContacts = emptyList()
                 filterContacts("")
             } else {
-                // No permission handler provided, use mock data
-                allContacts = getMockContacts()
+                // No permission handler provided, show empty list
+                allContacts = emptyList()
                 filterContacts("")
             }
         }
@@ -123,13 +123,9 @@ class ContactListDialog(
                 withContext(Dispatchers.Main) {
                     binding.progressBar.visibility = android.view.View.GONE
                     binding.contactsRecyclerView.visibility = android.view.View.VISIBLE
-                    
-                    if (phoneContacts.isEmpty()) {
-                        // If no phone contacts, use mock data
-                        allContacts = getMockContacts()
-                    } else {
-                        allContacts = phoneContacts
-                    }
+
+                    // Use actual phone contacts, even if empty
+                    allContacts = phoneContacts
                     filterContacts("")
                 }
             } catch (e: Exception) {
@@ -141,8 +137,8 @@ class ContactListDialog(
                         "Error loading contacts: ${e.message}",
                         Toast.LENGTH_SHORT
                     ).show()
-                    // Fall back to mock data
-                    allContacts = getMockContacts()
+                    // Show empty list on error
+                    allContacts = emptyList()
                     filterContacts("")
                 }
             }
@@ -157,17 +153,17 @@ class ContactListDialog(
     
     private fun filterContacts(query: String) {
         val filtered = allContacts.filter { contact ->
-            val matchesQuery = query.isEmpty() || 
+            val matchesQuery = query.isEmpty() ||
                               contact.name.contains(query, ignoreCase = true) ||
                               contact.address.contains(query, ignoreCase = true)
-            
+
             val matchesUnicityFilter = !showOnlyUnicity || contact.hasUnicityTag()
-            
+
             matchesQuery && matchesUnicityFilter
         }
-        
+
         contactAdapter.submitList(filtered)
-        
+
         // Show/hide empty state
         binding.emptyStateLayout.visibility = if (filtered.isEmpty()) {
             android.view.View.VISIBLE
@@ -175,27 +171,7 @@ class ContactListDialog(
             android.view.View.GONE
         }
     }
-    
-    private fun getMockContacts(): List<Contact> {
-        return listOf(
-            Contact("1", "Alice Johnson", "alice@unicity", isUnicityUser = true),
-            Contact("2", "Bob Smith", "0x742d35Cc6634C0532925a3b844Bc9e7595f06789"),
-            Contact("3", "Charlie Brown", "charlie.brown@unicity", isUnicityUser = true),
-            Contact("4", "David Wilson", "david.wilson@example.com"),
-            Contact("5", "Emma Davis", "emma@unicity", isUnicityUser = true),
-            Contact("6", "Frank Miller", "0x123456789abcdef0123456789abcdef012345678"),
-            Contact("7", "Grace Lee", "grace.lee@unicity", isUnicityUser = true),
-            Contact("8", "Henry Taylor", "henry.taylor@email.com"),
-            Contact("9", "Iris Chen", "iris@unicity", isUnicityUser = true),
-            Contact("10", "Jack Robinson", "jack.robinson@company.com"),
-            Contact("11", "Katie Martinez", "katie@unicity", isUnicityUser = true),
-            Contact("12", "Liam Anderson", "liam.anderson@gmail.com"),
-            Contact("13", "Maria Garcia", "maria.garcia@unicity", isUnicityUser = true),
-            Contact("14", "Nathan White", "0xabcdef0123456789abcdef0123456789abcdef01"),
-            Contact("15", "Olivia Thompson", "olivia@unicity", isUnicityUser = true)
-        )
-    }
-    
+
     companion object {
         const val REQUEST_CODE_CONTACTS = 1001
     }
