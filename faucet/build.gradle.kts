@@ -22,7 +22,7 @@ dependencies {
     implementation("org.unicitylabs:nostr-sdk:0.0.2")
 
     // Unicity SDK
-    implementation("org.unicitylabs:java-state-transition-sdk:1.4.1")
+    implementation("org.unicitylabs:java-state-transition-sdk:1.4.2")
 
     // Jackson for JSON and CBOR (also used by Nostr SDK and SDK)
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
