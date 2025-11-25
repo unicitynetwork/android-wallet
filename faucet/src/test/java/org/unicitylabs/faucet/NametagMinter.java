@@ -35,7 +35,17 @@ public class NametagMinter {
     private final RootTrustBase trustBase;
     private final SecureRandom random;
 
+    /**
+     * Create NametagMinter with API key from environment variable AGGREGATOR_API_KEY
+     */
     public NametagMinter(String aggregatorUrl) {
+        this(aggregatorUrl, getApiKeyFromEnv());
+    }
+
+    /**
+     * Create NametagMinter with explicit API key
+     */
+    public NametagMinter(String aggregatorUrl, String apiKey) {
         this.random = new SecureRandom();
 
         // Load trust base from testnet config
@@ -52,8 +62,16 @@ public class NametagMinter {
         }
 
         // Initialize aggregator client
-        AggregatorClient aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl);
+        AggregatorClient aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl, apiKey);
         this.client = new StateTransitionClient(aggregatorClient);
+    }
+
+    private static String getApiKeyFromEnv() {
+        String apiKey = System.getenv("AGGREGATOR_API_KEY");
+        if (apiKey == null || apiKey.isEmpty()) {
+            throw new IllegalStateException("AGGREGATOR_API_KEY environment variable is not set");
+        }
+        return apiKey;
     }
 
     /**

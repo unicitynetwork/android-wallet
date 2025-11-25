@@ -50,6 +50,14 @@ public class FaucetE2ETest {
     private static final String TOKEN_TYPE_HEX = "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509";
     private static final String COIN_ID_HEX = "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93";
 
+    private static String getApiKey() {
+        String apiKey = System.getenv("AGGREGATOR_API_KEY");
+        if (apiKey == null || apiKey.isEmpty()) {
+            throw new IllegalStateException("AGGREGATOR_API_KEY environment variable is not set");
+        }
+        return apiKey;
+    }
+
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // No read timeout - keep connection open indefinitely
@@ -183,7 +191,7 @@ public class FaucetE2ETest {
         // In production, Alice would do this on her own device
         var aliceRecipient = new TestRecipient(
             new org.unicitylabs.sdk.StateTransitionClient(
-                new org.unicitylabs.sdk.api.JsonRpcAggregatorClient(AGGREGATOR_URL)),
+                new org.unicitylabs.sdk.api.JsonRpcAggregatorClient(AGGREGATOR_URL, getApiKey())),
             tokenMinter.getTrustBase(),  // Use the trustbase from tokenMinter
             alicePrivateKey  // Alice's private key to create matching predicate
         );

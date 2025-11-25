@@ -53,7 +53,17 @@ public class TokenMinter {
         return client;
     }
 
+    /**
+     * Create TokenMinter with API key from environment variable AGGREGATOR_API_KEY
+     */
     public TokenMinter(String aggregatorUrl, byte[] privateKey) throws Exception {
+        this(aggregatorUrl, privateKey, getApiKeyFromEnv());
+    }
+
+    /**
+     * Create TokenMinter with explicit API key
+     */
+    public TokenMinter(String aggregatorUrl, byte[] privateKey, String apiKey) throws Exception {
         this.random = new SecureRandom();
 
         // Create signing service from secret directly (no masking for testing)
@@ -73,8 +83,16 @@ public class TokenMinter {
         }
 
         // Initialize aggregator client
-        AggregatorClient aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl);
+        AggregatorClient aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl, apiKey);
         this.client = new StateTransitionClient(aggregatorClient);
+    }
+
+    private static String getApiKeyFromEnv() {
+        String apiKey = System.getenv("AGGREGATOR_API_KEY");
+        if (apiKey == null || apiKey.isEmpty()) {
+            throw new IllegalStateException("AGGREGATOR_API_KEY environment variable is not set");
+        }
+        return apiKey;
     }
 
     /**
