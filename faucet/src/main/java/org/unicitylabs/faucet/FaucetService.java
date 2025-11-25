@@ -52,7 +52,7 @@ public class FaucetService {
         this.faucetPrivateKey = mnemonicToPrivateKey(config.faucetMnemonic);
 
         // Initialize token minter
-        this.minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey);
+        this.minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey, config.getAggregatorApiKey());
 
         // Initialize nametag resolver
         this.nametagResolver = new NametagResolver(config.nostrRelay, faucetPrivateKey);
@@ -170,6 +170,8 @@ public class FaucetService {
                 NostrClient nostrClient = new NostrClient(keyManager);
                 nostrClient.connect(config.nostrRelay).join();
                 nostrClient.sendTokenTransfer(recipientPubKey, transferPackage).join();
+                // Brief delay to ensure WebSocket message is flushed before disconnect
+                Thread.sleep(1000);
                 nostrClient.disconnect();
 
                 // Update status to SUCCESS

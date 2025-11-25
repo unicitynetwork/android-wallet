@@ -1,19 +1,14 @@
 # Multi-stage Dockerfile for Unicity Faucet Server
 
 # Stage 1: Build the application
-# Use JDK 17 since unicity-nostr-sdk requires it
 FROM gradle:8.5-jdk17 AS builder
 
 WORKDIR /build
-
-# Copy the unicity-nostr-sdk dependency first
-COPY unicity-nostr-sdk /unicity-nostr-sdk
 
 # Copy faucet Gradle files (for caching)
 COPY faucet/build.gradle.kts faucet/settings.gradle.kts ./
 
 # Copy libs directory (may be empty, used for custom JARs)
-# Note: Ensure faucet/libs/.gitkeep exists to track empty directory in git
 COPY faucet/libs ./libs
 
 # Copy faucet source code

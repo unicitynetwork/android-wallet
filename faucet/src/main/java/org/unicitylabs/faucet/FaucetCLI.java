@@ -169,7 +169,7 @@ public class FaucetCLI implements Callable<Integer> {
         // Step 2: Mint token to faucet
         System.out.println();
         System.out.println("🔨 Minting " + userAmount + " " + coinDef.symbol + "...");
-        TokenMinter minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey);
+        TokenMinter minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey, config.getAggregatorApiKey());
         var mintedToken = minter.mintToken(
             tokenTypeHex,  // Token type from registry
             coinDef.id,    // Coin ID from registry
