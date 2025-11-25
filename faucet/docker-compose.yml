@@ -14,6 +14,9 @@ services:
       # API key for history access (CHANGE THIS IN PRODUCTION!)
       FAUCET_API_KEY: ${FAUCET_API_KEY:-your-secret-api-key-here}
 
+      # API key for aggregator/payment gateway (overrides faucet-config.json)
+      AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:-}
+
       # BIP-39 mnemonic phrase for faucet wallet (CHANGE THIS IN PRODUCTION!)
       FAUCET_MNEMONIC: ${FAUCET_MNEMONIC:-abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about}
 

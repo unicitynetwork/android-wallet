@@ -67,11 +67,11 @@ public class NametagMinter {
     }
 
     private static String getApiKeyFromEnv() {
-        String apiKey = System.getenv("AGGREGATOR_API_KEY");
-        if (apiKey == null || apiKey.isEmpty()) {
-            throw new IllegalStateException("AGGREGATOR_API_KEY environment variable is not set");
+        try {
+            return FaucetConfig.load().getAggregatorApiKey();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load API key: " + e.getMessage(), e);
         }
-        return apiKey;
     }
 
     /**

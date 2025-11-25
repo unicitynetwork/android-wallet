@@ -51,11 +51,11 @@ public class FaucetE2ETest {
     private static final String COIN_ID_HEX = "dee5f8ce778562eec90e9c38a91296a023210ccc76ff4c29d527ac3eb64ade93";
 
     private static String getApiKey() {
-        String apiKey = System.getenv("AGGREGATOR_API_KEY");
-        if (apiKey == null || apiKey.isEmpty()) {
-            throw new IllegalStateException("AGGREGATOR_API_KEY environment variable is not set");
+        try {
+            return FaucetConfig.load().getAggregatorApiKey();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load API key: " + e.getMessage(), e);
         }
-        return apiKey;
     }
 
     private final ObjectMapper jsonMapper = new ObjectMapper();
