@@ -20,7 +20,7 @@ object ServiceProvider {
      * Singleton instance of AggregatorClient
      */
     val aggregatorClient: AggregatorClient by lazy {
-        JsonRpcAggregatorClient(WalletConstants.UNICITY_AGGREGATOR_URL)
+        JsonRpcAggregatorClient(WalletConstants.UNICITY_AGGREGATOR_URL, WalletConstants.UNICITY_API_KEY)
     }
 
     /**

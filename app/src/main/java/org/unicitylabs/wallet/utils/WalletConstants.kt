@@ -9,7 +9,12 @@ object WalletConstants {
      * Unicity aggregator URL for test network
      */
     const val UNICITY_AGGREGATOR_URL = "https://goggregator-test.unicity.network"
-    
+
+    /**
+     * Subscription gateway's API key
+     */
+    const val UNICITY_API_KEY = "sk_06365a9c44654841a366068bcfc68986"
+
     /**
      * Chain-specific constants
      */
