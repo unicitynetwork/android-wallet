@@ -19,6 +19,7 @@ import org.unicitylabs.nostr.protocol.Event as SdkEvent
 import org.unicitylabs.nostr.protocol.EventKinds
 import org.unicitylabs.nostr.protocol.Filter
 import org.unicitylabs.nostr.token.TokenTransferProtocol
+import org.unicitylabs.nostr.payment.PaymentRequestProtocol
 import org.unicitylabs.wallet.data.repository.WalletRepository
 import org.unicitylabs.wallet.p2p.IP2PService
 import org.unicitylabs.wallet.token.UnicityTokenRegistry
@@ -50,8 +51,9 @@ class NostrSdkService(
         )
 
         // Unicity private relay on AWS
+        // Using IP address to avoid DNS resolution issues in Android emulator
         val UNICITY_RELAYS = listOf(
-            "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080"
+            "ws://51.112.154.161:8080"
         )
 
         @Volatile
@@ -75,6 +77,33 @@ class NostrSdkService(
 
     private val _connectionStatus = MutableStateFlow<Map<String, IP2PService.ConnectionStatus>>(emptyMap())
     override val connectionStatus: StateFlow<Map<String, IP2PService.ConnectionStatus>> = _connectionStatus
+
+    // Payment request flow - UI can observe this to display incoming payment requests
+    private val _paymentRequests = MutableStateFlow<List<IncomingPaymentRequest>>(emptyList())
+    val paymentRequests: StateFlow<List<IncomingPaymentRequest>> = _paymentRequests
+
+    /**
+     * Data class representing an incoming payment request.
+     */
+    data class IncomingPaymentRequest(
+        val id: String,
+        val senderPubkey: String,
+        val amount: Long,
+        val coinId: String,
+        val symbol: String,
+        val message: String?,
+        val recipientNametag: String,
+        val requestId: String,
+        val timestamp: Long,
+        var status: PaymentRequestStatus = PaymentRequestStatus.PENDING
+    )
+
+    enum class PaymentRequestStatus {
+        PENDING,
+        ACCEPTED,
+        REJECTED,
+        PAID
+    }
 
     init {
         keyManager = NostrKeyManagerAdapter(context)
@@ -123,9 +152,9 @@ class NostrSdkService(
         val myPubkey = keyManager.getPublicKey()
         Log.d(TAG, "Subscribing to events for pubkey: $myPubkey")
 
-        // Subscribe to token transfers and encrypted messages
+        // Subscribe to token transfers, payment requests, and encrypted messages
         val personalFilter = Filter().apply {
-            kinds = listOf(EventKinds.ENCRYPTED_DM, EventKinds.GIFT_WRAP, EventKinds.TOKEN_TRANSFER)
+            kinds = listOf(EventKinds.ENCRYPTED_DM, EventKinds.GIFT_WRAP, EventKinds.TOKEN_TRANSFER, EventKinds.PAYMENT_REQUEST)
             pTags = listOf(myPubkey)
         }
 
@@ -166,6 +195,7 @@ class NostrSdkService(
 
         when (event.kind) {
             EventKinds.TOKEN_TRANSFER -> handleTokenTransfer(event)
+            EventKinds.PAYMENT_REQUEST -> handlePaymentRequest(event)
             EventKinds.ENCRYPTED_DM -> handleEncryptedMessage(event)
             EventKinds.GIFT_WRAP -> handleGiftWrappedMessage(event)
             else -> Log.d(TAG, "Unhandled event kind: ${event.kind}")
@@ -261,6 +291,117 @@ class NostrSdkService(
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process token transfer", e)
+        }
+    }
+
+    /**
+     * Handle incoming payment request event.
+     * Decrypts the request, stores it, and emits to the UI.
+     */
+    private suspend fun handlePaymentRequest(event: SdkEvent) {
+        try {
+            Log.d(TAG, "Processing payment request from ${event.pubkey.take(16)}...")
+
+            // Decrypt and parse using SDK PaymentRequestProtocol
+            val request = PaymentRequestProtocol.parsePaymentRequest(event, keyManager.getSdkKeyManager())
+
+            Log.d(TAG, "Payment request parsed:")
+            Log.d(TAG, "  Amount: ${request.amount} ${request.symbol}")
+            Log.d(TAG, "  Message: ${request.message}")
+            Log.d(TAG, "  Recipient nametag: ${request.recipientNametag}")
+            Log.d(TAG, "  Request ID: ${request.requestId}")
+
+            // Create incoming payment request model
+            val incomingRequest = IncomingPaymentRequest(
+                id = event.id,
+                senderPubkey = event.pubkey,
+                amount = request.amount,
+                coinId = request.coinId,
+                symbol = request.symbol ?: "UNKNOWN",
+                message = request.message,
+                recipientNametag = request.recipientNametag,
+                requestId = request.requestId,
+                timestamp = event.createdAt * 1000
+            )
+
+            // Add to list and emit to UI
+            val currentList = _paymentRequests.value.toMutableList()
+
+            // Check if we already have this request (by event ID)
+            if (currentList.none { it.id == incomingRequest.id }) {
+                currentList.add(0, incomingRequest)  // Add to front (newest first)
+                _paymentRequests.value = currentList
+
+                Log.i(TAG, "📬 Payment request received: ${request.amount} ${request.symbol} from ${event.pubkey.take(16)}...")
+                showPaymentRequestNotification(incomingRequest)
+            } else {
+                Log.d(TAG, "Payment request already exists, skipping: ${incomingRequest.id}")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to process payment request", e)
+        }
+    }
+
+    private fun showPaymentRequestNotification(request: IncomingPaymentRequest) {
+        // TODO: Implement notification
+        Log.d(TAG, "Payment request notification: ${request.amount} ${request.symbol}")
+    }
+
+    /**
+     * Accept a payment request and initiate token transfer.
+     * Returns success or failure.
+     */
+    suspend fun acceptPaymentRequest(request: IncomingPaymentRequest): Result<String> {
+        return try {
+            Log.d(TAG, "Accepting payment request: ${request.requestId}")
+
+            // Update status to ACCEPTED
+            updatePaymentRequestStatus(request.id, PaymentRequestStatus.ACCEPTED)
+
+            // TODO: Initiate actual token transfer
+            // For now, just mark as accepted - the actual payment flow will be implemented separately
+
+            Result.success("Payment request accepted")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to accept payment request", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Reject a payment request.
+     */
+    fun rejectPaymentRequest(request: IncomingPaymentRequest) {
+        Log.d(TAG, "Rejecting payment request: ${request.requestId}")
+        updatePaymentRequestStatus(request.id, PaymentRequestStatus.REJECTED)
+    }
+
+    /**
+     * Clear a payment request from the list.
+     */
+    fun clearPaymentRequest(requestId: String) {
+        val currentList = _paymentRequests.value.toMutableList()
+        currentList.removeAll { it.id == requestId }
+        _paymentRequests.value = currentList
+    }
+
+    /**
+     * Clear all processed (non-PENDING) payment requests from the list.
+     */
+    fun clearProcessedPaymentRequests() {
+        val currentList = _paymentRequests.value.toMutableList()
+        currentList.removeAll { it.status != PaymentRequestStatus.PENDING }
+        _paymentRequests.value = currentList
+        Log.d(TAG, "Cleared processed payment requests, ${currentList.size} pending remain")
+    }
+
+    private fun updatePaymentRequestStatus(eventId: String, status: PaymentRequestStatus) {
+        val currentList = _paymentRequests.value.toMutableList()
+        val index = currentList.indexOfFirst { it.id == eventId }
+        if (index >= 0) {
+            currentList[index] = currentList[index].copy(status = status)
+            _paymentRequests.value = currentList
         }
     }
 

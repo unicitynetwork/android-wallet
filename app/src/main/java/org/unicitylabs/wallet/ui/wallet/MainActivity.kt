@@ -72,6 +72,8 @@ import org.unicitylabs.wallet.utils.PermissionUtils
 import org.unicitylabs.wallet.viewmodel.WalletViewModel
 import java.io.File
 import org.unicitylabs.wallet.util.HexUtils
+import org.unicitylabs.wallet.ui.payment.PaymentRequestDialog
+import org.unicitylabs.wallet.nostr.NostrSdkService
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -716,8 +718,98 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // Observe payment requests from Nostr SDK
+        lifecycleScope.launch {
+            val nostrService = NostrSdkService.getInstance(applicationContext)
+            nostrService?.paymentRequests?.collect { requests ->
+                val pendingCount = requests.count { it.status == NostrSdkService.PaymentRequestStatus.PENDING }
+                Log.d("MainActivity", "Payment requests updated: ${requests.size} total, $pendingCount pending")
+
+                // Auto-show dialog when NEW pending requests arrive
+                if (pendingCount > lastKnownPendingRequestCount && pendingCount > 0) {
+                    runOnUiThread {
+                        if (!isPaymentRequestDialogShowing) {
+                            showPaymentRequestsDialog()
+                        }
+                    }
+                }
+                lastKnownPendingRequestCount = pendingCount
+            }
+        }
     }
-    
+
+    // Track payment request dialog state
+    private var isPaymentRequestDialogShowing = false
+    private var lastKnownPendingRequestCount = 0
+
+    /**
+     * Show the payment requests dialog and handle accept/reject actions.
+     * Accept action triggers actual token transfer to the requester's nametag.
+     */
+    private fun showPaymentRequestsDialog() {
+        val nostrService = NostrSdkService.getInstance(applicationContext)
+        if (nostrService == null) {
+            Toast.makeText(this, "Nostr service not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val requests = nostrService.paymentRequests.value
+
+        isPaymentRequestDialogShowing = true
+        PaymentRequestDialog(
+            context = this,
+            requests = requests,
+            onAccept = { request ->
+                handleAcceptPaymentRequest(request)
+            },
+            onReject = { request ->
+                nostrService.rejectPaymentRequest(request)
+                Toast.makeText(this, "Payment request rejected", Toast.LENGTH_SHORT).show()
+            },
+            onClearProcessed = {
+                nostrService.clearProcessedPaymentRequests()
+                Toast.makeText(this, "Processed requests cleared", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = {
+                isPaymentRequestDialogShowing = false
+            }
+        ).show()
+    }
+
+    /**
+     * Handle acceptance of a payment request by initiating actual token transfer.
+     * Reuses existing executeNostrTokenTransfer which handles splitting and transfer.
+     */
+    private fun handleAcceptPaymentRequest(request: NostrSdkService.IncomingPaymentRequest) {
+        Log.d("MainActivity", "Accepting payment request: ${request.amount} ${request.symbol} to ${request.recipientNametag}")
+
+        val nostrService = NostrSdkService.getInstance(applicationContext)
+        if (nostrService == null) {
+            Toast.makeText(this, "Nostr service not available", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // Update status to ACCEPTED (in progress)
+        lifecycleScope.launch {
+            nostrService.acceptPaymentRequest(request)
+        }
+
+        // The recipientNametag in the request is where we need to send tokens (Alice's nametag)
+        // The senderPubkey is Alice's pubkey (who sent the payment request)
+        // Execute token transfer using existing logic
+        executeNostrTokenTransfer(
+            recipientNametag = request.recipientNametag,
+            recipientPubkey = request.senderPubkey,
+            coinId = request.coinId,
+            amount = java.math.BigInteger.valueOf(request.amount)
+        )
+
+        // After successful transfer, update status to PAID
+        // Note: The actual PAID status update should happen after transfer completion
+        // For now, we mark as accepted and let the transfer flow handle completion
+    }
+
     private fun refreshWallet() {
         // Show refresh animation if initiated by swipe
         if (!binding.swipeRefreshLayout.isRefreshing) {
@@ -3789,19 +3881,35 @@ class MainActivity : AppCompatActivity() {
     private fun showOverflowMenu(anchor: View) {
         val popup = android.widget.PopupMenu(this, anchor)
         val menu = popup.menu
-        
+
+        // Check for pending payment requests
+        val nostrService = NostrSdkService.getInstance(applicationContext)
+        val pendingCount = nostrService?.paymentRequests?.value?.count {
+            it.status == NostrSdkService.PaymentRequestStatus.PENDING
+        } ?: 0
+
         // Add custom menu items
-        menu.add(0, 1, 0, "About")
-        menu.add(0, 2, 1, "Mint a Token")
-        menu.add(0, 3, 2, "Test Offline Transfer")
-        menu.add(0, 4, 3, "Bluetooth Mesh Discovery")
-        menu.add(0, 5, 4, "Demo Mode")
-        menu.add(0, 6, 5, "Reset Wallet")
-        
+        val paymentRequestsLabel = if (pendingCount > 0) {
+            "Payment Requests ($pendingCount)"
+        } else {
+            "Payment Requests"
+        }
+        menu.add(0, 7, 0, paymentRequestsLabel)  // Add payment requests at top
+        menu.add(0, 1, 1, "About")
+        menu.add(0, 2, 2, "Mint a Token")
+        menu.add(0, 3, 3, "Test Offline Transfer")
+        menu.add(0, 4, 4, "Bluetooth Mesh Discovery")
+        menu.add(0, 5, 5, "Demo Mode")
+        menu.add(0, 6, 6, "Reset Wallet")
+
         // Chat conversations moved to Agent Map header
-        
+
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
+                7 -> {
+                    showPaymentRequestsDialog()
+                    true
+                }
                 1 -> {
                     showAboutDialog()
                     true
@@ -3829,7 +3937,7 @@ class MainActivity : AppCompatActivity() {
                 else -> false
             }
         }
-        
+
         popup.show()
     }
     
