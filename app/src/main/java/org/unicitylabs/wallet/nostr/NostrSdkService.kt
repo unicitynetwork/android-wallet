@@ -305,8 +305,14 @@ class NostrSdkService(
             // Decrypt and parse using SDK PaymentRequestProtocol
             val request = PaymentRequestProtocol.parsePaymentRequest(event, keyManager.getSdkKeyManager())
 
+            // Look up symbol from coin registry based on coinId
+            val registry = UnicityTokenRegistry.getInstance(context)
+            val coinDef = registry.getCoinDefinition(request.coinId)
+            val symbol = coinDef?.symbol ?: "UNKNOWN"
+
             Log.d(TAG, "Payment request parsed:")
-            Log.d(TAG, "  Amount: ${request.amount} ${request.symbol}")
+            Log.d(TAG, "  Amount: ${request.amount} $symbol")
+            Log.d(TAG, "  Coin ID: ${request.coinId}")
             Log.d(TAG, "  Message: ${request.message}")
             Log.d(TAG, "  Recipient nametag: ${request.recipientNametag}")
             Log.d(TAG, "  Request ID: ${request.requestId}")
@@ -317,7 +323,7 @@ class NostrSdkService(
                 senderPubkey = event.pubkey,
                 amount = request.amount,
                 coinId = request.coinId,
-                symbol = request.symbol ?: "UNKNOWN",
+                symbol = symbol,
                 message = request.message,
                 recipientNametag = request.recipientNametag,
                 requestId = request.requestId,
@@ -332,7 +338,7 @@ class NostrSdkService(
                 currentList.add(0, incomingRequest)  // Add to front (newest first)
                 _paymentRequests.value = currentList
 
-                Log.i(TAG, "📬 Payment request received: ${request.amount} ${request.symbol} from ${event.pubkey.take(16)}...")
+                Log.i(TAG, "📬 Payment request received: ${request.amount} $symbol from ${event.pubkey.take(16)}...")
                 showPaymentRequestNotification(incomingRequest)
             } else {
                 Log.d(TAG, "Payment request already exists, skipping: ${incomingRequest.id}")
