@@ -51,9 +51,10 @@ class NostrSdkService(
         )
 
         // Unicity private relay on AWS
-        // Using IP address to avoid DNS resolution issues in Android emulator
+        // WSS primary, WS fallback for older clients
         val UNICITY_RELAYS = listOf(
-            "ws://51.112.154.161:8080"
+            "wss://nostr-relay.testnet.unicity.network",
+            "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080"
         )
 
         @Volatile

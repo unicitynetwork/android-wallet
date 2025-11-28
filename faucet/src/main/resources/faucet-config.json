@@ -1,6 +1,6 @@
 {
   "registryUrl": "https://raw.githubusercontent.com/unicitynetwork/unicity-ids/refs/heads/main/unicity-ids.testnet.json",
-  "nostrRelay": "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080",
+  "nostrRelay": "wss://nostr-relay.testnet.unicity.network",
   "aggregatorUrl": "https://goggregator-test.unicity.network",
   "aggregatorApiKey": "your-api-key-here",
   "faucetMnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",

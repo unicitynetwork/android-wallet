@@ -531,10 +531,16 @@ Outputs:
       Name: !Sub ${AWS::StackName}-alb-endpoint
 
   WebSocketEndpoint:
-    Description: WebSocket endpoint for Nostr relay
+    Description: WebSocket endpoint for Nostr relay (WS fallback)
     Value: !Sub ws://${ApplicationLoadBalancer.DNSName}:8080
     Export:
       Name: !Sub ${AWS::StackName}-websocket-endpoint
+
+  WebSocketSecureEndpoint:
+    Description: Secure WebSocket endpoint for Nostr relay (WSS primary)
+    Value: wss://nostr-relay.testnet.unicity.network
+    Export:
+      Name: !Sub ${AWS::StackName}-websocket-secure-endpoint
 
   S3BucketName:
     Description: S3 bucket for file storage

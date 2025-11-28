@@ -42,7 +42,7 @@ import static org.junit.Assert.*;
 public class FaucetE2ETest {
 
     private static final String AGGREGATOR_URL = "https://goggregator-test.unicity.network";
-    private static final String NOSTR_RELAY = "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080";
+    private static final String NOSTR_RELAY = "wss://nostr-relay.testnet.unicity.network";
     private static final long TIMEOUT_SECONDS = 60L;
     private static final int KIND_TOKEN_TRANSFER = 31113; // Custom Unicity event kind
 

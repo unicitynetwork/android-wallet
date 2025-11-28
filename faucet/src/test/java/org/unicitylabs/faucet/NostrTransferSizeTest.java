@@ -23,7 +23,7 @@ import static org.junit.Assert.assertTrue;
 public class NostrTransferSizeTest {
     private static final Logger log = LoggerFactory.getLogger(NostrTransferSizeTest.class);
 
-    private static final String RELAY_URL = "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080";
+    private static final String RELAY_URL = "wss://nostr-relay.testnet.unicity.network";
     private static final int KIND_TOKEN_TRANSFER = 31113;
 
     private final ObjectMapper jsonMapper = new ObjectMapper();
