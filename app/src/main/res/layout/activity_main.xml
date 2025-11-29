@@ -469,12 +469,11 @@
 
         </LinearLayout>
 
-        <LinearLayout
+        <FrameLayout
             android:id="@+id/navChat"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:gravity="center"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:focusable="true">
@@ -482,10 +481,27 @@
             <ImageView
                 android:layout_width="28dp"
                 android:layout_height="28dp"
+                android:layout_gravity="center"
                 android:src="@drawable/ic_chat"
                 android:scaleType="fitCenter" />
 
-        </LinearLayout>
+            <TextView
+                android:id="@+id/chatUnreadBadge"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_gravity="center"
+                android:layout_marginStart="14dp"
+                android:layout_marginBottom="10dp"
+                android:background="@drawable/badge_background"
+                android:gravity="center"
+                android:textColor="@android:color/white"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:text="3"
+                tools:visibility="visible" />
+
+        </FrameLayout>
 
         <LinearLayout
             android:id="@+id/navProfile"

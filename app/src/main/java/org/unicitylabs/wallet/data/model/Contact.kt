@@ -26,24 +26,27 @@ data class Contact(
     
     // Extract the unicity tag from the contact
     fun getUnicityTag(): String {
+        // Pattern matches word chars, hyphens, and dots (e.g., px3a-2911, alice.bob)
+        val tagPattern = "([\\w.-]+)@unicity"
+
         // Check if address contains the tag in parentheses (from notes)
-        val parenMatch = Regex("\\((\\w+)@unicity\\)", RegexOption.IGNORE_CASE).find(address)
+        val parenMatch = Regex("\\(($tagPattern)\\)", RegexOption.IGNORE_CASE).find(address)
         if (parenMatch != null) {
-            return parenMatch.groupValues[1]
+            return parenMatch.groupValues[1].removeSuffix("@unicity").removeSuffix("@UNICITY")
         }
-        
+
         // Try to extract from address directly
-        val addressMatch = Regex("(\\w+)@unicity", RegexOption.IGNORE_CASE).find(address)
+        val addressMatch = Regex(tagPattern, RegexOption.IGNORE_CASE).find(address)
         if (addressMatch != null) {
             return addressMatch.groupValues[1]
         }
-        
+
         // Try to extract from name
-        val nameMatch = Regex("(\\w+)@unicity", RegexOption.IGNORE_CASE).find(name)
+        val nameMatch = Regex(tagPattern, RegexOption.IGNORE_CASE).find(name)
         if (nameMatch != null) {
             return nameMatch.groupValues[1]
         }
-        
+
         return ""
     }
 }

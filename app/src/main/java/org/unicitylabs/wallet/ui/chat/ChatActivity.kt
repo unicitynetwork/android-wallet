@@ -2,10 +2,10 @@ package org.unicitylabs.wallet.ui.chat
 
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import android.view.MenuItem
-import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -15,10 +15,8 @@ import org.unicitylabs.wallet.data.chat.ChatConversation
 import org.unicitylabs.wallet.data.chat.ChatDatabase
 import org.unicitylabs.wallet.data.chat.ConversationDao
 import org.unicitylabs.wallet.data.chat.MessageDao
-import org.unicitylabs.wallet.data.chat.MessageType
 import org.unicitylabs.wallet.databinding.ActivityChatBinding
-import org.unicitylabs.wallet.p2p.IP2PService
-import org.unicitylabs.wallet.p2p.P2PServiceFactory
+import org.unicitylabs.wallet.nostr.NostrSdkService
 
 class ChatActivity : AppCompatActivity() {
     companion object {
@@ -35,12 +33,13 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var chatDatabase: ChatDatabase
     private lateinit var messageDao: MessageDao
     private lateinit var conversationDao: ConversationDao
-    private var p2pService: IP2PService? = null
-    
+    private var nostrService: NostrSdkService? = null
+
     private var agentTag: String = ""
     private var agentName: String = ""
     private var userTag: String = ""
-    private var isApproved: Boolean = false
+    // NIP-17 messaging doesn't require handshake approval
+    private var isApproved: Boolean = true
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,8 +80,8 @@ class ChatActivity : AppCompatActivity() {
             userTag = sharedPrefs.getString("temp_chat_id", "") ?: ""
         }
         
-        // Initialize P2P service if available
-        initializeP2PService()
+        // Initialize Nostr service for NIP-17 messaging
+        initializeNostrService()
         
         // Setup RecyclerView
         chatAdapter = ChatAdapter(userTag)
@@ -93,104 +92,59 @@ class ChatActivity : AppCompatActivity() {
             }
         }
         
-        // Setup send button
+        // Setup send button - NIP-17 allows direct messaging without handshake
         binding.btnSend.setOnClickListener {
             val message = binding.etMessage.text.toString().trim()
             if (message.isNotEmpty()) {
-                if (!isApproved) {
-                    showApprovalDialog()
-                } else {
-                    sendMessage(message)
-                }
+                sendMessage(message)
             }
         }
-        
+
+        // Allow sending with Enter key (for emulator keyboard)
+        binding.etMessage.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_SEND ||
+                (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)) {
+                val message = binding.etMessage.text.toString().trim()
+                if (message.isNotEmpty()) {
+                    sendMessage(message)
+                }
+                true
+            } else {
+                false
+            }
+        }
+
         // Observe conversation and messages
         observeConversation()
         observeMessages()
     }
     
-    private fun initializeP2PService() {
-        // Try to get existing instance first
-        p2pService = P2PServiceFactory.getInstance()
-
-        if (p2pService == null) {
-            // If no instance exists, create one for any user who wants to chat
-            val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
-
-            // For non-agent users who don't have a saved tag, use a temporary identifier
-            val effectiveUserTag = when {
-                userTag.isNotEmpty() -> userTag
-                else -> {
-                    // Generate or retrieve a temporary user identifier for chatting
-                    val existingTempId = sharedPrefs.getString("temp_chat_id", "") ?: ""
-                    if (existingTempId.isNotEmpty()) {
-                        existingTempId
-                    } else {
-                        val tempId = "user_${System.currentTimeMillis()}"
-                        sharedPrefs.edit().putString("temp_chat_id", tempId).apply()
-                        tempId
-                    }
-                }
-            }
-
-            // Get public key or generate one if needed
-            var publicKey = sharedPrefs.getString("wallet_public_key", "") ?: ""
-            if (publicKey.isEmpty()) {
-                // Use the effective user tag as a fallback identifier
-                publicKey = effectiveUserTag
-            }
-
-            Log.d("ChatActivity", "Initializing P2P service for user: $effectiveUserTag")
-
-            p2pService = P2PServiceFactory.getInstance(
-                context = applicationContext,
-                userTag = effectiveUserTag,
-                userPublicKey = publicKey
-            )
-
-            if (p2pService != null) {
-                Log.d("ChatActivity", "P2P service initialized successfully")
-                // Start the service if it's not running
-                if (!p2pService!!.isRunning()) {
-                    p2pService!!.start()
-                }
-            } else {
-                Log.e("ChatActivity", "Failed to initialize P2P service")
-            }
+    private fun initializeNostrService() {
+        nostrService = NostrSdkService.getInstance(applicationContext)
+        if (nostrService != null) {
+            Log.d("ChatActivity", "Nostr service initialized for NIP-17 messaging")
+        } else {
+            Log.e("ChatActivity", "Failed to get Nostr service - messages may not send")
+            Toast.makeText(this, "Messaging service unavailable", Toast.LENGTH_SHORT).show()
         }
     }
     
     private fun observeConversation() {
         lifecycleScope.launch {
             conversationDao.getConversationFlow(agentTag).collectLatest { conversation ->
-                if (conversation != null) {
-                    isApproved = conversation.isApproved
-                    updateUIForApprovalStatus()
-                    
-                    // Show handshake dialog immediately if not approved
-                    if (!isApproved) {
-                        runOnUiThread {
-                            showHandshakeDialogImmediately()
-                        }
-                    }
-                } else {
-                    // Create new conversation
+                if (conversation == null) {
+                    // Create new conversation - NIP-17 doesn't require handshake
                     val newConversation = ChatConversation(
                         conversationId = agentTag,
                         agentTag = agentTag,
                         agentPublicKey = null,
                         lastMessageTime = System.currentTimeMillis(),
                         lastMessageText = null,
-                        isApproved = false
+                        isApproved = true  // No handshake needed with NIP-17
                     )
                     conversationDao.insertConversation(newConversation)
-                    
-                    // Show handshake dialog for new conversation
-                    runOnUiThread {
-                        showHandshakeDialogImmediately()
-                    }
                 }
+                // UI is always ready for messaging with NIP-17
             }
         }
     }
@@ -209,122 +163,17 @@ class ChatActivity : AppCompatActivity() {
         }
     }
     
-    private fun updateUIForApprovalStatus() {
-        if (!isApproved) {
-            // Check if we have received a handshake request
-            lifecycleScope.launch {
-                val messages = messageDao.getMessagesForConversationList(agentTag)
-                val hasIncomingHandshake = messages.any { 
-                    it.type == MessageType.HANDSHAKE_REQUEST && !it.isFromMe 
-                }
-                
-                if (hasIncomingHandshake) {
-                    // Show accept/reject buttons for agent
-                    binding.etMessage.visibility = View.GONE
-                    binding.btnSend.visibility = View.GONE
-                    
-                    // Create accept/reject layout
-                    showHandshakeResponseButtons()
-                } else {
-                    // Show normal handshake prompt for user
-                    binding.etMessage.hint = "Send handshake request to start chatting"
-                }
-            }
-        } else {
-            binding.etMessage.hint = "Type a message..."
-            binding.etMessage.visibility = View.VISIBLE
-            binding.btnSend.visibility = View.VISIBLE
-        }
-    }
-    
-    private fun showHandshakeResponseButtons() {
-        // For agents receiving handshakes, let them respond by typing
-        binding.etMessage.hint = "Type a message to accept chat request..."
-        binding.etMessage.visibility = View.VISIBLE
-        binding.btnSend.visibility = View.VISIBLE
-        
-        // When agent sends first message, it auto-accepts the handshake
-        binding.btnSend.setOnClickListener {
-            val message = binding.etMessage.text.toString().trim()
-            if (message.isNotEmpty()) {
-                // Accept handshake and send message
-                p2pService?.acceptHandshake(agentTag)
-                sendMessage(message)
-                Toast.makeText(this, "Chat request accepted", Toast.LENGTH_SHORT).show()
-                
-                // Reset to normal send button behavior
-                binding.btnSend.setOnClickListener {
-                    val msg = binding.etMessage.text.toString().trim()
-                    if (msg.isNotEmpty()) {
-                        sendMessage(msg)
-                    }
-                }
-            }
-        }
-    }
-    
-    private var handshakeDialogShown = false
-    
-    private fun showHandshakeDialogImmediately() {
-        // Prevent showing dialog multiple times
-        if (handshakeDialogShown) return
-        handshakeDialogShown = true
-        
-        AlertDialog.Builder(this)
-            .setTitle("Start Chat")
-            .setMessage("Send a handshake request to $agentName?")
-            .setPositiveButton("Send") { _, _ ->
-                // Initialize P2P service if needed before sending handshake
-                if (p2pService == null) {
-                    initializeP2PService()
-                }
-
-                if (p2pService != null) {
-                    p2pService?.initiateHandshake(agentTag)
-                    Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "Failed to initialize chat service. Please try again.", Toast.LENGTH_LONG).show()
-                    finish() // Close chat if P2P is not available
-                }
-            }
-            .setNegativeButton("Cancel") { _, _ ->
-                // User cancelled, close the chat activity and go back to map
-                finish()
-            }
-            .setCancelable(false) // Force user to make a choice
-            .show()
-    }
-    
-    private fun showApprovalDialog() {
-        Log.d("ChatActivity", "=== HANDSHAKE DEBUG: showApprovalDialog called for agent: $agentTag ===")
-        AlertDialog.Builder(this)
-            .setTitle("Start Chat")
-            .setMessage("Send a handshake request to $agentName?")
-            .setPositiveButton("Send") { _, _ ->
-                Log.d("ChatActivity", "=== HANDSHAKE DEBUG: User clicked Send ===")
-                // Initialize P2P service if needed before sending handshake
-                if (p2pService == null) {
-                    Log.d("ChatActivity", "=== HANDSHAKE DEBUG: P2P service is null, initializing... ===")
-                    initializeP2PService()
-                }
-
-                if (p2pService != null) {
-                    Log.d("ChatActivity", "=== HANDSHAKE DEBUG: Calling initiateHandshake($agentTag) ===")
-                    Log.d("ChatActivity", "=== HANDSHAKE DEBUG: P2P service class: ${p2pService?.javaClass?.simpleName} ===")
-                    p2pService?.initiateHandshake(agentTag)
-                    Toast.makeText(this, "Handshake request sent", Toast.LENGTH_SHORT).show()
-                } else {
-                    Log.e("ChatActivity", "=== HANDSHAKE DEBUG: P2P service is still null after init ===")
-                    Toast.makeText(this, "Failed to initialize chat service. Please try again.", Toast.LENGTH_LONG).show()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-    
     private fun sendMessage(message: String) {
         binding.etMessage.text.clear()
-        p2pService?.sendMessage(agentTag, message)
+
+        if (nostrService == null) {
+            Toast.makeText(this, "Messaging service not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Send via NIP-17 (this handles nametag resolution, encryption, and local DB save)
+        nostrService?.sendMessage(agentTag, message)
+        Log.d("ChatActivity", "Sending message to $agentTag via NIP-17")
     }
     
     override fun onOptionsItemSelected(item: MenuItem): Boolean {

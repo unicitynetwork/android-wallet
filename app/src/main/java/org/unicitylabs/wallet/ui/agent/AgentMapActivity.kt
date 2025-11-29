@@ -628,12 +628,12 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                         userPublicKey = publicKey
                     )
                     service?.start()
-                    android.util.Log.d(TAG, "P2P service (${org.unicitylabs.wallet.p2p.P2PServiceFactory.getCurrentServiceType()}) started from AgentMapActivity")
+                    android.util.Log.d(TAG, "P2P service (NIP-17) started from AgentMapActivity")
                 } catch (e: Exception) {
                     android.util.Log.e(TAG, "Failed to start P2P service", e)
                 }
             } else {
-                android.util.Log.d(TAG, "P2P service (${org.unicitylabs.wallet.p2p.P2PServiceFactory.getCurrentServiceType()}) already running")
+                android.util.Log.d(TAG, "P2P service (NIP-17) already running")
             }
         }
     }

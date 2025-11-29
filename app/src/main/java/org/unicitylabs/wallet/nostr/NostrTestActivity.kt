@@ -84,10 +84,7 @@ class NostrTestActivity : AppCompatActivity() {
 
         setContentView(layout)
 
-        // Initialize Nostr service using P2PServiceFactory
-        // Set Nostr as the service type for this test activity
-        org.unicitylabs.wallet.p2p.P2PServiceFactory.setServiceType(this, org.unicitylabs.wallet.p2p.P2PServiceFactory.ServiceType.NOSTR)
-
+        // Initialize Nostr service using P2PServiceFactory (now uses NIP-17)
         // Get or create the Nostr service instance with test parameters
         val service = org.unicitylabs.wallet.p2p.P2PServiceFactory.getInstance(
             context = this,

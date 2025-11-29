@@ -14,12 +14,20 @@ import kotlinx.coroutines.withContext
 import org.unicitylabs.nostr.client.NostrClient
 import org.unicitylabs.nostr.client.NostrEventListener
 import org.unicitylabs.nostr.crypto.NostrKeyManager
+import org.unicitylabs.nostr.messaging.NIP17Protocol
+import org.unicitylabs.nostr.messaging.PrivateMessage
 import org.unicitylabs.nostr.nametag.NametagBinding
 import org.unicitylabs.nostr.protocol.Event as SdkEvent
 import org.unicitylabs.nostr.protocol.EventKinds
 import org.unicitylabs.nostr.protocol.Filter
 import org.unicitylabs.nostr.token.TokenTransferProtocol
 import org.unicitylabs.nostr.payment.PaymentRequestProtocol
+import org.unicitylabs.wallet.data.chat.ChatDatabase
+import org.unicitylabs.wallet.data.chat.ChatConversation
+import org.unicitylabs.wallet.data.chat.ChatMessage
+import org.unicitylabs.wallet.data.chat.MessageStatus
+import org.unicitylabs.wallet.data.chat.MessageType
+import java.util.UUID
 import org.unicitylabs.wallet.data.repository.WalletRepository
 import org.unicitylabs.wallet.p2p.IP2PService
 import org.unicitylabs.wallet.token.UnicityTokenRegistry
@@ -50,8 +58,7 @@ class NostrSdkService(
             "wss://nostr-pub.wellorder.net"
         )
 
-        // Unicity private relay on AWS
-        // WSS primary, WS fallback for older clients
+        // Unicity relays - multiple for redundancy (app deduplicates via message ID)
         val UNICITY_RELAYS = listOf(
             "wss://nostr-relay.testnet.unicity.network",
             "ws://unicity-nostr-relay-20250927-alb-1919039002.me-central-1.elb.amazonaws.com:8080"
@@ -74,6 +81,7 @@ class NostrSdkService(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val keyManager: NostrKeyManagerAdapter
     private val nostrClient: NostrClient
+    private val chatDatabase: ChatDatabase
     private var isRunning = false
 
     private val _connectionStatus = MutableStateFlow<Map<String, IP2PService.ConnectionStatus>>(emptyMap())
@@ -110,6 +118,7 @@ class NostrSdkService(
         keyManager = NostrKeyManagerAdapter(context)
         keyManager.initializeKeys()
         nostrClient = NostrClient(keyManager.getSdkKeyManager())
+        chatDatabase = ChatDatabase.getDatabase(context)
     }
 
     override fun start() {
@@ -698,25 +707,123 @@ class NostrSdkService(
         }
     }
 
-    // ==================== P2P Messaging Methods ====================
+    // ==================== NIP-17 Private Messaging Methods ====================
 
     override fun sendMessage(toTag: String, content: String) {
         scope.launch {
             try {
-                // Resolve nametag to pubkey
-                val recipientPubkey = queryPubkeyByNametag(toTag)
-                if (recipientPubkey == null) {
-                    Log.e(TAG, "Cannot send message: nametag $toTag not found")
-                    return@launch
+                // Check if toTag is already a hex pubkey (64 chars) or a nametag
+                val isHexPubkey = toTag.length == 64 && toTag.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+
+                // Get sender's nametag for identification
+                val sharedPrefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
+                val senderNametag = sharedPrefs.getString("unicity_tag", null)
+
+                val eventId: String
+                val conversationId: String
+                val recipientPubkey: String
+
+                if (isHexPubkey) {
+                    // Already a pubkey - use sendPrivateMessage directly
+                    recipientPubkey = toTag
+                    conversationId = toTag
+                    Log.d(TAG, "Sending to pubkey directly: ${toTag.take(16)}...")
+                    eventId = nostrClient.sendPrivateMessage(toTag, content, null, senderNametag).await()
+                } else {
+                    // It's a nametag - use sendPrivateMessageToNametag (auto-resolves)
+                    conversationId = toTag
+                    Log.d(TAG, "Sending to nametag: $toTag")
+                    eventId = nostrClient.sendPrivateMessageToNametag(toTag, content, senderNametag).await()
+                    // Get the resolved pubkey for database storage
+                    recipientPubkey = queryPubkeyByNametag(toTag) ?: toTag
                 }
 
-                // Use SDK's publishEncryptedMessage
-                nostrClient.publishEncryptedMessage(recipientPubkey, content).await()
+                Log.d(TAG, "Private message sent to $conversationId from $senderNametag (event: ${eventId.take(16)}...)")
 
-                Log.d(TAG, "Encrypted message sent to $toTag")
+                // Save message to local database
+                saveOutgoingMessage(conversationId, recipientPubkey, content, eventId)
+
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send message", e)
             }
+        }
+    }
+
+    /**
+     * Send a private message to a specific pubkey using NIP-17.
+     * Returns the gift wrap event ID.
+     */
+    suspend fun sendPrivateMessage(recipientPubkey: String, message: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                ensureConnected()
+                val eventId = nostrClient.sendPrivateMessage(recipientPubkey, message).await()
+                Log.d(TAG, "Private message sent (event: ${eventId.take(16)}...)")
+                eventId
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send private message", e)
+                null
+            }
+        }
+    }
+
+    /**
+     * Send a read receipt for a message using NIP-17.
+     */
+    suspend fun sendReadReceipt(senderPubkey: String, messageEventId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                ensureConnected()
+                nostrClient.sendReadReceipt(senderPubkey, messageEventId).await()
+                Log.d(TAG, "Read receipt sent for message: ${messageEventId.take(16)}...")
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send read receipt", e)
+                false
+            }
+        }
+    }
+
+    /**
+     * Save an outgoing message to the local database.
+     */
+    private suspend fun saveOutgoingMessage(
+        recipientTag: String,
+        recipientPubkey: String,
+        content: String,
+        eventId: String
+    ) {
+        withContext(Dispatchers.IO) {
+            val messageDao = chatDatabase.messageDao()
+            val conversationDao = chatDatabase.conversationDao()
+
+            // Ensure conversation exists
+            val existingConv = conversationDao.getConversation(recipientTag)
+            if (existingConv == null) {
+                val newConv = ChatConversation(
+                    conversationId = recipientTag,
+                    agentTag = recipientTag,
+                    agentPublicKey = recipientPubkey,
+                    lastMessageTime = System.currentTimeMillis(),
+                    lastMessageText = content,
+                    isApproved = true  // No handshake needed with NIP-17
+                )
+                conversationDao.insertConversation(newConv)
+            } else {
+                conversationDao.updateLastMessage(recipientTag, System.currentTimeMillis(), content)
+            }
+
+            // Save message
+            val chatMessage = ChatMessage(
+                messageId = eventId,
+                conversationId = recipientTag,
+                content = content,
+                timestamp = System.currentTimeMillis(),
+                isFromMe = true,
+                status = MessageStatus.SENT,
+                type = MessageType.TEXT
+            )
+            messageDao.insertMessage(chatMessage)
         }
     }
 
@@ -758,9 +865,123 @@ class NostrSdkService(
         }
     }
 
-    private fun handleGiftWrappedMessage(event: SdkEvent) {
-        Log.d(TAG, "Gift-wrapped message received (not yet implemented)")
-        // TODO: Implement gift wrap handling
+    /**
+     * Handle incoming NIP-17 gift-wrapped message.
+     * Unwraps the message and saves it to the local database.
+     */
+    private suspend fun handleGiftWrappedMessage(event: SdkEvent) {
+        try {
+            Log.d(TAG, "Processing gift-wrapped message from ${event.pubkey.take(16)}...")
+
+            // Unwrap the gift wrap using NIP-17 protocol
+            val privateMessage = nostrClient.unwrapPrivateMessage(event)
+
+            Log.d(TAG, "Message unwrapped successfully:")
+            Log.d(TAG, "  Sender: ${privateMessage.senderPubkey.take(16)}...")
+            Log.d(TAG, "  Kind: ${privateMessage.kind}")
+            Log.d(TAG, "  Content length: ${privateMessage.content.length}")
+
+            when {
+                privateMessage.isChatMessage -> {
+                    // Regular chat message (kind 14)
+                    handleIncomingChatMessage(privateMessage)
+                }
+                privateMessage.isReadReceipt -> {
+                    // Read receipt (kind 15)
+                    handleIncomingReadReceipt(privateMessage)
+                }
+                else -> {
+                    Log.w(TAG, "Unknown private message kind: ${privateMessage.kind}")
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to process gift-wrapped message", e)
+        }
+    }
+
+    /**
+     * Handle incoming chat message (NIP-17 kind 14).
+     */
+    private suspend fun handleIncomingChatMessage(message: PrivateMessage) {
+        withContext(Dispatchers.IO) {
+            val messageDao = chatDatabase.messageDao()
+            val conversationDao = chatDatabase.conversationDao()
+
+            // Check if we already processed this message (by event ID)
+            val existing = messageDao.getMessage(message.eventId)
+            if (existing != null) {
+                Log.d(TAG, "Message already exists, skipping: ${message.eventId.take(16)}...")
+                return@withContext
+            }
+
+            // Use sender's nametag if available, otherwise fall back to pubkey
+            val senderNametag = message.senderNametag
+            val conversationId = if (!senderNametag.isNullOrEmpty()) {
+                Log.d(TAG, "Using sender nametag as conversation ID: $senderNametag")
+                senderNametag
+            } else {
+                Log.d(TAG, "No sender nametag, using pubkey as conversation ID: ${message.senderPubkey.take(16)}...")
+                message.senderPubkey
+            }
+            val displayName = senderNametag ?: message.senderPubkey.take(16) + "..."
+
+            // Ensure conversation exists
+            val existingConv = conversationDao.getConversation(conversationId)
+            if (existingConv == null) {
+                val newConv = ChatConversation(
+                    conversationId = conversationId,
+                    agentTag = conversationId,  // Could be resolved to nametag later
+                    agentPublicKey = message.senderPubkey,
+                    lastMessageTime = message.timestamp * 1000,
+                    lastMessageText = message.content,
+                    unreadCount = 1,
+                    isApproved = true  // No handshake needed with NIP-17
+                )
+                conversationDao.insertConversation(newConv)
+            } else {
+                conversationDao.updateLastMessage(
+                    conversationId,
+                    message.timestamp * 1000,
+                    message.content
+                )
+                conversationDao.incrementUnreadCount(conversationId)
+            }
+
+            // Save message
+            val chatMessage = ChatMessage(
+                messageId = message.eventId,
+                conversationId = conversationId,
+                content = message.content,
+                timestamp = message.timestamp * 1000,
+                isFromMe = false,
+                status = MessageStatus.DELIVERED,
+                type = MessageType.TEXT
+            )
+            messageDao.insertMessage(chatMessage)
+
+            Log.i(TAG, "📬 New message received from $displayName")
+        }
+    }
+
+    /**
+     * Handle incoming read receipt (NIP-17 kind 15).
+     */
+    private suspend fun handleIncomingReadReceipt(message: PrivateMessage) {
+        val originalEventId = message.replyToEventId
+        if (originalEventId == null) {
+            Log.w(TAG, "Read receipt missing original event ID")
+            return
+        }
+
+        withContext(Dispatchers.IO) {
+            val messageDao = chatDatabase.messageDao()
+            val existing = messageDao.getMessage(originalEventId)
+            if (existing != null && existing.isFromMe) {
+                messageDao.updateMessageStatus(originalEventId, MessageStatus.READ)
+                Log.d(TAG, "Message marked as read: ${originalEventId.take(16)}...")
+            }
+        }
     }
 
     private fun handleAgentLocation(event: SdkEvent) {

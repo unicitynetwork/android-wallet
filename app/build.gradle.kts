@@ -134,9 +134,9 @@ android {
 }
 
 dependencies {
-    // Unicity Nostr SDK (includes Nostr client, crypto, nametag binding, token transfer, payment requests)
+    // Unicity Nostr SDK (includes Nostr client, crypto, nametag binding, token transfer, payment requests, NIP-17 messaging)
     // Published at: https://github.com/unicitynetwork/nostr-sdk
-    implementation("org.unicitylabs:nostr-sdk:0.0.4")
+    implementation("org.unicitylabs:nostr-sdk:0.2.0")
 
     // Unicity Java SDK
     implementation("org.unicitylabs:java-state-transition-sdk:1.4.1")

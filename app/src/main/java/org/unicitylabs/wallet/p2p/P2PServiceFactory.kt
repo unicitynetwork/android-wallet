@@ -5,26 +5,21 @@ import android.util.Log
 import org.unicitylabs.wallet.nostr.NostrSdkService
 
 /**
- * Factory to create and manage P2P service instances
- * Supports WebSocket-based P2P for local network and Nostr for global messaging
+ * Factory to create and manage P2P service instances.
+ * Uses Nostr NIP-17 for secure, private messaging with gift-wrapping.
  */
 object P2PServiceFactory {
     private const val TAG = "P2PServiceFactory"
 
-    enum class ServiceType {
-        WEBSOCKET,
-        NOSTR
-    }
-
-    private var currentServiceType: ServiceType = ServiceType.NOSTR  // Default to Nostr for cross-network support
     private var currentInstance: IP2PService? = null
 
     /**
      * Get or create a P2P service instance.
+     * Uses NostrSdkService which implements NIP-17 private messaging.
      *
      * @param context Optional context - if null, returns existing instance or null
-     * @param userTag Required when creating new instance
-     * @param userPublicKey Required when creating new instance
+     * @param userTag Not used (kept for API compatibility)
+     * @param userPublicKey Not used (kept for API compatibility)
      * @return P2P service instance or null if not initialized and context is null
      */
     @JvmStatic
@@ -42,40 +37,19 @@ object P2PServiceFactory {
             return null
         }
 
-        // We have context, so create a new instance
-        require(userTag != null) { "userTag required when creating new P2P service instance" }
-        require(userPublicKey != null) { "userPublicKey required when creating new P2P service instance" }
+        Log.d(TAG, "Creating NostrSdkService instance with NIP-17 messaging")
 
-        // Always use Nostr for cross-network support
-        // Later we can add a preference if needed, but for now force Nostr
-        currentServiceType = ServiceType.NOSTR
-
-        // Ensure Nostr preference is set
-        val prefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("use_nostr_p2p", true).apply()
-
-        Log.d(TAG, "Creating new ${currentServiceType.name} P2P service instance")
-
-        currentInstance = when (currentServiceType) {
-            ServiceType.NOSTR -> {
-                Log.d(TAG, "Initializing Nostr SDK service")
-                val nostrService = NostrSdkService.getInstance(context)
-                if (nostrService != null) {
-                    Log.d(TAG, "Nostr SDK service created successfully")
-                    // Start the service if not already running
-                    if (!nostrService.isRunning()) {
-                        nostrService.start()
-                        Log.d(TAG, "Nostr SDK service started")
-                    }
-                } else {
-                    Log.e(TAG, "Failed to create Nostr SDK service")
-                }
-                nostrService
+        val nostrService = NostrSdkService.getInstance(context)
+        if (nostrService != null) {
+            Log.d(TAG, "NostrSdkService created successfully")
+            // Start the service if not already running
+            if (!nostrService.isRunning()) {
+                nostrService.start()
+                Log.d(TAG, "NostrSdkService started")
             }
-            ServiceType.WEBSOCKET -> {
-                Log.d(TAG, "Initializing WebSocket P2P service")
-                P2PMessagingService.getInstance(context, userTag, userPublicKey)
-            }
+            currentInstance = nostrService
+        } else {
+            Log.e(TAG, "Failed to create NostrSdkService")
         }
 
         return currentInstance
@@ -98,22 +72,6 @@ object P2PServiceFactory {
         currentInstance = null
         Log.d(TAG, "P2P service instance reset")
     }
-
-    /**
-     * Set the preferred P2P service type for future instances
-     */
-    fun setServiceType(context: Context, type: ServiceType) {
-        val prefs = context.getSharedPreferences("UnicitywWalletPrefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("use_nostr_p2p", type == ServiceType.NOSTR).apply()
-        Log.d(TAG, "P2P service type preference set to: ${type.name}")
-
-        // Note: This doesn't affect the current instance - call reset() to apply changes
-    }
-
-    /**
-     * Get the current service type
-     */
-    fun getCurrentServiceType(): ServiceType = currentServiceType
 
     /**
      * Check if a service instance exists

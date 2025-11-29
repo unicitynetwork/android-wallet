@@ -68,12 +68,16 @@ import org.unicitylabs.wallet.ui.bluetooth.PeerSelectionDialog
 import org.unicitylabs.wallet.ui.bluetooth.TransferApprovalDialog
 import org.unicitylabs.wallet.ui.scanner.PortraitCaptureActivity
 import org.unicitylabs.wallet.util.JsonMapper
+import org.unicitylabs.wallet.utils.ContactsHelper
 import org.unicitylabs.wallet.utils.PermissionUtils
 import org.unicitylabs.wallet.viewmodel.WalletViewModel
 import java.io.File
 import org.unicitylabs.wallet.util.HexUtils
 import org.unicitylabs.wallet.ui.payment.PaymentRequestDialog
 import org.unicitylabs.wallet.nostr.NostrSdkService
+import org.unicitylabs.wallet.data.chat.ChatDatabase
+import org.unicitylabs.wallet.ui.chat.ChatActivity
+import org.unicitylabs.wallet.ui.agent.ConversationsAdapter
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -475,8 +479,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.navChat.setOnClickListener {
-            Toast.makeText(this, "Coming soon!", Toast.LENGTH_SHORT).show()
+            showChatConversations()
         }
+
+        // Observe unread message count for badge
+        observeChatUnreadCount()
 
         // Setup QR scanner button
         binding.btnScanQr.setOnClickListener {
@@ -1680,6 +1687,215 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         dialog.show()
+    }
+
+    private fun observeChatUnreadCount() {
+        lifecycleScope.launch {
+            val chatDatabase = ChatDatabase.getDatabase(this@MainActivity)
+            chatDatabase.conversationDao().getTotalUnreadCount().collectLatest { unreadCount ->
+                updateChatUnreadBadge(unreadCount ?: 0)
+            }
+        }
+    }
+
+    private fun updateChatUnreadBadge(count: Int) {
+        val badge = binding.chatUnreadBadge
+        if (count > 0) {
+            badge.visibility = View.VISIBLE
+            badge.text = if (count > 99) "99+" else count.toString()
+        } else {
+            badge.visibility = View.GONE
+        }
+    }
+
+    private fun showChatConversations() {
+        lifecycleScope.launch {
+            val chatDatabase = ChatDatabase.getDatabase(this@MainActivity)
+            val allConversations = chatDatabase.conversationDao().getAllConversationsList()
+
+            // Filter out conversations with self
+            val sharedPrefs = getSharedPreferences("UnicitywWalletPrefs", MODE_PRIVATE)
+            val currentUserTag = sharedPrefs.getString("unicity_tag", "") ?: ""
+            val conversations = allConversations.filter { it.conversationId != currentUserTag }
+
+            // Create custom dialog view
+            val dialogView = layoutInflater.inflate(R.layout.dialog_conversations, null)
+            val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvConversations)
+            val emptyStateView = dialogView.findViewById<TextView>(R.id.tvEmptyState)
+
+            val dialog = AlertDialog.Builder(this@MainActivity)
+                .setView(dialogView)
+                .setPositiveButton("Close", null)
+                .setNeutralButton("New Chat") { _, _ ->
+                    showNewChatDialog()
+                }
+                .create()
+
+            // Create adapter with deferred actions
+            lateinit var adapter: ConversationsAdapter
+
+            // Function to refresh the list
+            val refreshList: suspend () -> Unit = {
+                val updatedConversations = chatDatabase.conversationDao().getAllConversationsList()
+                    .filter { it.conversationId != currentUserTag }
+
+                if (updatedConversations.isEmpty()) {
+                    recyclerView.visibility = View.GONE
+                    emptyStateView.visibility = View.VISIBLE
+                } else {
+                    recyclerView.visibility = View.VISIBLE
+                    emptyStateView.visibility = View.GONE
+                    adapter.submitList(updatedConversations)
+                }
+            }
+
+            adapter = ConversationsAdapter(
+                onItemClick = { conversation ->
+                    val intent = Intent(this@MainActivity, ChatActivity::class.java).apply {
+                        putExtra(ChatActivity.EXTRA_AGENT_TAG, conversation.agentTag)
+                        putExtra(ChatActivity.EXTRA_AGENT_NAME, "${conversation.agentTag}@unicity")
+                    }
+                    startActivity(intent)
+                    dialog.dismiss()
+                },
+                onClearClick = { conversation ->
+                    // Clear all messages in the conversation
+                    lifecycleScope.launch {
+                        chatDatabase.messageDao().deleteAllMessagesForConversation(conversation.conversationId)
+                        // Reset conversation
+                        chatDatabase.conversationDao().updateConversation(
+                            conversation.copy(
+                                lastMessageTime = System.currentTimeMillis(),
+                                lastMessageText = null,
+                                unreadCount = 0
+                            )
+                        )
+                        Toast.makeText(this@MainActivity, "Messages cleared", Toast.LENGTH_SHORT).show()
+                        refreshList()
+                    }
+                },
+                onDeleteClick = { conversation ->
+                    // Show confirmation dialog
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Delete Conversation")
+                        .setMessage("Are you sure you want to delete this conversation?")
+                        .setPositiveButton("Delete") { _, _ ->
+                            lifecycleScope.launch {
+                                // Delete all messages
+                                chatDatabase.messageDao().deleteAllMessagesForConversation(conversation.conversationId)
+                                // Delete conversation
+                                chatDatabase.conversationDao().deleteConversation(conversation)
+                                Toast.makeText(this@MainActivity, "Conversation deleted", Toast.LENGTH_SHORT).show()
+                                refreshList()
+                            }
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            )
+
+            // Setup RecyclerView
+            recyclerView.layoutManager = LinearLayoutManager(this@MainActivity)
+            recyclerView.adapter = adapter
+
+            // Show appropriate view based on conversations
+            if (conversations.isEmpty()) {
+                recyclerView.visibility = View.GONE
+                emptyStateView.visibility = View.VISIBLE
+            } else {
+                recyclerView.visibility = View.VISIBLE
+                emptyStateView.visibility = View.GONE
+                adapter.submitList(conversations)
+            }
+
+            // Show dialog
+            dialog.show()
+        }
+    }
+
+    private fun showNewChatDialog() {
+        val options = arrayOf("Select from Contacts", "Enter Manually")
+        AlertDialog.Builder(this)
+            .setTitle("New Chat")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showContactPickerForChat()
+                    1 -> showManualNametagEntry()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showContactPickerForChat() {
+        lifecycleScope.launch {
+            val contactsHelper = ContactsHelper(this@MainActivity)
+            val allContacts = contactsHelper.loadPhoneContacts()
+            val unicityContacts = allContacts.filter { it.hasUnicityTag() }
+
+            if (unicityContacts.isEmpty()) {
+                Toast.makeText(this@MainActivity, "No contacts with Unicity IDs found", Toast.LENGTH_SHORT).show()
+                showManualNametagEntry()
+                return@launch
+            }
+
+            // Build list of contact names with their nametags
+            val contactNames = unicityContacts.map { "${it.name} (${it.getUnicityTag()}@unicity)" }.toTypedArray()
+
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("Select Contact")
+                .setItems(contactNames) { _, which ->
+                    val selectedContact = unicityContacts[which]
+                    val nametag = selectedContact.getUnicityTag()
+                    if (nametag.isNotEmpty()) {
+                        val intent = Intent(this@MainActivity, ChatActivity::class.java).apply {
+                            putExtra(ChatActivity.EXTRA_AGENT_TAG, nametag)
+                            putExtra(ChatActivity.EXTRA_AGENT_NAME, "${selectedContact.name} ($nametag@unicity)")
+                        }
+                        startActivity(intent)
+                    } else {
+                        Toast.makeText(this@MainActivity, "Could not extract nametag", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    private fun showManualNametagEntry() {
+        val editText = EditText(this).apply {
+            hint = "Enter nametag (e.g., alice or alice@unicity)"
+            setPadding(48, 32, 48, 32)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Enter Nametag")
+            .setView(editText)
+            .setPositiveButton("Start Chat") { _, _ ->
+                val input = editText.text.toString().trim()
+                if (input.isNotEmpty()) {
+                    // Extract nametag (remove @unicity if present)
+                    val nametag = if (input.contains("@")) {
+                        input.substringBefore("@")
+                    } else {
+                        input
+                    }
+
+                    if (nametag.isNotEmpty()) {
+                        val intent = Intent(this, ChatActivity::class.java).apply {
+                            putExtra(ChatActivity.EXTRA_AGENT_TAG, nametag)
+                            putExtra(ChatActivity.EXTRA_AGENT_NAME, "$nametag@unicity")
+                        }
+                        startActivity(intent)
+                    } else {
+                        Toast.makeText(this, "Please enter a valid nametag", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this, "Please enter a nametag", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showTransactionHistory() {

@@ -73,7 +73,7 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE status = :status")
     suspend fun getAllMessagesByStatus(status: MessageStatus): List<ChatMessage>
     
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertMessage(message: ChatMessage)
     
     @Update
@@ -87,4 +87,7 @@ interface MessageDao {
     
     @Query("DELETE FROM messages WHERE conversationId = :conversationId")
     suspend fun deleteAllMessagesForConversation(conversationId: String)
+
+    @Query("SELECT * FROM messages WHERE messageId = :messageId")
+    suspend fun getMessage(messageId: String): ChatMessage?
 }
