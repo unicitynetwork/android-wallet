@@ -25,6 +25,8 @@ import org.unicitylabs.nostr.payment.PaymentRequestProtocol
 import org.unicitylabs.wallet.data.chat.ChatDatabase
 import org.unicitylabs.wallet.data.chat.ChatConversation
 import org.unicitylabs.wallet.data.chat.ChatMessage
+import org.unicitylabs.wallet.data.chat.DismissedItem
+import org.unicitylabs.wallet.data.chat.DismissedItemType
 import org.unicitylabs.wallet.data.chat.MessageStatus
 import org.unicitylabs.wallet.data.chat.MessageType
 import java.util.UUID
@@ -312,6 +314,13 @@ class NostrSdkService(
         try {
             Log.d(TAG, "Processing payment request from ${event.pubkey.take(16)}...")
 
+            // Check if this payment request was already dismissed
+            val dismissedDao = chatDatabase.dismissedItemDao()
+            if (dismissedDao.isDismissed(event.id, DismissedItemType.PAYMENT_REQUEST)) {
+                Log.d(TAG, "Payment request was dismissed, skipping: ${event.id.take(16)}...")
+                return
+            }
+
             // Decrypt and parse using SDK PaymentRequestProtocol
             val request = PaymentRequestProtocol.parsePaymentRequest(event, keyManager.getSdkKeyManager())
 
@@ -391,6 +400,12 @@ class NostrSdkService(
     fun rejectPaymentRequest(request: IncomingPaymentRequest) {
         Log.d(TAG, "Rejecting payment request: ${request.requestId}")
         updatePaymentRequestStatus(request.id, PaymentRequestStatus.REJECTED)
+        // Persist dismissal so it doesn't reappear on app restart
+        scope.launch {
+            chatDatabase.dismissedItemDao().insertDismissedItem(
+                DismissedItem(request.id, DismissedItemType.PAYMENT_REQUEST)
+            )
+        }
     }
 
     /**
@@ -400,6 +415,12 @@ class NostrSdkService(
         val currentList = _paymentRequests.value.toMutableList()
         currentList.removeAll { it.id == requestId }
         _paymentRequests.value = currentList
+        // Persist dismissal so it doesn't reappear on app restart
+        scope.launch {
+            chatDatabase.dismissedItemDao().insertDismissedItem(
+                DismissedItem(requestId, DismissedItemType.PAYMENT_REQUEST)
+            )
+        }
     }
 
     /**
@@ -907,6 +928,7 @@ class NostrSdkService(
         withContext(Dispatchers.IO) {
             val messageDao = chatDatabase.messageDao()
             val conversationDao = chatDatabase.conversationDao()
+            val dismissedDao = chatDatabase.dismissedItemDao()
 
             // Check if we already processed this message (by event ID)
             val existing = messageDao.getMessage(message.eventId)
@@ -924,6 +946,13 @@ class NostrSdkService(
                 Log.d(TAG, "No sender nametag, using pubkey as conversation ID: ${message.senderPubkey.take(16)}...")
                 message.senderPubkey
             }
+
+            // Check if conversation was deleted (dismissed)
+            if (dismissedDao.isDismissed(conversationId, DismissedItemType.CONVERSATION)) {
+                Log.d(TAG, "Conversation was deleted, skipping message: $conversationId")
+                return@withContext
+            }
+
             val displayName = senderNametag ?: message.senderPubkey.take(16) + "..."
 
             // Ensure conversation exists

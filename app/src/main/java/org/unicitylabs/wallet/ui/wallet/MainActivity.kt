@@ -76,6 +76,8 @@ import org.unicitylabs.wallet.util.HexUtils
 import org.unicitylabs.wallet.ui.payment.PaymentRequestDialog
 import org.unicitylabs.wallet.nostr.NostrSdkService
 import org.unicitylabs.wallet.data.chat.ChatDatabase
+import org.unicitylabs.wallet.data.chat.DismissedItem
+import org.unicitylabs.wallet.data.chat.DismissedItemType
 import org.unicitylabs.wallet.ui.chat.ChatActivity
 import org.unicitylabs.wallet.ui.agent.ConversationsAdapter
 
@@ -1785,6 +1787,10 @@ class MainActivity : AppCompatActivity() {
                                 chatDatabase.messageDao().deleteAllMessagesForConversation(conversation.conversationId)
                                 // Delete conversation
                                 chatDatabase.conversationDao().deleteConversation(conversation)
+                                // Mark as dismissed so it doesn't reappear from relay
+                                chatDatabase.dismissedItemDao().insertDismissedItem(
+                                    DismissedItem(conversation.conversationId, DismissedItemType.CONVERSATION)
+                                )
                                 Toast.makeText(this@MainActivity, "Conversation deleted", Toast.LENGTH_SHORT).show()
                                 refreshList()
                             }

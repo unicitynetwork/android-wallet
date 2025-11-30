@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.unicitylabs.wallet.R
+import org.unicitylabs.wallet.data.chat.DismissedItem
+import org.unicitylabs.wallet.data.chat.DismissedItemType
 import org.unicitylabs.wallet.databinding.ActivityAgentMapBinding
 import org.unicitylabs.wallet.network.Agent
 import org.unicitylabs.wallet.network.AgentApiService
@@ -736,6 +738,10 @@ class AgentMapActivity : AppCompatActivity(), OnMapReadyCallback {
                                     chatDatabase?.messageDao()?.deleteAllMessagesForConversation(conversation.conversationId)
                                     // Delete conversation
                                     chatDatabase?.conversationDao()?.deleteConversation(conversation)
+                                    // Mark as dismissed so it doesn't reappear from relay
+                                    chatDatabase?.dismissedItemDao()?.insertDismissedItem(
+                                        DismissedItem(conversation.conversationId, DismissedItemType.CONVERSATION)
+                                    )
                                     Toast.makeText(this@AgentMapActivity, "Conversation deleted", Toast.LENGTH_SHORT).show()
                                     refreshList()
                                 }

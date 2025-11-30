@@ -7,14 +7,15 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 @Database(
-    entities = [ChatConversation::class, ChatMessage::class],
-    version = 1,
+    entities = [ChatConversation::class, ChatMessage::class, DismissedItem::class],
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDao
     abstract fun messageDao(): MessageDao
+    abstract fun dismissedItemDao(): DismissedItemDao
     
     companion object {
         @Volatile
@@ -26,7 +27,9 @@ abstract class ChatDatabase : RoomDatabase() {
                     context.applicationContext,
                     ChatDatabase::class.java,
                     "chat_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

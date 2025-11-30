@@ -91,3 +91,21 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE messageId = :messageId")
     suspend fun getMessage(messageId: String): ChatMessage?
 }
+
+@Dao
+interface DismissedItemDao {
+    @Query("SELECT * FROM dismissed_items WHERE itemId = :itemId AND itemType = :itemType")
+    suspend fun getDismissedItem(itemId: String, itemType: DismissedItemType): DismissedItem?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM dismissed_items WHERE itemId = :itemId AND itemType = :itemType)")
+    suspend fun isDismissed(itemId: String, itemType: DismissedItemType): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertDismissedItem(item: DismissedItem)
+
+    @Query("DELETE FROM dismissed_items WHERE itemId = :itemId AND itemType = :itemType")
+    suspend fun removeDismissedItem(itemId: String, itemType: DismissedItemType)
+
+    @Query("DELETE FROM dismissed_items WHERE itemType = :itemType")
+    suspend fun clearDismissedItemsByType(itemType: DismissedItemType)
+}

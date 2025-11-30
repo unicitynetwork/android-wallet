@@ -69,3 +69,19 @@ enum class HandshakeStatus {
     APPROVED,
     REJECTED
 }
+
+/**
+ * Tracks dismissed items (deleted conversations, processed payment requests)
+ * to prevent them from reappearing when re-fetched from relay.
+ */
+@Entity(tableName = "dismissed_items")
+data class DismissedItem(
+    @PrimaryKey val itemId: String,
+    val itemType: DismissedItemType,
+    val dismissedAt: Long = System.currentTimeMillis()
+)
+
+enum class DismissedItemType {
+    CONVERSATION,      // Deleted conversation
+    PAYMENT_REQUEST    // Processed/rejected payment request
+}
