@@ -52,6 +52,9 @@ public class FaucetServer {
         // Health check
         app.get("/health", ctx -> ctx.json(Map.of("status", "healthy")));
 
+        // Admin endpoints
+        app.post("/api/v1/admin/refresh-registry", this::refreshRegistry);
+
         // Start server
         app.start(port);
 
@@ -303,6 +306,47 @@ public class FaucetServer {
             ctx.status(500).json(Map.of(
                     "success", false,
                     "error", "Failed to load history: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * POST /api/v1/admin/refresh-registry
+     * Clear registry cache and reload from online source
+     * Requires API key
+     */
+    private void refreshRegistry(Context ctx) {
+        // Verify API key
+        String requestApiKey = ctx.header("X-API-Key");
+        if (requestApiKey == null || !requestApiKey.equals(apiKey)) {
+            ctx.status(401).json(Map.of(
+                    "success", false,
+                    "error", "Unauthorized: Invalid or missing API key"
+            ));
+            return;
+        }
+
+        try {
+            System.out.println("🔄 Admin request: Refreshing token registry...");
+
+            // Refresh registry in-place
+            UnicityTokenRegistry.getInstance().refresh();
+
+            var coins = faucetService.getSupportedCoins();
+            System.out.println("✅ Registry refreshed: " + coins.length + " coins loaded");
+
+            ctx.json(Map.of(
+                    "success", true,
+                    "message", "Registry refreshed successfully",
+                    "coinsLoaded", coins.length
+            ));
+        } catch (Exception e) {
+            System.err.println("❌ Failed to refresh registry: " + e.getMessage());
+            e.printStackTrace();
+
+            ctx.status(500).json(Map.of(
+                    "success", false,
+                    "error", "Failed to refresh registry: " + e.getMessage()
             ));
         }
     }

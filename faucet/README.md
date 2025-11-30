@@ -10,7 +10,8 @@ A production-ready REST API server and CLI application for distributing Unicity 
 - 🗄️ **Database Storage** - SQLite database for request history
 - 📁 **Token Storage** - Automatic token file storage in `./data/tokens/`
 - 🐳 **Docker Ready** - Single command deployment with Docker Compose
-- 🔐 **API Key Protection** - Secure history access with API key authentication
+- 🔐 **API Key Protection** - Secure history and admin access with API key authentication
+- 🔄 **Admin API** - Refresh token registry without restart
 - 📱 **Phone Number Support** - Send tokens to phone numbers (e.g., +14155552671)
 - 🔒 **Privacy-Preserving** - SHA-256 hashed nametags for Nostr lookups
 
@@ -168,6 +169,31 @@ Health check endpoint.
 }
 ```
 
+### Admin Endpoints
+
+#### `POST /api/v1/admin/refresh-registry`
+Refresh token registry from remote URL without restart.
+
+**Headers:**
+```
+X-API-Key: your-api-key
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Registry refreshed successfully",
+  "coinsLoaded": 5
+}
+```
+
+**Example:**
+```bash
+curl -X POST https://your-faucet-url/api/v1/admin/refresh-registry \
+  -H "X-API-Key: YOUR_FAUCET_API_KEY"
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -265,9 +291,8 @@ This directory is automatically created and persisted via Docker volume mount.
          ▼
 ┌─────────────────┐
 │  Javalin        │  REST API Server
-│  Web Server     │  - /api/v1/coins
-│                 │  - /api/v1/faucet
-│                 │  - /api/v1/history
+│  Web Server     │  - /api/v1/faucet/*
+│                 │  - /api/v1/admin/*
 └────────┬────────┘
          │
          ▼

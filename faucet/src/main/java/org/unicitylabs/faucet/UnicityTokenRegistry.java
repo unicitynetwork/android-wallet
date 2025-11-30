@@ -133,8 +133,33 @@ public class UnicityTokenRegistry {
         } else {
             System.out.println("ℹ️  No cache file to clear");
         }
-        // Also clear in-memory instance to force reload
-        instance = null;
+    }
+
+    /**
+     * Refresh registry data from remote URL
+     * Clears cache and reloads into existing instance
+     */
+    public synchronized void refresh() throws IOException {
+        clearCache();
+
+        ObjectMapper mapper = new ObjectMapper();
+        System.out.println("🌐 Refreshing registry from: " + registryUrl);
+        URL url = new URL(registryUrl);
+        List<CoinDefinition> definitions = mapper.readValue(
+            url,
+            mapper.getTypeFactory().constructCollectionType(List.class, CoinDefinition.class)
+        );
+
+        // Save to cache
+        saveToCache(mapper, definitions);
+
+        // Re-index
+        coinsById.clear();
+        for (CoinDefinition def : definitions) {
+            coinsById.put(def.id, def);
+        }
+
+        System.out.println("✅ Registry refreshed: " + coinsById.size() + " definitions");
     }
 
     /**
