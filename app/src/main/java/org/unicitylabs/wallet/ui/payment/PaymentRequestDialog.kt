@@ -23,6 +23,7 @@ class PaymentRequestDialog(
     private val requests: List<NostrSdkService.IncomingPaymentRequest>,
     private val onAccept: (NostrSdkService.IncomingPaymentRequest) -> Unit,
     private val onReject: (NostrSdkService.IncomingPaymentRequest) -> Unit,
+    private val onRejectAll: (() -> Unit)? = null,
     private val onClearProcessed: (() -> Unit)? = null,
     private val onDismiss: (() -> Unit)? = null
 ) {
@@ -49,6 +50,14 @@ class PaymentRequestDialog(
             }
 
             builder.setView(recyclerView)
+
+            // Add "Reject All" button if there are pending requests
+            val hasPending = requests.any { it.status == NostrSdkService.PaymentRequestStatus.PENDING }
+            if (hasPending && onRejectAll != null) {
+                builder.setPositiveButton("Reject All") { _, _ ->
+                    onRejectAll.invoke()
+                }
+            }
 
             // Add "Clear Processed" button if there are any processed requests
             val hasProcessed = requests.any { it.status != NostrSdkService.PaymentRequestStatus.PENDING }

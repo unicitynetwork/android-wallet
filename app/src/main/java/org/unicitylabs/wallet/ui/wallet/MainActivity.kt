@@ -776,6 +776,10 @@ class MainActivity : AppCompatActivity() {
                 nostrService.rejectPaymentRequest(request)
                 Toast.makeText(this, "Payment request rejected", Toast.LENGTH_SHORT).show()
             },
+            onRejectAll = {
+                nostrService.rejectAllPendingPaymentRequests()
+                Toast.makeText(this, "All pending requests rejected", Toast.LENGTH_SHORT).show()
+            },
             onClearProcessed = {
                 nostrService.clearProcessedPaymentRequests()
                 Toast.makeText(this, "Processed requests cleared", Toast.LENGTH_SHORT).show()
@@ -806,12 +810,13 @@ class MainActivity : AppCompatActivity() {
 
         // The recipientNametag in the request is where we need to send tokens (Alice's nametag)
         // The senderPubkey is Alice's pubkey (who sent the payment request)
-        // Execute token transfer using existing logic
+        // Pass the payment request event ID so the server can correlate the transfer
         executeNostrTokenTransfer(
             recipientNametag = request.recipientNametag,
             recipientPubkey = request.senderPubkey,
             coinId = request.coinId,
-            amount = java.math.BigInteger.valueOf(request.amount)
+            amount = java.math.BigInteger.valueOf(request.amount),
+            replyToEventId = request.id  // Payment request event ID for correlation
         )
 
         // After successful transfer, update status to PAID
@@ -1994,7 +1999,9 @@ class MainActivity : AppCompatActivity() {
         tokensForCoin: List<Token>,
         targetAmount: java.math.BigInteger,
         asset: org.unicitylabs.wallet.model.AggregatedAsset,
-        recipient: Contact
+        recipient: Contact,
+        replyToEventId: String? = null,  // Optional: for payment request correlation
+        knownRecipientPubkey: String? = null  // Optional: skip nametag resolution if provided
     ) {
         lifecycleScope.launch {
             // Show progress dialog (outside try so it's always accessible for dismiss)
@@ -2126,12 +2133,17 @@ class MainActivity : AppCompatActivity() {
                     kotlinx.coroutines.delay(2000)
                 }
 
-                val recipientPubkey = nostrService.queryPubkeyByNametag(recipientNametag)
+                // Use known pubkey if provided, otherwise resolve from nametag
+                val recipientPubkey = knownRecipientPubkey ?: run {
+                    Log.d("MainActivity", "Resolving recipient pubkey from nametag: $recipientNametag")
+                    nostrService.queryPubkeyByNametag(recipientNametag)
+                }
                 if (recipientPubkey == null) {
                     progressDialog.dismiss()
                     Toast.makeText(this@MainActivity, "Recipient not found", Toast.LENGTH_LONG).show()
                     return@launch
                 }
+                Log.d("MainActivity", "✅ Recipient pubkey: ${recipientPubkey.take(16)}... (known=${knownRecipientPubkey != null})")
 
                 // Step 5a: Execute split if needed
                 if (splitPlan.requiresSplit) {
@@ -2244,8 +2256,15 @@ class MainActivity : AppCompatActivity() {
                             Log.d("MainActivity", "Transfer payload size: ${payloadJson.length / 1024}KB")
 
                             // Send using SDK's sendTokenTransfer (adds "token_transfer:" prefix and encrypts)
+                            // If replyToEventId is provided (from payment request), include it for correlation
                             val sent = try {
-                                nostrService.sendTokenTransfer(recipientPubkey!!, payloadJson)
+                                nostrService.sendTokenTransfer(
+                                    recipientPubkey!!,
+                                    payloadJson,
+                                    null, // amount - already in payload
+                                    null, // symbol - already in payload
+                                    replyToEventId
+                                )
                             } catch (e: Exception) {
                                 Log.e("MainActivity", "Failed to send token: ${e.message}", e)
                                 false
@@ -2292,7 +2311,14 @@ class MainActivity : AppCompatActivity() {
 
                                 Log.d("MainActivity", "Split token transfer payload size: ${payloadJson.length / 1024}KB")
 
-                                val sent = nostrService.sendTokenTransfer(recipientPubkey!!, payloadJson)
+                                // Include replyToEventId for payment request correlation
+                                val sent = nostrService.sendTokenTransfer(
+                                    recipientPubkey!!,
+                                    payloadJson,
+                                    null, // amount
+                                    null, // symbol
+                                    replyToEventId
+                                )
                                 if (!sent) {
                                     Log.e("MainActivity", "Failed to send split token via Nostr")
                                 }
@@ -4430,12 +4456,14 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Execute token transfer via Nostr (reuses existing split logic)
+     * @param replyToEventId Optional: Event ID of payment request this transfer responds to
      */
     private fun executeNostrTokenTransfer(
         recipientNametag: String,
         recipientPubkey: String,
         coinId: String,
-        amount: java.math.BigInteger
+        amount: java.math.BigInteger,
+        replyToEventId: String? = null
     ) {
         lifecycleScope.launch {
             try {
@@ -4476,10 +4504,14 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 Log.d("MainActivity", "✅ Created contact: name=${recipientContact.name}, address=${recipientContact.address}")
+                if (replyToEventId != null) {
+                    Log.d("MainActivity", "  Reply to payment request: ${replyToEventId.take(16)}...")
+                }
                 Log.d("MainActivity", "🚀 Calling sendTokensWithSplitting...")
 
                 // 4. Use existing sendTokensWithSplitting logic
-                sendTokensWithSplitting(tokensForCoin, amount, asset, recipientContact)
+                // Pass the known pubkey to avoid re-resolving the nametag
+                sendTokensWithSplitting(tokensForCoin, amount, asset, recipientContact, replyToEventId, recipientPubkey)
 
             } catch (e: Exception) {
                 Log.e("MainActivity", "Error executing Nostr transfer", e)

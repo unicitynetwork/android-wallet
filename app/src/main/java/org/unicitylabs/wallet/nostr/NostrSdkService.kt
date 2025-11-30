@@ -227,12 +227,34 @@ class NostrSdkService(
      * Send a token transfer using SDK TokenTransferProtocol
      */
     suspend fun sendTokenTransfer(recipientPubkey: String, transferPackage: String): Boolean {
+        return sendTokenTransfer(recipientPubkey, transferPackage, null, null, null)
+    }
+
+    /**
+     * Send a token transfer in response to a payment request.
+     *
+     * @param recipientPubkey Recipient's Nostr public key (hex)
+     * @param transferPackage Token transfer package JSON
+     * @param amount Optional amount for metadata
+     * @param symbol Optional symbol for metadata
+     * @param replyToEventId Optional event ID this transfer is responding to (e.g., payment request)
+     */
+    suspend fun sendTokenTransfer(
+        recipientPubkey: String,
+        transferPackage: String,
+        amount: Long?,
+        symbol: String?,
+        replyToEventId: String?
+    ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Sending token transfer to $recipientPubkey using SDK")
+                if (replyToEventId != null) {
+                    Log.d(TAG, "  Reply to payment request: ${replyToEventId.take(16)}...")
+                }
 
-                // Use SDK's sendTokenTransfer method
-                nostrClient.sendTokenTransfer(recipientPubkey, transferPackage).await()
+                // Use SDK's sendTokenTransfer method with optional replyToEventId
+                nostrClient.sendTokenTransfer(recipientPubkey, transferPackage, amount, symbol, replyToEventId).await()
 
                 Log.d(TAG, "Token transfer sent successfully")
                 true
@@ -420,6 +442,17 @@ class NostrSdkService(
             chatDatabase.dismissedItemDao().insertDismissedItem(
                 DismissedItem(requestId, DismissedItemType.PAYMENT_REQUEST)
             )
+        }
+    }
+
+    /**
+     * Reject all pending payment requests at once.
+     */
+    fun rejectAllPendingPaymentRequests() {
+        Log.d(TAG, "Rejecting all pending payment requests")
+        val pendingRequests = _paymentRequests.value.filter { it.status == PaymentRequestStatus.PENDING }
+        pendingRequests.forEach { request ->
+            rejectPaymentRequest(request)
         }
     }
 
