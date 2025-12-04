@@ -165,15 +165,15 @@ class PaymentRequestDialog(
 
         override fun getItemCount() = requests.size
 
-        private fun formatAmount(amount: Long, symbol: String): String {
+        private fun formatAmount(amount: java.math.BigInteger, symbol: String): String {
             // Convert from smallest units to display units
             val divisor = when (symbol.uppercase()) {
-                "SOL" -> 1_000_000_000.0  // 9 decimals
-                "BTC" -> 100_000_000.0    // 8 decimals (satoshis)
-                else -> 1_000_000.0       // Default 6 decimals
+                "SOL" -> java.math.BigDecimal("1000000000")  // 9 decimals
+                "BTC" -> java.math.BigDecimal("100000000")   // 8 decimals (satoshis)
+                else -> java.math.BigDecimal("1000000")      // Default 6 decimals
             }
-            val displayAmount = amount / divisor
-            return String.format("%.6f", displayAmount).trimEnd('0').trimEnd('.')
+            val displayAmount = java.math.BigDecimal(amount).divide(divisor, 8, java.math.RoundingMode.HALF_UP)
+            return displayAmount.stripTrailingZeros().toPlainString()
         }
     }
 }

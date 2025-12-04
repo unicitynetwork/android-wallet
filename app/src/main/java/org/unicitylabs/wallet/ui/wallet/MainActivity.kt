@@ -815,7 +815,7 @@ class MainActivity : AppCompatActivity() {
             recipientNametag = request.recipientNametag,
             recipientPubkey = request.senderPubkey,
             coinId = request.coinId,
-            amount = java.math.BigInteger.valueOf(request.amount),
+            amount = request.amount,  // Already BigInteger
             replyToEventId = request.id  // Payment request event ID for correlation
         )
 
@@ -4578,7 +4578,7 @@ class MainActivity : AppCompatActivity() {
                 val result = nostrService.sendTokenTransfer(
                     recipientNametag = recipientTag,
                     tokenJson = cryptoTransferData,
-                    amount = (amount * 100000000).toLong(), // Convert to smallest unit
+                    amount = java.math.BigDecimal(amount).multiply(java.math.BigDecimal("100000000")).toBigInteger(), // Convert to smallest unit
                     symbol = crypto.symbol
                 )
 

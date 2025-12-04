@@ -99,7 +99,7 @@ class NostrSdkService(
     data class IncomingPaymentRequest(
         val id: String,
         val senderPubkey: String,
-        val amount: Long,
+        val amount: java.math.BigInteger,
         val coinId: String,
         val symbol: String,
         val message: String?,
@@ -242,7 +242,7 @@ class NostrSdkService(
     suspend fun sendTokenTransfer(
         recipientPubkey: String,
         transferPackage: String,
-        amount: Long?,
+        amount: java.math.BigInteger?,
         symbol: String?,
         replyToEventId: String?
     ): Boolean {
@@ -272,7 +272,7 @@ class NostrSdkService(
     suspend fun sendTokenTransfer(
         recipientNametag: String,
         tokenJson: String,
-        amount: Long? = null,
+        amount: java.math.BigInteger? = null,
         symbol: String? = null
     ): Result<String> {
         return try {
