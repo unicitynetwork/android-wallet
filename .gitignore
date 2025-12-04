@@ -93,3 +93,4 @@ lint/tmp/
 .DS_Store
 js-sdk-bundler/node_modules
 faucet/data
+faucet/faucet-data
