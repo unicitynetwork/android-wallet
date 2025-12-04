@@ -208,11 +208,12 @@ Resources:
               port = 8080
 
               [limits]
-              messages_per_sec = 10
+              messages_per_sec = 50
               max_event_bytes = 1048576
               max_ws_message_bytes = 1048576
               max_ws_frame_bytes = 1048576
-              max_subscriptions = 100
+              max_subscriptions = 1000
+              max_conn_rate = 100
 
               [retention]
               default_retention = 0
@@ -487,6 +488,82 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+
+  # CloudWatch Metric Filters for Nostr relay monitoring
+  SubscriptionLimitMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${AWS::StackName}-subscription-limit-errors
+      FilterPattern: '"Maximum concurrent subscription count reached"'
+      LogGroupName: !Ref CloudWatchLogGroup
+      MetricTransformations:
+        - MetricName: SubscriptionLimitErrors
+          MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
+          MetricValue: '1'
+          DefaultValue: 0
+
+  ConnectionErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${AWS::StackName}-connection-errors
+      FilterPattern: '[timestamp, level="ERROR", ..., msg]'
+      LogGroupName: !Ref CloudWatchLogGroup
+      MetricTransformations:
+        - MetricName: RelayErrors
+          MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
+          MetricValue: '1'
+          DefaultValue: 0
+
+  NewConnectionMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${AWS::StackName}-new-connections
+      FilterPattern: '"new client connection"'
+      LogGroupName: !Ref CloudWatchLogGroup
+      MetricTransformations:
+        - MetricName: NewConnections
+          MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
+          MetricValue: '1'
+          DefaultValue: 0
+
+  DisconnectionMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${AWS::StackName}-disconnections
+      FilterPattern: '"client disconnected"'
+      LogGroupName: !Ref CloudWatchLogGroup
+      MetricTransformations:
+        - MetricName: Disconnections
+          MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
+          MetricValue: '1'
+          DefaultValue: 0
+
+  EventPublishedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${AWS::StackName}-events-published
+      FilterPattern: '"saved event"'
+      LogGroupName: !Ref CloudWatchLogGroup
+      MetricTransformations:
+        - MetricName: EventsPublished
+          MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # CloudWatch Alarm for subscription limit errors
+  SubscriptionLimitAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-subscription-limit-alarm
+      AlarmDescription: Alert when subscription limit errors are detected
+      MetricName: SubscriptionLimitErrors
+      Namespace: !Sub ${AWS::StackName}/NostrRelay
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
 
   # CloudWatch Alarms
   HighCPUAlarm:
