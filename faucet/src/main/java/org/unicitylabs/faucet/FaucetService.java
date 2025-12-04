@@ -14,20 +14,27 @@ import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Service for minting and distributing tokens via the faucet
  * Extracted from FaucetCLI for use in REST API
+ *
+ * Thread-safety: Uses a shared NostrClient for all requests to avoid
+ * connection/disconnection races when handling concurrent requests.
  */
 public class FaucetService {
 
     private final FaucetConfig config;
     private final byte[] faucetPrivateKey;
     private final TokenMinter minter;
-    private final NametagResolver nametagResolver;
     private final UnicityTokenRegistry registry;
     private final FaucetDatabase database;
     private final String dataDir;
+
+    // Shared Nostr client for all requests - stays connected
+    private final NostrClient sharedNostrClient;
+    private final AtomicBoolean nostrConnected = new AtomicBoolean(false);
 
     public FaucetService(FaucetConfig config, String dataDir) throws Exception {
         this.config = config;
@@ -54,11 +61,44 @@ public class FaucetService {
         // Initialize token minter
         this.minter = new TokenMinter(config.aggregatorUrl, faucetPrivateKey, config.getAggregatorApiKey());
 
-        // Initialize nametag resolver
-        this.nametagResolver = new NametagResolver(config.nostrRelay, faucetPrivateKey);
-
         // Load token registry
         this.registry = UnicityTokenRegistry.getInstance(config.registryUrl);
+
+        // Initialize shared Nostr client (stays connected for all requests)
+        NostrKeyManager keyManager = NostrKeyManager.fromPrivateKey(faucetPrivateKey);
+        this.sharedNostrClient = new NostrClient(keyManager);
+        this.sharedNostrClient.setAutoReconnect(true);
+        this.sharedNostrClient.setQueryTimeoutMs(10000); // 10 second timeout for nametag queries
+
+        // Add connection listener for logging
+        this.sharedNostrClient.addConnectionListener(new NostrClient.ConnectionEventListener() {
+            @Override
+            public void onConnect(String relayUrl) {
+                System.out.println("✅ Nostr connected to: " + relayUrl);
+                nostrConnected.set(true);
+            }
+
+            @Override
+            public void onDisconnect(String relayUrl, String reason) {
+                System.out.println("⚠️ Nostr disconnected from " + relayUrl + ": " + reason);
+                nostrConnected.set(false);
+            }
+
+            @Override
+            public void onReconnecting(String relayUrl, int attempt) {
+                System.out.println("🔄 Nostr reconnecting to " + relayUrl + " (attempt " + attempt + ")...");
+            }
+
+            @Override
+            public void onReconnected(String relayUrl) {
+                System.out.println("✅ Nostr reconnected to: " + relayUrl);
+                nostrConnected.set(true);
+            }
+        });
+
+        // Connect to relay at startup
+        System.out.println("🔌 Connecting to Nostr relay: " + config.nostrRelay);
+        this.sharedNostrClient.connect(config.nostrRelay).join();
     }
 
     /**
@@ -116,10 +156,15 @@ public class FaucetService {
                 );
                 long requestId = database.insertRequest(request);
 
-                // Step 1: Resolve nametag to Nostr public key
+                // Step 1: Resolve nametag to Nostr public key using shared client
                 String recipientPubKey;
                 try {
-                    recipientPubKey = nametagResolver.resolveNametag(unicityId).join();
+                    System.out.println("🔍 Resolving nametag via Nostr relay: " + unicityId);
+                    recipientPubKey = sharedNostrClient.queryPubkeyByNametag(unicityId).join();
+                    if (recipientPubKey == null) {
+                        throw new RuntimeException("Nametag not found: " + unicityId);
+                    }
+                    System.out.println("✅ Resolved nametag '" + unicityId + "' to: " + recipientPubKey.substring(0, 16) + "...");
                     request.setRecipientNostrPubkey(recipientPubKey);
                     database.updateRequest(request);
                 } catch (Exception e) {
@@ -165,14 +210,10 @@ public class FaucetService {
                 // Step 7: Create transfer package
                 String transferPackage = createTransferPackage(sourceTokenJson, transferTxJson);
 
-                // Step 8: Send via Nostr
-                NostrKeyManager keyManager = NostrKeyManager.fromPrivateKey(faucetPrivateKey);
-                NostrClient nostrClient = new NostrClient(keyManager);
-                nostrClient.connect(config.nostrRelay).join();
-                nostrClient.sendTokenTransfer(recipientPubKey, transferPackage).join();
-                // Brief delay to ensure WebSocket message is flushed before disconnect
-                Thread.sleep(1000);
-                nostrClient.disconnect();
+                // Step 8: Send via Nostr using shared client (no connect/disconnect per request)
+                System.out.println("📤 Sending token transfer to " + recipientPubKey.substring(0, 16) + "...");
+                sharedNostrClient.sendTokenTransfer(recipientPubKey, transferPackage).join();
+                System.out.println("✅ Token transfer sent successfully");
 
                 // Update status to SUCCESS
                 request.setStatus("SUCCESS");
@@ -257,6 +298,23 @@ public class FaucetService {
         msg = msg.replaceAll("Failed to resolve nametag:\\s*", "");
 
         return msg;
+    }
+
+    /**
+     * Shutdown the service and clean up resources
+     */
+    public void shutdown() {
+        System.out.println("🔌 Shutting down FaucetService...");
+        if (sharedNostrClient != null) {
+            sharedNostrClient.disconnect();
+        }
+    }
+
+    /**
+     * Check if Nostr client is connected
+     */
+    public boolean isNostrConnected() {
+        return nostrConnected.get();
     }
 
     /**
