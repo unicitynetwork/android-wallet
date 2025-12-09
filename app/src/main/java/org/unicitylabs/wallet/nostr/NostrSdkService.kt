@@ -106,15 +106,60 @@ class NostrSdkService(
         val recipientNametag: String,
         val requestId: String,
         val timestamp: Long,
+        val deadline: Long?, // Deadline timestamp in milliseconds, null means no deadline
         var status: PaymentRequestStatus = PaymentRequestStatus.PENDING
-    )
+    ) {
+        /**
+         * Check if the payment request has expired.
+         */
+        fun isExpired(): Boolean = deadline != null && System.currentTimeMillis() > deadline
+
+        /**
+         * Get remaining time until deadline in milliseconds.
+         * Returns null if no deadline, 0 if expired.
+         */
+        fun getRemainingTimeMs(): Long? {
+            if (deadline == null) return null
+            val remaining = deadline - System.currentTimeMillis()
+            return if (remaining > 0) remaining else 0L
+        }
+    }
 
     enum class PaymentRequestStatus {
         PENDING,
         ACCEPTED,
         REJECTED,
-        PAID
+        PAID,
+        EXPIRED
     }
+
+    /**
+     * Data class representing an outgoing payment request (one we sent).
+     */
+    data class OutgoingPaymentRequest(
+        val eventId: String,
+        val targetPubkey: String,
+        val amount: java.math.BigInteger,
+        val coinId: String,
+        val symbol: String,
+        val message: String?,
+        val recipientNametag: String,
+        val requestId: String,
+        val timestamp: Long,
+        val deadline: Long?,
+        var status: OutgoingPaymentRequestStatus = OutgoingPaymentRequestStatus.PENDING
+    )
+
+    enum class OutgoingPaymentRequestStatus {
+        PENDING,    // Waiting for response
+        PAID,       // Recipient paid (token transfer received with matching replyToEventId)
+        DECLINED,   // Recipient declined
+        EXPIRED     // Deadline passed without response
+    }
+
+    // Outgoing payment requests flow - UI can observe this to track sent requests
+    private val _outgoingPaymentRequests = MutableStateFlow<List<OutgoingPaymentRequest>>(emptyList())
+    val outgoingPaymentRequests: StateFlow<List<OutgoingPaymentRequest>> = _outgoingPaymentRequests
 
     init {
         keyManager = NostrKeyManagerAdapter(context)
@@ -130,6 +175,7 @@ class NostrSdkService(
         scope.launch {
             ensureConnected()
         }
+        startExpirationChecker()
     }
 
     override fun stop() {
@@ -164,9 +210,15 @@ class NostrSdkService(
         val myPubkey = keyManager.getPublicKey()
         Log.d(TAG, "Subscribing to events for pubkey: $myPubkey")
 
-        // Subscribe to token transfers, payment requests, and encrypted messages
+        // Subscribe to token transfers, payment requests, payment request responses, and encrypted messages
         val personalFilter = Filter().apply {
-            kinds = listOf(EventKinds.ENCRYPTED_DM, EventKinds.GIFT_WRAP, EventKinds.TOKEN_TRANSFER, EventKinds.PAYMENT_REQUEST)
+            kinds = listOf(
+                EventKinds.ENCRYPTED_DM,
+                EventKinds.GIFT_WRAP,
+                EventKinds.TOKEN_TRANSFER,
+                EventKinds.PAYMENT_REQUEST,
+                EventKinds.PAYMENT_REQUEST_RESPONSE
+            )
             pTags = listOf(myPubkey)
         }
 
@@ -208,6 +260,7 @@ class NostrSdkService(
         when (event.kind) {
             EventKinds.TOKEN_TRANSFER -> handleTokenTransfer(event)
             EventKinds.PAYMENT_REQUEST -> handlePaymentRequest(event)
+            EventKinds.PAYMENT_REQUEST_RESPONSE -> handlePaymentRequestResponse(event)
             EventKinds.ENCRYPTED_DM -> handleEncryptedMessage(event)
             EventKinds.GIFT_WRAP -> handleGiftWrappedMessage(event)
             else -> Log.d(TAG, "Unhandled event kind: ${event.kind}")
@@ -346,6 +399,12 @@ class NostrSdkService(
             // Decrypt and parse using SDK PaymentRequestProtocol
             val request = PaymentRequestProtocol.parsePaymentRequest(event, keyManager.getSdkKeyManager())
 
+            // Check if already expired before displaying
+            if (request.isExpired) {
+                Log.d(TAG, "Payment request already expired, skipping: ${event.id.take(16)}...")
+                return
+            }
+
             // Look up symbol from coin registry based on coinId
             val registry = UnicityTokenRegistry.getInstance(context)
             val coinDef = registry.getCoinDefinition(request.coinId)
@@ -357,6 +416,7 @@ class NostrSdkService(
             Log.d(TAG, "  Message: ${request.message}")
             Log.d(TAG, "  Recipient nametag: ${request.recipientNametag}")
             Log.d(TAG, "  Request ID: ${request.requestId}")
+            Log.d(TAG, "  Deadline: ${request.deadline}")
 
             // Create incoming payment request model
             val incomingRequest = IncomingPaymentRequest(
@@ -368,7 +428,8 @@ class NostrSdkService(
                 message = request.message,
                 recipientNametag = request.recipientNametag,
                 requestId = request.requestId,
-                timestamp = event.createdAt * 1000
+                timestamp = event.createdAt * 1000,
+                deadline = request.deadline
             )
 
             // Add to list and emit to UI
@@ -380,6 +441,10 @@ class NostrSdkService(
                 _paymentRequests.value = currentList
 
                 Log.i(TAG, "📬 Payment request received: ${request.amount} $symbol from ${event.pubkey.take(16)}...")
+                if (request.deadline != null) {
+                    val remainingMs = request.remainingTimeMs ?: 0
+                    Log.i(TAG, "   Deadline in ${remainingMs / 1000} seconds")
+                }
                 showPaymentRequestNotification(incomingRequest)
             } else {
                 Log.d(TAG, "Payment request already exists, skipping: ${incomingRequest.id}")
@@ -396,12 +461,67 @@ class NostrSdkService(
     }
 
     /**
+     * Handle incoming payment request response event (decline/expiration notification).
+     * This is received by the original requester when the recipient declines or the request expires.
+     */
+    private suspend fun handlePaymentRequestResponse(event: SdkEvent) {
+        try {
+            Log.d(TAG, "Processing payment request response from ${event.pubkey.take(16)}...")
+
+            // Decrypt and parse using SDK PaymentRequestProtocol
+            val response = PaymentRequestProtocol.parsePaymentRequestResponse(event, keyManager.getSdkKeyManager())
+
+            Log.d(TAG, "Payment request response parsed:")
+            Log.d(TAG, "  Original Event ID: ${response.originalEventId}")
+            Log.d(TAG, "  Request ID: ${response.requestId}")
+            Log.d(TAG, "  Status: ${response.status}")
+            Log.d(TAG, "  Reason: ${response.reason}")
+
+            // Update the outgoing payment request status
+            val currentList = _outgoingPaymentRequests.value.toMutableList()
+            val index = currentList.indexOfFirst {
+                it.eventId == response.originalEventId || it.requestId == response.requestId
+            }
+
+            if (index >= 0) {
+                val newStatus = when (response.status) {
+                    PaymentRequestProtocol.ResponseStatus.DECLINED -> OutgoingPaymentRequestStatus.DECLINED
+                    PaymentRequestProtocol.ResponseStatus.EXPIRED -> OutgoingPaymentRequestStatus.EXPIRED
+                    else -> OutgoingPaymentRequestStatus.DECLINED  // Default fallback
+                }
+                currentList[index] = currentList[index].copy(status = newStatus)
+                _outgoingPaymentRequests.value = currentList
+
+                val statusStr = if (response.status == PaymentRequestProtocol.ResponseStatus.DECLINED) "declined" else "expired"
+                Log.i(TAG, "📭 Payment request $statusStr: ${currentList[index].amount} ${currentList[index].symbol}")
+                if (response.reason != null) {
+                    Log.i(TAG, "   Reason: ${response.reason}")
+                }
+            } else {
+                Log.w(TAG, "Received response for unknown payment request: ${response.requestId}")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to process payment request response", e)
+        }
+    }
+
+    /**
      * Accept a payment request and initiate token transfer.
      * Returns success or failure.
+     *
+     * Will fail if the payment request has expired.
      */
     suspend fun acceptPaymentRequest(request: IncomingPaymentRequest): Result<String> {
         return try {
             Log.d(TAG, "Accepting payment request: ${request.requestId}")
+
+            // Check if the request has expired
+            if (request.isExpired()) {
+                Log.w(TAG, "Cannot accept expired payment request: ${request.requestId}")
+                updatePaymentRequestStatus(request.id, PaymentRequestStatus.EXPIRED)
+                return Result.failure(IllegalStateException("Payment request has expired"))
+            }
 
             // Update status to ACCEPTED
             updatePaymentRequestStatus(request.id, PaymentRequestStatus.ACCEPTED)
@@ -417,13 +537,30 @@ class NostrSdkService(
     }
 
     /**
-     * Reject a payment request.
+     * Reject a payment request and send decline notification to the requester.
+     *
+     * @param request The incoming payment request to reject
+     * @param reason Optional reason for declining (visible to the requester)
      */
-    fun rejectPaymentRequest(request: IncomingPaymentRequest) {
+    fun rejectPaymentRequest(request: IncomingPaymentRequest, reason: String? = null) {
         Log.d(TAG, "Rejecting payment request: ${request.requestId}")
         updatePaymentRequestStatus(request.id, PaymentRequestStatus.REJECTED)
-        // Persist dismissal so it doesn't reappear on app restart
+
+        // Send decline notification to the original requester via Nostr
         scope.launch {
+            try {
+                nostrClient.sendPaymentRequestDecline(
+                    request.senderPubkey,
+                    request.id,
+                    request.requestId,
+                    reason
+                ).await()
+                Log.d(TAG, "Decline notification sent to ${request.senderPubkey.take(16)}...")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send decline notification", e)
+            }
+
+            // Persist dismissal so it doesn't reappear on app restart
             chatDatabase.dismissedItemDao().insertDismissedItem(
                 DismissedItem(request.id, DismissedItemType.PAYMENT_REQUEST)
             )
@@ -453,6 +590,48 @@ class NostrSdkService(
         val pendingRequests = _paymentRequests.value.filter { it.status == PaymentRequestStatus.PENDING }
         pendingRequests.forEach { request ->
             rejectPaymentRequest(request)
+        }
+    }
+
+    /**
+     * Check and update expired payment requests.
+     * Called periodically to handle deadline expiration.
+     */
+    fun checkExpiredPaymentRequests() {
+        val currentList = _paymentRequests.value.toMutableList()
+        var hasChanges = false
+
+        for (i in currentList.indices) {
+            val request = currentList[i]
+            if (request.status == PaymentRequestStatus.PENDING && request.isExpired()) {
+                Log.d(TAG, "Payment request expired: ${request.requestId}")
+                currentList[i] = request.copy(status = PaymentRequestStatus.EXPIRED)
+                hasChanges = true
+
+                // Persist dismissal so it doesn't reappear on app restart
+                scope.launch {
+                    chatDatabase.dismissedItemDao().insertDismissedItem(
+                        DismissedItem(request.id, DismissedItemType.PAYMENT_REQUEST)
+                    )
+                }
+            }
+        }
+
+        if (hasChanges) {
+            _paymentRequests.value = currentList
+        }
+    }
+
+    /**
+     * Start periodic expiration checking for payment requests.
+     * Should be called when the service starts.
+     */
+    private fun startExpirationChecker() {
+        scope.launch {
+            while (isRunning) {
+                checkExpiredPaymentRequests()
+                kotlinx.coroutines.delay(5000) // Check every 5 seconds
+            }
         }
     }
 

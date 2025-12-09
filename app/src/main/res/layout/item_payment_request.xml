@@ -53,6 +53,18 @@
             android:textColor="#999999"
             android:text="Nov 27, 14:30" />
 
+        <!-- Countdown timer (for pending requests with deadline) -->
+        <TextView
+            android:id="@+id/payment_request_countdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#FF9800"
+            android:visibility="gone"
+            android:text="Expires in: 4:59" />
+
         <!-- Status (for non-pending requests) -->
         <TextView
             android:id="@+id/payment_request_status"

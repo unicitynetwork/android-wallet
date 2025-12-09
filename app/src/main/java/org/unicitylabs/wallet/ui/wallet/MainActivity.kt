@@ -755,6 +755,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Show the payment requests dialog and handle accept/reject actions.
      * Accept action triggers actual token transfer to the requester's nametag.
+     * Dialog observes the StateFlow for real-time updates on status changes.
      */
     private fun showPaymentRequestsDialog() {
         val nostrService = NostrSdkService.getInstance(applicationContext)
@@ -763,12 +764,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val requests = nostrService.paymentRequests.value
-
         isPaymentRequestDialogShowing = true
         PaymentRequestDialog(
             context = this,
-            requests = requests,
+            requestsFlow = nostrService.paymentRequests,
+            lifecycleScope = lifecycleScope,
             onAccept = { request ->
                 handleAcceptPaymentRequest(request)
             },
@@ -803,9 +803,27 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Check if the request has expired BEFORE initiating transfer
+        if (request.isExpired()) {
+            Log.w("MainActivity", "Cannot accept expired payment request: ${request.requestId}")
+            Toast.makeText(this, "Payment request has expired", Toast.LENGTH_LONG).show()
+            // Update status to EXPIRED
+            lifecycleScope.launch {
+                nostrService.acceptPaymentRequest(request) // This will mark it as expired
+            }
+            return
+        }
+
         // Update status to ACCEPTED (in progress)
         lifecycleScope.launch {
-            nostrService.acceptPaymentRequest(request)
+            val result = nostrService.acceptPaymentRequest(request)
+            if (result.isFailure) {
+                // Request might have expired between check and accept
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, result.exceptionOrNull()?.message ?: "Failed to accept", Toast.LENGTH_LONG).show()
+                }
+                return@launch
+            }
         }
 
         // The recipientNametag in the request is where we need to send tokens (Alice's nametag)
