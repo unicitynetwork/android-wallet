@@ -226,7 +226,7 @@ Resources:
               Protocol: tcp
           Environment:
             - Name: RUST_LOG
-              Value: info,nostr_rs_relay=debug
+              Value: info
             - Name: RELAY_NAME
               Value: Unicity Nostr Relay
             - Name: RELAY_DESCRIPTION
@@ -429,7 +429,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /ecs/${AWS::StackName}-nostr-relay
-      RetentionInDays: 30
+      RetentionInDays: 7
 
   # S3 Bucket for file storage (optional)
   S3Bucket:
@@ -510,30 +510,6 @@ Resources:
       LogGroupName: !Ref CloudWatchLogGroup
       MetricTransformations:
         - MetricName: RelayErrors
-          MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
-          MetricValue: '1'
-          DefaultValue: 0
-
-  NewConnectionMetricFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      FilterName: !Sub ${AWS::StackName}-new-connections
-      FilterPattern: '"new client connection"'
-      LogGroupName: !Ref CloudWatchLogGroup
-      MetricTransformations:
-        - MetricName: NewConnections
-          MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
-          MetricValue: '1'
-          DefaultValue: 0
-
-  DisconnectionMetricFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      FilterName: !Sub ${AWS::StackName}-disconnections
-      FilterPattern: '"client disconnected"'
-      LogGroupName: !Ref CloudWatchLogGroup
-      MetricTransformations:
-        - MetricName: Disconnections
           MetricNamespace: !Sub ${AWS::StackName}/NostrRelay
           MetricValue: '1'
           DefaultValue: 0
