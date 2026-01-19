@@ -18,8 +18,8 @@ Parameters:
 
   CertificateArn:
     Type: String
-    Default: ''
-    Description: ARN of the SSL certificate (optional, will create if not provided)
+    Default: 'arn:aws:acm:me-central-1:654654299933:certificate/80edd752-f779-40ed-8996-5a0f442b61f3'
+    Description: ARN of the ACM SSL certificate for HTTPS listener
 
   DBPassword:
     Type: String
@@ -301,6 +301,21 @@ Resources:
       LoadBalancerArn: !Ref ApplicationLoadBalancer
       Port: 8080
       Protocol: HTTP
+
+  # HTTPS Listener for secure WebSocket connections (wss://)
+  ALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DeletionPolicy: Retain
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
 
   # RDS PostgreSQL Database
   DBSubnetGroup:
