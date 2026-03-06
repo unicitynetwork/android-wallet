@@ -98,7 +98,7 @@ public class ConcurrentFaucetTest {
             random.nextBytes(privateKey);
             byte[] pubKeyBytes = SchnorrSigner.getPublicKey(privateKey);
             String pubkeyHex = Hex.encodeHexString(pubKeyBytes);
-            String nametag = "concurrent-test-" + i + "-" + UUID.randomUUID().toString().substring(0, 6);
+            String nametag = "ct-" + i + "-" + UUID.randomUUID().toString().substring(0, 6);
 
             TestRecipientInfo recipient = new TestRecipientInfo(nametag, privateKey, pubkeyHex);
             recipients.add(recipient);
